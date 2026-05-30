@@ -1,0 +1,357 @@
+{% extends "timecourse/base.html" %}
+{% block title %}Sankey Flow — Time-Course{% endblock %}
+
+{% block extra_style %}
+<style>
+  body { overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+  .container { flex: 1; padding: 0; margin: 0; max-width: none; display: flex; flex-direction: column; overflow: hidden; }
+
+  .sankey-controls {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 7px 16px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; flex-shrink: 0;
+  }
+  .sankey-controls label { color: var(--text-muted); }
+  .chip-group { display: flex; gap: 0; }
+  .chip-btn {
+    padding: 3px 10px; font-size: 11px; font-weight: 600;
+    background: var(--bg-elevated); color: var(--text-muted);
+    border: 1px solid var(--border); cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .chip-btn:first-child { border-radius: 4px 0 0 4px; }
+  .chip-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+  .chip-btn:not(:first-child):not(:last-child) { border-left: none; }
+  .chip-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .sankey-controls select, .sankey-controls input[type="range"] {
+    font-size: 11px; padding: 2px 4px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px;
+  }
+  .sankey-controls input[type="range"] { width: 80px; padding: 0; vertical-align: middle; }
+  .ctrl-val { font-size: 11px; color: var(--text-muted); min-width: 36px; }
+  .ctrl-label { color: var(--text-muted); font-size: 11px; }
+
+  #sankey-wrap { flex: 1; overflow: hidden; position: relative; }
+  #sankey-svg { width: 100%; height: 100%; }
+
+  .sankey-tooltip {
+    position: fixed; background: var(--bg-elevated);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 12px; font-size: 12px; color: var(--text);
+    box-shadow: var(--shadow-lg); pointer-events: none;
+    display: none; z-index: 100; max-width: 260px; line-height: 1.5;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="sankey-controls">
+  <label class="ctrl-label">Source:</label>
+  <div class="chip-group">
+    <button class="chip-btn active" data-src="footprint" onclick="setSource('footprint', this)">Motifs</button>
+    <button class="chip-btn" data-src="chipseq"    onclick="setSource('chipseq', this)">ChIP-seq</button>
+    <button class="chip-btn" data-src="both"       onclick="setSource('both', this)">Both</button>
+  </div>
+
+  <label class="ctrl-label" style="margin-left:6px">Min OR:</label>
+  <input type="range" id="min-or-slider" min="0" max="4" step="1" value="1">
+  <span class="ctrl-val" id="min-or-val"></span>
+
+  <label class="ctrl-label">Binding FDR:</label>
+  <select id="bind-fdr-sel">
+    <option value="0.001" selected>0.001</option>
+    <option value="0.01">0.01</option>
+    <option value="0.05">0.05</option>
+  </select>
+
+  <label class="ctrl-label">Pert FDR:</label>
+  <select id="pert-fdr-sel">
+    <option value="0.01">0.01</option>
+    <option value="0.05" selected>0.05</option>
+    <option value="0.1">0.1</option>
+  </select>
+
+  <label class="ctrl-label" style="margin-left:4px">Labels:</label>
+  <input type="checkbox" id="show-tf-labels" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)">
+  <span class="ctrl-label">TF names</span>
+</div>
+
+<div id="sankey-wrap">
+  <svg id="sankey-svg"></svg>
+  <div class="sankey-tooltip" id="tooltip"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const GENE_CLUSTER_COLORS = {
+  'gene_cluster_1': '#4E79A7', 'gene_cluster_2': '#F28E2B',
+  'gene_cluster_3': '#59A14F', 'gene_cluster_4': '#E15759',
+  'gene_cluster_5': '#B6992D', 'gene_cluster_6': '#499894',
+  'gene_cluster_7': '#79706E',
+};
+const PC_COLOR = '#e07b39';
+const TF_COLOR = '#4a56b0';
+
+const MIN_OR_VALS = [1, 2, 5, 10, 20];
+
+let bindSource = 'footprint';
+
+function setSource(src, btn) {
+  bindSource = src;
+  document.querySelectorAll('.chip-btn').forEach(b => b.classList.toggle('active', b === btn));
+  debouncedLoad();
+}
+
+function getMinOr()   { return MIN_OR_VALS[parseInt(document.getElementById('min-or-slider').value)]; }
+function getBindFdr() { return parseFloat(document.getElementById('bind-fdr-sel').value); }
+function getPertFdr() { return parseFloat(document.getElementById('pert-fdr-sel').value); }
+function showTFLabels() { return document.getElementById('show-tf-labels').checked; }
+
+function updateHints() {
+  document.getElementById('min-or-val').textContent = `≥ ${getMinOr()}`;
+}
+
+// ─── D3 Sankey renderer ───────────────────────────────────────────────────────
+
+function renderSankey(apiData) {
+  const { nodes: rawNodes, links: rawLinks } = apiData;
+
+  const wrap = document.getElementById('sankey-wrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const svg = d3.select('#sankey-svg')
+    .attr('width', W).attr('height', H);
+  svg.selectAll('*').remove();
+
+  const nodeW = 16, pad = 14;
+  const marginLeft = 80, marginRight = 80;
+  const col0x = marginLeft;
+  const col1x = W * 0.42;
+  const col2x = W - marginRight - nodeW;
+
+  // Assign column (layer) per node type
+  const typeLayer = { tf: 0, peak_cluster: 1, gene_cluster: 2 };
+
+  // Build D3 sankey structures
+  // Only include binding + peak_gene links (perturbation are bypass arcs, handled separately)
+  const sankeyNodes = rawNodes.map((n, i) => ({ ...n, _origIdx: i }));
+  const sankeyLinks = rawLinks
+    .filter(l => l.layer === 'binding' || l.layer === 'peak_gene')
+    .map(l => ({ source: l.source, target: l.target, value: Math.max(0.5, l.value), layer: l.layer }));
+
+  // Custom x positions: assign x0 per layer
+  const colX = [col0x, col1x, col2x];
+
+  const sankey = d3.sankey()
+    .nodeId(d => d._origIdx)
+    .nodeAlign((node) => typeLayer[node.type] || 0)
+    .nodeWidth(nodeW)
+    .nodePadding(pad)
+    .extent([[col0x, 12], [col2x + nodeW, H - 12]]);
+
+  let graph;
+  try {
+    graph = sankey({ nodes: sankeyNodes, links: sankeyLinks });
+  } catch (e) {
+    svg.append('text').attr('x', W/2).attr('y', H/2)
+       .attr('text-anchor','middle').attr('fill','var(--text-muted)').attr('font-size',14)
+       .text('No data for current filter settings');
+    return;
+  }
+
+  // Override x0/x1 per layer
+  graph.nodes.forEach(n => {
+    const col = typeLayer[n.type] || 0;
+    n.x0 = colX[col];
+    n.x1 = colX[col] + nodeW;
+  });
+
+  // Recompute link positions after x override
+  sankey.update(graph);
+
+  const defs = svg.append('defs');
+
+  // ── Draw peak_gene links (gray) ──────────────────────────────────────────
+  const pgLinks = graph.links.filter(l => l.layer === 'peak_gene');
+  svg.append('g').attr('class', 'pg-links')
+    .selectAll('path').data(pgLinks).join('path')
+      .attr('d', d3.sankeyLinkHorizontal())
+      .attr('fill', 'none')
+      .attr('stroke', '#bbb')
+      .attr('stroke-width', d => Math.max(1, d.width))
+      .attr('stroke-opacity', 0.45)
+      .attr('class', d => `link pg-link target-${d.target._origIdx}`)
+      .on('mouseover', (ev, d) => highlightLinks(d.source._origIdx, d.target._origIdx))
+      .on('mouseout', () => clearHighlight());
+
+  // ── Draw binding links (orange) ──────────────────────────────────────────
+  const bindLinks = graph.links.filter(l => l.layer === 'binding');
+  svg.append('g').attr('class', 'bind-links')
+    .selectAll('path').data(bindLinks).join('path')
+      .attr('d', d3.sankeyLinkHorizontal())
+      .attr('fill', 'none')
+      .attr('stroke', '#e07b39')
+      .attr('stroke-width', d => Math.max(0.5, d.width))
+      .attr('stroke-opacity', 0.3)
+      .attr('class', d => `link bind-link src-${d.source._origIdx} target-${d.target._origIdx}`)
+      .on('mouseover', (ev, d) => { highlightLinks(d.source._origIdx); showTooltip(ev, `${d.source.id}<br><small>→ ${d.target.id.replace('peak_cluster_','PC')}</small><br>OR: ${d.value.toFixed(1)}`); })
+      .on('mouseout', () => { clearHighlight(); hideTooltip(); });
+
+  // ── Perturbation bypass arcs ─────────────────────────────────────────────
+  const pertLinks = rawLinks.filter(l => l.layer === 'perturbation');
+  const pertG = svg.append('g').attr('class', 'pert-arcs');
+  pertLinks.forEach(l => {
+    const srcNode = graph.nodes[l.source];
+    const tgtNode = graph.nodes[l.target];
+    if (!srcNode || !tgtNode) return;
+    const x1 = srcNode.x1;
+    const y1 = (srcNode.y0 + srcNode.y1) / 2;
+    const x2 = tgtNode.x0;
+    const y2 = (tgtNode.y0 + tgtNode.y1) / 2;
+    const mx = (x1 + x2) / 2;
+    const color = l.nes > 0 ? '#e53935' : '#1565c0';
+    pertG.append('path')
+      .attr('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`)
+      .attr('fill', 'none')
+      .attr('stroke', color)
+      .attr('stroke-width', Math.min(3, Math.max(0.8, Math.abs(l.nes || 1) * 0.6)))
+      .attr('stroke-dasharray', '5,3')
+      .attr('stroke-opacity', 0.65)
+      .attr('class', `pert-arc src-${l.source} target-${l.target}`)
+      .on('mouseover', (ev) => {
+        showTooltip(ev, `${srcNode.id}<br><small>→ ${tgtNode.id.replace('gene_cluster_','GC')}</small><br>NES: ${(l.nes||0).toFixed(2)} (perturbation)`);
+      })
+      .on('mouseout', hideTooltip);
+  });
+
+  // ── Nodes ────────────────────────────────────────────────────────────────
+  const nodeG = svg.append('g').attr('class', 'nodes')
+    .selectAll('g').data(graph.nodes).join('g')
+      .attr('class', d => `node-g node-${d._origIdx}`)
+      .style('cursor', d => d.type !== 'tf' ? 'pointer' : 'pointer')
+      .on('click', (ev, d) => {
+        if (d.type === 'gene_cluster') window.location.href = '/timecourse/gene-cluster/' + encodeURIComponent(d.id);
+        else if (d.type === 'peak_cluster') window.location.href = '/timecourse/peak-cluster/' + encodeURIComponent(d.id);
+        else window.location.href = '/perturbseq/tf/' + encodeURIComponent(d.id);
+      })
+      .on('mouseover', (ev, d) => {
+        highlightLinks(d._origIdx);
+        const bindCt = rawLinks.filter(l => l.layer === 'binding' && (l.source === d._origIdx || l.target === d._origIdx)).length;
+        const pertCt = rawLinks.filter(l => l.layer === 'perturbation' && (l.source === d._origIdx || l.target === d._origIdx)).length;
+        const shortName = d.id.replace('gene_cluster_', 'GC').replace('peak_cluster_', 'PC');
+        showTooltip(ev, `<strong>${shortName}</strong><br><small>${bindCt} binding links · ${pertCt} pert. links</small>`);
+      })
+      .on('mouseout', () => { clearHighlight(); hideTooltip(); });
+
+  nodeG.append('rect')
+    .attr('x', d => d.x0)
+    .attr('y', d => d.y0)
+    .attr('width', d => d.x1 - d.x0)
+    .attr('height', d => Math.max(2, d.y1 - d.y0))
+    .attr('fill', d => {
+      if (d.type === 'gene_cluster') return GENE_CLUSTER_COLORS[d.id] || '#aaa';
+      if (d.type === 'peak_cluster') return PC_COLOR;
+      return TF_COLOR;
+    })
+    .attr('rx', d => d.type === 'tf' ? 2 : 3)
+    .attr('stroke', 'rgba(0,0,0,0.12)')
+    .attr('stroke-width', 0.5);
+
+  // Column labels
+  const colTitles = ['Transcription Factors', 'Peak Clusters', 'Gene Clusters'];
+  const colXPos = [col0x + nodeW/2, col1x + nodeW/2, col2x + nodeW/2];
+  colXPos.forEach((x, i) => {
+    svg.append('text')
+      .attr('x', x).attr('y', 10)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-weight', 600)
+      .attr('fill', 'var(--text-muted)')
+      .text(colTitles[i]);
+  });
+
+  // Node labels — always show for PC/GC, optional for TF
+  nodeG.filter(d => d.type !== 'tf').append('text')
+    .attr('x', d => d.x0 + nodeW + 6)
+    .attr('y', d => (d.y0 + d.y1) / 2)
+    .attr('dy', '0.35em')
+    .attr('font-size', 11).attr('font-weight', 600)
+    .attr('fill', 'var(--text)')
+    .text(d => d.id.replace('gene_cluster_','GC').replace('peak_cluster_','PC'));
+
+  // TF labels (optional)
+  function updateTFLabels() {
+    svg.selectAll('.tf-label').remove();
+    if (!showTFLabels()) return;
+    nodeG.filter(d => d.type === 'tf').append('text')
+      .attr('class', 'tf-label')
+      .attr('x', d => d.x0 - 4)
+      .attr('y', d => (d.y0 + d.y1) / 2)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'end')
+      .attr('font-size', 8)
+      .attr('fill', 'var(--text-muted)')
+      .text(d => d.id);
+  }
+  updateTFLabels();
+  document.getElementById('show-tf-labels').onchange = updateTFLabels;
+
+  // ── Highlight helpers ────────────────────────────────────────────────────
+  function highlightLinks(nodeIdx, nodeIdx2) {
+    svg.selectAll('.link').attr('stroke-opacity', l =>
+      (l.source._origIdx === nodeIdx || l.target._origIdx === nodeIdx ||
+       (nodeIdx2 != null && (l.source._origIdx === nodeIdx2 || l.target._origIdx === nodeIdx2))) ? 0.75 : 0.06);
+    svg.selectAll('.pert-arc').attr('stroke-opacity', function() {
+      const cls = this.getAttribute('class') || '';
+      return (cls.includes(`src-${nodeIdx}`) || cls.includes(`target-${nodeIdx}`)) ? 0.85 : 0.08;
+    });
+  }
+  function clearHighlight() {
+    svg.selectAll('.bind-link').attr('stroke-opacity', 0.3);
+    svg.selectAll('.pg-link').attr('stroke-opacity', 0.45);
+    svg.selectAll('.pert-arc').attr('stroke-opacity', 0.65);
+  }
+}
+
+// ── Tooltip helpers ──────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTooltip(ev, html) {
+  tooltip.innerHTML = html; tooltip.style.display = 'block';
+  const x = ev.clientX + 12, y = ev.clientY - 10;
+  tooltip.style.left = `${Math.min(x, window.innerWidth - 270)}px`;
+  tooltip.style.top  = `${Math.max(y, 4)}px`;
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+// ── Load & render ─────────────────────────────────────────────────────────────
+async function loadSankey() {
+  updateHints();
+  const p = new URLSearchParams({
+    binding_fdr: getBindFdr(), min_or: getMinOr(),
+    nes_padj: getPertFdr(), binding_source: bindSource,
+  });
+  const resp = await fetch('/timecourse/api/sankey?' + p);
+  const data = await resp.json();
+  renderSankey(data);
+}
+
+let _debT = null;
+function debouncedLoad() {
+  clearTimeout(_debT);
+  _debT = setTimeout(loadSankey, 280);
+}
+
+document.getElementById('min-or-slider').addEventListener('input', () => { updateHints(); debouncedLoad(); });
+document.getElementById('bind-fdr-sel').addEventListener('change', debouncedLoad);
+document.getElementById('pert-fdr-sel').addEventListener('change', debouncedLoad);
+
+window.addEventListener('resize', () => { clearTimeout(_debT); _debT = setTimeout(loadSankey, 150); });
+
+updateHints();
+loadSankey();
+</script>
+{% endblock %}

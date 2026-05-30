@@ -1,0 +1,76 @@
+{% extends "timecourse/base.html" %}
+{% block title %}Cluster Hub — Time-Course{% endblock %}
+
+{% block extra_style %}
+<style>
+  .cluster-section-title {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    margin: 28px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cluster-grid {
+    display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 2rem;
+  }
+  .cluster-card {
+    width: 175px; padding: 12px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    cursor: pointer; transition: box-shadow 0.2s, transform 0.2s;
+    text-decoration: none; display: block;
+  }
+  .cluster-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+  .cluster-card-label {
+    font-size: 14px; font-weight: 700; margin-bottom: 4px;
+  }
+  .cluster-card-peak {
+    font-size: 10px; color: var(--text-muted); margin-bottom: 8px;
+  }
+  .cluster-card-sparkline { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 20px 24px 40px;">
+
+  <h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">Cluster Hub</h2>
+  <p style="font-size:13px;color:var(--text-muted);margin-bottom:0">All clusters sorted by temporal peak (early → late). Click a card to view its detail page.</p>
+
+  <div class="cluster-section-title">Gene Clusters ({{ gene_clusters_data|length }})</div>
+  <div class="cluster-grid">
+    {% for c in gene_clusters_data %}
+    <a class="cluster-card" href="/perturbseq/module/{{ c.id.replace('gene_cluster_', 'GC') }}">
+      <div class="cluster-card-label" style="color:{{ c.color }}">
+        {{ c.id.replace('gene_cluster_', 'GC') }}
+      </div>
+      <div class="cluster-card-peak">peaks at {{ c.peak_tp }}</div>
+      <svg class="cluster-card-sparkline" width="150" height="55" viewBox="0 0 150 55">
+        <path d="{{ c.svg_path }}" fill="none" stroke="{{ c.color }}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        {% for p in c.profile %}
+        <circle cx="{{ loop.index0 / (c.profile|length - 1) * 150 }}" cy="{{ 55 - ((p.val - c.profile|map(attribute='val')|min) / ((c.profile|map(attribute='val')|max - c.profile|map(attribute='val')|min) if (c.profile|map(attribute='val')|max != c.profile|map(attribute='val')|min) else 1)) * 55 }}" r="2.5" fill="{{ c.color }}" opacity="0.8"/>
+        {% endfor %}
+      </svg>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="cluster-section-title">Peak Clusters ({{ peak_clusters_data|length }})</div>
+  <div class="cluster-grid">
+    {% for c in peak_clusters_data %}
+    <a class="cluster-card" href="/perturbseq/module/{{ c.id.replace('peak_cluster_', 'PC') }}">
+      <div class="cluster-card-label" style="color:{{ c.color }}">
+        {{ c.id.replace('peak_cluster_', 'PC') }}
+      </div>
+      <div class="cluster-card-peak">peaks at {{ c.peak_tp }}</div>
+      <svg class="cluster-card-sparkline" width="150" height="55" viewBox="0 0 150 55">
+        <path d="{{ c.svg_path }}" fill="none" stroke="{{ c.color }}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        {% for p in c.profile %}
+        <circle cx="{{ loop.index0 / (c.profile|length - 1) * 150 }}" cy="{{ 55 - ((p.val - c.profile|map(attribute='val')|min) / ((c.profile|map(attribute='val')|max - c.profile|map(attribute='val')|min) if (c.profile|map(attribute='val')|max != c.profile|map(attribute='val')|min) else 1)) * 55 }}" r="2.5" fill="{{ c.color }}" opacity="0.8"/>
+        {% endfor %}
+      </svg>
+    </a>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

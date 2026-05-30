@@ -1,0 +1,322 @@
+{% extends "timecourse/base.html" %}
+{% block title %}Toggle Network — Time-Course{% endblock %}
+
+{% block extra_style %}
+<style>
+  body { overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+  .container { flex: 1; padding: 0; margin: 0; max-width: none; overflow: hidden; display: flex; flex-direction: column; }
+
+  .ps-sidebar { width: 240px; }
+
+  .mode-toggle {
+    display: flex; gap: 0; border-radius: 6px; overflow: hidden;
+    border: 1px solid var(--border); margin-bottom: 2px;
+  }
+  .mode-btn {
+    flex: 1; padding: 8px 4px; font-size: 11px; font-weight: 600;
+    background: var(--bg-elevated); color: var(--text-muted);
+    border: none; cursor: pointer; text-align: center; line-height: 1.3;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mode-btn.active {
+    background: var(--accent); color: #fff;
+  }
+  .mode-btn:first-child { border-right: 1px solid var(--border); }
+
+  .mode-hint { font-size: 10px; color: var(--text-muted); margin-bottom: 6px; }
+
+  .layer-pert  { color: #c0392b; font-weight: 600; }
+  .layer-inter { color: #e07b39; font-weight: 600; }
+
+  .ps-check-label {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--text); cursor: pointer;
+  }
+  .ps-check-label input[type="checkbox"] {
+    accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; flex-shrink: 0;
+  }
+  .legend-gc { display: inline-block; width: 14px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ps-layout">
+
+  <aside class="ps-sidebar">
+    <div class="ps-sidebar-title">Toggle Network</div>
+
+    <div class="ps-section">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="btn-mode-pert" onclick="setMode('perturbation')">
+          Perturbation<br><span style="font-weight:400;font-size:10px">TF → Gene Cluster</span>
+        </button>
+        <button class="mode-btn" id="btn-mode-inter" onclick="setMode('interaction')">
+          Interaction<br><span style="font-weight:400;font-size:10px">TF → PC → Gene Cluster</span>
+        </button>
+      </div>
+      <div id="mode-hint" class="mode-hint">Showing perturbation network</div>
+    </div>
+
+    <!-- Perturbation controls -->
+    <div class="ps-section" id="pert-controls">
+      <div class="ps-label layer-pert">Perturbation FDR</div>
+      <input type="range" id="pert-fdr-slider" class="ps-range"
+             min="1" max="5" step="1" value="3">
+      <div id="pert-fdr-val" class="ps-hint"></div>
+    </div>
+
+    <!-- Interaction controls -->
+    <div class="ps-section" id="inter-controls" style="display:none">
+      <div class="ps-label layer-inter">Binding source</div>
+      <div class="ps-radio-group">
+        <label class="ps-radio-label"><input type="radio" name="binding-src" value="footprint" checked> Motif footprints</label>
+        <label class="ps-radio-label"><input type="radio" name="binding-src" value="chipseq"> ChIP-seq</label>
+        <label class="ps-radio-label"><input type="radio" name="binding-src" value="both"> Both</label>
+      </div>
+      <div class="ps-label layer-inter" style="margin-top:8px">Binding FDR</div>
+      <input type="range" id="bind-fdr-slider" class="ps-range"
+             min="1" max="4" step="1" value="3">
+      <div id="bind-fdr-val" class="ps-hint"></div>
+      <div class="ps-label layer-inter" style="margin-top:8px">Min odds ratio</div>
+      <input type="range" id="min-or-slider" class="ps-range"
+             min="0" max="4" step="1" value="1">
+      <div id="min-or-val" class="ps-hint"></div>
+    </div>
+
+    <button id="btn-reload" class="ps-reset">Reload</button>
+
+    <div id="graph-stats" class="ps-hint" style="line-height:1.6; margin-top:8px;"></div>
+
+    <div class="ps-divider"></div>
+
+    <div class="ps-legend-title">Nodes</div>
+    <div class="ps-legend">
+      <div class="ps-legend-row">
+        <svg width="14" height="14" overflow="visible"><circle cx="7" cy="7" r="5" fill="#4a56b0"/></svg>
+        <span>TF</span>
+      </div>
+      <div id="pc-legend-row" class="ps-legend-row" style="display:none;flex-direction:column;align-items:flex-start;gap:3px">
+        <span>Peak cluster <span style="font-size:9px;color:var(--text-muted)">(early → late)</span></span>
+        <div style="width:82px;height:8px;border-radius:3px;background:linear-gradient(to right,hsl(214,58%,85%),hsl(214,58%,28%))"></div>
+      </div>
+      <div class="ps-legend-row" style="flex-direction:column;align-items:flex-start;gap:3px">
+        <span>Gene cluster <span style="font-size:9px;color:var(--text-muted)">(early → late)</span></span>
+        <div style="width:82px;height:8px;border-radius:3px;background:linear-gradient(to right,hsl(18,68%,82%),hsl(18,68%,35%))"></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="ps-main">
+    <div id="cy"></div>
+  </main>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function gcColor(frac) {
+  const L = Math.round(82 - frac * 47);
+  return { bg: `hsl(18,68%,${L}%)`, label: `hsl(18,68%,${Math.min(L, 44)}%)` };
+}
+function pcColor(frac) {
+  const L = Math.round(85 - frac * 57);
+  return { bg: `hsl(214,58%,${L}%)`, label: `hsl(214,58%,${Math.min(L, 38)}%)` };
+}
+
+function makeSparklineSVG(profile, w, h, color) {
+  const vals = profile.map(p => p.value);
+  const n = vals.length;
+  const xs = vals.map((_, i) => 4 + (i / (n - 1)) * (w - 8));
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const rng = mx - mn || 1;
+  const pad = 5;
+  const ys = vals.map(v => h - pad - ((v - mn) / rng) * (h - 2 * pad));
+  const linePts = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' L ');
+  const areaPts = `M ${linePts} L ${xs[n-1].toFixed(1)},${h} L ${xs[0].toFixed(1)},${h} Z`;
+  const midY = (h / 2).toFixed(1);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<rect width="${w}" height="${h}" fill="white"/>` +
+    `<line x1="4" y1="${midY}" x2="${w-4}" y2="${midY}" stroke="#e0e0e0" stroke-width="0.8" stroke-dasharray="3,2"/>` +
+    `<path d="${areaPts}" fill="${color}" fill-opacity="0.18"/>` +
+    `<path d="M ${linePts}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `</svg>`;
+  return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+const PERT_FDR_VALS = [0.001, 0.01, 0.05, 0.1, 0.25];
+const BIND_FDR_VALS = [0.0001, 0.001, 0.01, 0.05];
+const MIN_OR_VALS   = [1, 2, 5, 10, 20];
+
+let cy = null;
+let currentMode = 'perturbation';
+let cachedPert  = null;
+let cachedInter = null;
+
+function getPertFdr() { return PERT_FDR_VALS[parseInt(document.getElementById('pert-fdr-slider').value)]; }
+function getBindFdr() { return BIND_FDR_VALS[parseInt(document.getElementById('bind-fdr-slider').value)]; }
+function getMinOr()   { return MIN_OR_VALS[parseInt(document.getElementById('min-or-slider').value)]; }
+function getBindSrc() { return document.querySelector('input[name="binding-src"]:checked').value; }
+
+function updateHints() {
+  document.getElementById('pert-fdr-val').textContent = `FDR ≤ ${getPertFdr()}`;
+  document.getElementById('bind-fdr-val').textContent = `FDR ≤ ${getBindFdr()}`;
+  document.getElementById('min-or-val').textContent   = `OR ≥ ${getMinOr()}`;
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-mode-pert').classList.toggle('active', mode === 'perturbation');
+  document.getElementById('btn-mode-inter').classList.toggle('active', mode === 'interaction');
+  document.getElementById('pert-controls').style.display = mode === 'perturbation' ? '' : 'none';
+  document.getElementById('inter-controls').style.display = mode === 'interaction' ? '' : 'none';
+  document.getElementById('pc-legend-row').style.display = mode === 'interaction' ? '' : 'none';
+  document.getElementById('mode-hint').textContent = mode === 'perturbation'
+    ? 'Showing perturbation network' : 'Showing interaction network';
+  // invalidate cache for other mode; reload
+  if (mode === 'perturbation') cachedPert = null;
+  else cachedInter = null;
+  debouncedLoad();
+}
+
+async function fetchData() {
+  updateHints();
+  if (currentMode === 'perturbation') {
+    if (!cachedPert) {
+      const p = new URLSearchParams({ nes_padj: getPertFdr(), show_perturbation: 'true', show_interaction: 'false' });
+      const r = await fetch('/timecourse/api/network?' + p);
+      cachedPert = await r.json();
+    }
+    return cachedPert;
+  } else {
+    if (!cachedInter) {
+      const p = new URLSearchParams({
+        binding_fdr: getBindFdr(), min_or: getMinOr(),
+        binding_source: getBindSrc(), show_perturbation: 'false', show_interaction: 'true',
+      });
+      const r = await fetch('/timecourse/api/network?' + p);
+      cachedInter = await r.json();
+    }
+    return cachedInter;
+  }
+}
+
+function buildGraph({ nodes, edges }) {
+  const elements = [];
+  nodes.forEach(n => {
+    const d = { id: n.id, label: n.id.replace('gene_cluster_', 'GC').replace('peak_cluster_', 'PC'), type: n.type };
+    if (n.type === 'gene_cluster') {
+      const c = gcColor(n.peak_rank_frac ?? 0);
+      d.color = c.bg; d.labelColor = c.label;
+      if (n.profile) d.bgImage = makeSparklineSVG(n.profile, 84, 50, c.bg);
+    } else if (n.type === 'peak_cluster') {
+      const c = pcColor(n.peak_rank_frac ?? 0);
+      d.color = c.bg; d.labelColor = c.label;
+      if (n.profile) d.bgImage = makeSparklineSVG(n.profile, 84, 50, c.bg);
+    }
+    elements.push({ data: d });
+  });
+  edges.forEach((e, i) => {
+    elements.push({ data: {
+      id: `e${i}`, source: e.source, target: e.target, etype: e.type,
+      dir: e.nes != null ? (e.nes > 0 ? 'up' : 'down') : 'neutral',
+      w: e.type === 'perturbation'
+           ? Math.min(4, 1 + Math.abs(e.nes || 1))
+           : Math.min(3, 0.5 + Math.log2(Math.max(1, e.odds_ratio || 1)) * 0.4),
+    }});
+  });
+
+  if (cy) cy.destroy();
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements,
+    style: [
+      { selector: 'node[type="tf"]', style: {
+        'background-color': '#4a56b0', 'label': 'data(label)',
+        'font-size': '7px', 'color': '#1e2448', 'text-valign': 'bottom', 'text-margin-y': 2,
+        'width': 14, 'height': 14,
+      }},
+      { selector: 'node[type="peak_cluster"]', style: {
+        'background-color': '#fff',
+        'background-image': 'data(bgImage)', 'background-fit': 'cover',
+        'background-clip': 'node', 'background-image-opacity': 1,
+        'label': 'data(label)',
+        'font-size': '9px', 'font-weight': '700', 'color': 'data(labelColor)',
+        'text-valign': 'bottom', 'text-margin-y': 6,
+        'width': 84, 'height': 50, 'shape': 'round-rectangle',
+        'border-width': 1.5, 'border-color': 'data(color)',
+      }},
+      { selector: 'node[type="gene_cluster"]', style: {
+        'background-color': '#fff',
+        'background-image': 'data(bgImage)', 'background-fit': 'cover',
+        'background-clip': 'node', 'background-image-opacity': 1,
+        'label': 'data(label)',
+        'font-size': '9px', 'font-weight': '700', 'color': 'data(labelColor)',
+        'text-valign': 'bottom', 'text-margin-y': 6,
+        'width': 84, 'height': 50, 'shape': 'round-rectangle',
+        'border-width': 1.5, 'border-color': 'data(color)',
+      }},
+      { selector: 'edge[etype="perturbation"][dir="up"]', style: {
+        'line-color': '#e53935', 'width': 'data(w)', 'curve-style': 'bezier', 'opacity': 0.8,
+        'target-arrow-shape': 'triangle', 'target-arrow-color': '#e53935', 'arrow-scale': 0.7,
+      }},
+      { selector: 'edge[etype="perturbation"][dir="down"]', style: {
+        'line-color': '#1565c0', 'width': 'data(w)', 'curve-style': 'bezier', 'opacity': 0.8,
+        'target-arrow-shape': 'triangle', 'target-arrow-color': '#1565c0', 'arrow-scale': 0.7,
+      }},
+      { selector: 'edge[etype="binding"]', style: {
+        'line-color': '#e07b39', 'width': 'data(w)', 'line-style': 'dashed',
+        'line-dash-pattern': [5, 3], 'curve-style': 'bezier', 'opacity': 0.65,
+        'target-arrow-shape': 'triangle', 'target-arrow-color': '#e07b39', 'arrow-scale': 0.6,
+      }},
+      { selector: 'edge[etype="peak_gene"]', style: {
+        'line-color': '#999', 'width': 1.5, 'line-style': 'dashed',
+        'line-dash-pattern': [3, 2], 'curve-style': 'bezier', 'opacity': 0.5,
+        'target-arrow-shape': 'triangle', 'target-arrow-color': '#999', 'arrow-scale': 0.5,
+      }},
+      { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#f59e0b' } },
+    ],
+    layout: { name: 'cose', randomize: false, animate: false,
+               idealEdgeLength: 100, nodeRepulsion: 6000, numIter: 2500, componentSpacing: 80, gravity: 60 },
+  });
+
+  cy.on('tap', 'node', evt => {
+    const n = evt.target;
+    if (n.data('type') === 'gene_cluster')
+      window.location.href = '/timecourse/gene-cluster/' + encodeURIComponent(n.id());
+    else if (n.data('type') === 'peak_cluster')
+      window.location.href = '/timecourse/peak-cluster/' + encodeURIComponent(n.id());
+    else if (n.data('type') === 'tf')
+      window.location.href = '/perturbseq/tf/' + encodeURIComponent(n.id());
+  });
+
+  const nTF  = nodes.filter(n => n.type === 'tf').length;
+  const nGC  = nodes.filter(n => n.type === 'gene_cluster').length;
+  const nPC  = nodes.filter(n => n.type === 'peak_cluster').length;
+  const nPert = edges.filter(e => e.type === 'perturbation').length;
+  const nBind = edges.filter(e => e.type === 'binding').length;
+  document.getElementById('graph-stats').innerHTML =
+    `${nTF} TFs · ${nGC} GCs · ${nPC} PCs<br>${nPert} perturb. · ${nBind} binding`;
+}
+
+let _debT = null;
+async function debouncedLoad() {
+  clearTimeout(_debT);
+  _debT = setTimeout(async () => {
+    const data = await fetchData();
+    buildGraph(data);
+  }, 200);
+}
+
+document.getElementById('pert-fdr-slider').addEventListener('input', () => { updateHints(); cachedPert = null; debouncedLoad(); });
+document.getElementById('bind-fdr-slider').addEventListener('input', () => { updateHints(); cachedInter = null; debouncedLoad(); });
+document.getElementById('min-or-slider').addEventListener('input', () => { updateHints(); cachedInter = null; debouncedLoad(); });
+document.querySelectorAll('input[name="binding-src"]').forEach(r => r.addEventListener('change', () => { cachedInter = null; debouncedLoad(); }));
+document.getElementById('btn-reload').addEventListener('click', () => {
+  cachedPert = null; cachedInter = null; debouncedLoad();
+});
+
+updateHints();
+debouncedLoad();
+</script>
+{% endblock %}

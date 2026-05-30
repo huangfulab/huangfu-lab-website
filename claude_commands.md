@@ -1,0 +1,3 @@
+i want to generate simple, human-readable sentences that introduce every supermodule, submodule, and developmental gene cluster based on several features, such as interesting gene ontology terms, development over the time-course, famous genes included inside it, and perturbations which 
+
+update the gene table with a binary "in_perturbation_library" column, which should be TRUE/FALSE baed on whether the gene has a gRNA in the library. use the informaton from the hdf

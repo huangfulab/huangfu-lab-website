@@ -1,0 +1,1407 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}{{ name }}{% endblock %}
+
+{% block extra_style %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+{% if module_type in ('gc', 'pc') %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endif %}
+<style>
+  /* ── Breadcrumb ──────────────────────────────────────────────── */
+  .mod-crumb {
+    display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap;
+  }
+  .mod-crumb a { font-size:12px; color:var(--text-muted); text-decoration:none; }
+  .mod-crumb a:hover { color:var(--accent); }
+  .mod-crumb-sep { color:var(--border); font-size:16px; line-height:1; }
+
+  /* ── Hero header ─────────────────────────────────────────────── */
+  .mod-hero { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .mod-hero h1 { font-size:26px; font-weight:700; color:var(--text); margin:0; }
+  .mod-type-badge {
+    font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px;
+    letter-spacing:0.4px; position:relative; top:-1px;
+  }
+  .badge-super { background:var(--accent); color:#fff; }
+  .badge-sub   { background:color-mix(in srgb,var(--accent) 10%,transparent); border:1px solid color-mix(in srgb,var(--accent) 35%,transparent); color:var(--accent); }
+  .badge-gc    { background:rgba(78,121,167,0.12); color:#2e5c8a; border:1px solid rgba(78,121,167,0.3); }
+  .badge-pc    { background:rgba(224,123,57,0.12); color:#a04820; border:1px solid rgba(224,123,57,0.3); }
+
+  /* ── Intro row ───────────────────────────────────────────────── */
+  .mod-intro-row {
+    display:grid; grid-template-columns:1fr minmax(0,390px);
+    gap:18px; margin-bottom:22px; align-items:start;
+  }
+  @media (max-width:860px) { .mod-intro-row { grid-template-columns:1fr; } }
+  .mod-chart-card {
+    background:var(--bg-card); border:1px solid var(--border);
+    border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow);
+  }
+  .mod-chart-label {
+    font-size:11px; font-weight:600; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+    display:flex; justify-content:space-between;
+  }
+  #mod-expr-chart { width:100%; display:block; }
+
+  /* ── Gene table pagination ───────────────────────────────────── */
+  #gene-pagination, #sub-gene-pagination, #enrich-pagination {
+    display:flex; align-items:center; gap:8px; justify-content:center;
+    padding:8px 0; font-size:12px; color:var(--text-muted);
+  }
+  #gene-pagination button, #sub-gene-pagination button, #enrich-pagination button {
+    padding:3px 10px; border:1px solid var(--border); border-radius:6px;
+    background:var(--bg-elevated); color:var(--text-muted);
+    font-size:11px; cursor:pointer; transition:all 0.12s;
+  }
+  #gene-pagination button:hover:not(:disabled), #sub-gene-pagination button:hover:not(:disabled), #enrich-pagination button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  #gene-pagination button:disabled, #sub-gene-pagination button:disabled, #enrich-pagination button:disabled { opacity:0.35; cursor:default; }
+  .tf-type-active { color: var(--accent); font-weight: 600; font-size: 11px; }
+  .tf-type-tf { color: var(--text-muted); font-weight: 600; font-size: 11px; }
+
+  /* ── Supermodule: full-width filter bar ─────────────────────── */
+  #filter-bar {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+  }
+
+  /* ── Supermodule: TF legend ──────────────────────────────────── */
+  /* .ps-inline-legend rules moved to perturbseq.css */
+
+  /* ── Submodule: stat bar & neighbor table ────────────────────── */
+  .mod-stat-bar {
+    display:flex; gap:18px; flex-wrap:wrap;
+    font-size:12px; color:var(--text-muted); margin-bottom:14px;
+  }
+  .mod-stat-bar strong { color:var(--text); }
+  .no-pert-note {
+    background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px;
+    padding:10px 14px; font-size:12px; color:var(--text-muted); margin-bottom:0;
+  }
+  .mz-bar {
+    display:inline-block; height:10px; border-radius:3px;
+    vertical-align:middle; margin-right:4px;
+  }
+
+  /* ── Gene co-expression network (submodule) ──────────────────── */
+  .gene-net-section { margin-top:28px; }
+  .gene-net-header {
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:10px;
+  }
+  .gene-net-header h2 { margin:0; }
+  .net-controls {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    font-size:12px; color:var(--text-muted);
+  }
+  .net-controls label { display:flex; align-items:center; gap:6px; }
+  .net-controls strong { color:var(--text); min-width:36px; display:inline-block; }
+  .net-controls .ctrl-sep { color:var(--border); user-select:none; }
+  #z-slider, #rep-slider, #scale-slider { width:120px; accent-color:var(--accent); cursor:pointer; }
+  .net-edge-count { font-size:11px; color:var(--text-muted); }
+  .net-legend { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted); }
+  .net-legend-grad {
+    width:80px; height:8px; border-radius:4px;
+    background:linear-gradient(to right,#c6dbef,#08306b); border:1px solid var(--border);
+  }
+  #gene-cy {
+    width:100%; height:62vh; border:1px solid var(--border);
+    border-radius:var(--radius); background:var(--bg-card); box-shadow:var(--shadow-lg);
+  }
+
+  /* ── GC/PC: table layout ─────────────────────────────────────── */
+  .nes-pos { color:#e53935; font-weight:600; }
+  .nes-neg { color:#1565c0; font-weight:600; }
+
+  /* ── Bottom split (sub + gc/pc) ──────────────────────────────── */
+  .bottom-split {
+    display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:24px;
+  }
+  @media (max-width:900px) { .bottom-split { grid-template-columns:1fr; } }
+
+  /* ── Members section ─────────────────────────────────────────── */
+  .mod-members { margin-top:24px; }
+</style>
+{% endblock %}
+
+{% from "perturbseq/_network_macros.html" import network_legend, landing_split, filter_bar %}
+{% set cols_full = [
+  {'key':'tf','type':'string','label':'TF'},
+  {'key':'direction','type':'string','label':'Dir'},
+  {'key':'mean_NES','type':'number','label':'NES'},
+  {'key':'n_sig_gRNA','type':'number','label':'#gRNA'},
+  {'key':'padj','type':'number','label':'padj'},
+  {'key':'binding','type':'string','label':'Bind'},
+  {'key':'odds_ratio','type':'number','label':'OR'},
+] %}
+{% set cols_gc = [
+  {'key':'tf','type':'string','label':'TF','title':''},
+  {'key':'dir','type':'string','label':'Dir','title':'Effect of TF knockdown on this cluster'},
+  {'key':'nes','type':'number','label':'NES','title':'Normalized Enrichment Score'},
+  {'key':'padj','type':'number','label':'padj','title':''},
+  {'key':'binding','type':'string','label':'Bind','title':'TF binding confirmed near cluster genes'},
+  {'key':'odds_ratio','type':'number','label':'OR','title':'Binding odds ratio'},
+] %}
+
+{% block content %}
+
+{# ── Breadcrumb ──────────────────────────────────────────────────── #}
+{% if parent %}
+<div class="mod-crumb">
+  <a href="/perturbseq/module/{{ parent }}">{{ parent }}</a>
+  <span class="mod-crumb-sep">›</span>
+</div>
+{% endif %}
+
+{# ── Hero header ─────────────────────────────────────────────────── #}
+<div class="mod-hero">
+  <h1>{{ name }}</h1>
+  <span class="mod-type-badge badge-{{ module_type }}" style="--accent:{{ card_color }}">
+    {% if module_type == 'super' %}Supermodule
+    {% elif module_type == 'sub' %}Submodule
+    {% elif module_type == 'gc' %}Gene Cluster
+    {% else %}Peak Cluster
+    {% endif %}
+  </span>
+  <span style="font-size:13px;color:var(--text-muted);font-weight:500">
+    {% if module_type == 'sub' %}{{ node.n_genes }} genes
+    {% elif module_type == 'super' %}{{ genes|length }} genes
+    {% else %}{{ genes|length }} genes
+    {% endif %}
+  </span>
+</div>
+
+{# ── Intro row ───────────────────────────────────────────────────── #}
+<div class="mod-intro-row">
+
+  {# Left: description/meta #}
+  <div>
+    {% if module_type == 'super' %}
+      {% if desc %}
+      <div class="module-intro" style="margin:0;--accent:{{ card_color }}">
+        <h2 class="intro-title">{{ desc.title }}</h2>
+        <p>{{ desc.summary }}</p>
+        <div class="intro-highlights">
+          {% if desc.highlight_terms %}
+          <span><strong>Key terms:</strong>
+            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.highlight_genes %}
+          <span><strong>Notable genes:</strong>
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.top_tfs %}
+          <span><strong>Top TFs:</strong>
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+    {% elif module_type == 'sub' %}
+      {% if desc %}
+      <div class="module-intro" style="margin:0;--accent:{{ card_color }}">
+        <h2 class="intro-title">{{ desc.title }}</h2>
+        {% if desc.summary %}<p>{{ desc.summary }}</p>{% endif %}
+        <div class="intro-highlights">
+          {% if desc.highlight_terms %}
+          <span><strong>Key terms:</strong>
+            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.highlight_genes %}
+          <span><strong>Notable genes:</strong>
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.top_tfs %}
+          <span><strong>Top TFs:</strong>
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.similar_submodules %}
+          <span><strong>Similar submodules:</strong>
+            {% for s in desc.similar_submodules %}<a class="intro-tag submodule-tag" href="/perturbseq/module/{{ s.name }}" style="background:{{ s.color }};color:#fff;">{{ s.name }}</a> {% endfor %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+
+    {% elif module_type == 'gc' %}
+      {% if desc %}
+      <div class="module-intro" style="margin:0">
+        <h2 class="intro-title">{{ desc.title }}</h2>
+        <p>{{ desc.summary }}</p>
+        <div class="intro-highlights">
+          {% if desc.highlight_terms %}
+          <span><strong>Key terms:</strong>
+            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.highlight_genes %}
+          <span><strong>Notable genes:</strong>
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+          </span>
+          {% endif %}
+          {% if desc.top_tfs %}
+          <span><strong>Top TFs:</strong>
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="mod-stat-bar" style="margin-top:{% if desc %}10px{% else %}0{% endif %}">
+        <span><strong>{{ genes|length }}</strong> member genes</span>
+        <span><strong>{{ top_tfs|length }}</strong> TF regulators</span>
+      </div>
+      {% if not desc and notable_genes %}
+      <div class="intro-highlights" style="margin-top:10px">
+        <span><strong>Notable genes:</strong>
+          {% for g in notable_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+        </span>
+      </div>
+      {% endif %}
+
+    {% elif module_type == 'pc' %}
+      <div class="mod-stat-bar">
+        <span><strong>{{ genes|length }}</strong> member peaks</span>
+        <span><strong>{{ top_tfs|length }}</strong> TF binders</span>
+      </div>
+    {% endif %}
+  </div>
+
+  {# Right: expression chart #}
+  <div class="mod-chart-card">
+    {% if module_type == 'pc' %}
+    <div class="mod-chart-label">Chromatin accessibility profile</div>
+    <div style="position:relative;height:165px"><canvas id="profile-chart"></canvas></div>
+    {% elif module_type == 'gc' %}
+    <div class="mod-chart-label">
+      <span id="mod-chart-ngenes"></span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-mode="z">Z-score</button>
+        <button class="chart-mode-btn" data-mode="tpm">TPM</button>
+      </span>
+    </div>
+    <svg id="mod-expr-chart"></svg>
+    {% else %}
+    <div class="mod-chart-label">
+      <span id="mod-chart-ngenes"></span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-mode="z">Z-score</button>
+        <button class="chart-mode-btn" data-mode="tpm">TPM</button>
+      </span>
+    </div>
+    <svg id="mod-expr-chart"></svg>
+    {% endif %}
+  </div>
+</div>
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# SUPERMODULE: TF network + submodules + enrichment + genes        #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% if module_type == 'super' %}
+
+<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this module (↑ = KD upregulates; ↓ = KD downregulates).</p>
+
+{{ filter_bar('filter-bar', dir_label_id='dir-label', bind_label_id='bind-label', bind_slider_id='bind-slider', bind_range_id='bind-range') }}
+
+{{ landing_split('cy', 'reg-table', cols_full, variant='full', search_id='tf-search') }}
+
+<div class="bottom-split" style="margin-top:28px">
+  {% if submodules %}
+  <div>
+    <h2>Submodules <span class="gene-count">({{ submodules|length }})</span></h2>
+    <div class="tf-search-wrap">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="submod-search" type="text" placeholder="Search submodule…" autocomplete="off" spellcheck="false">
+    </div>
+    <table class="data-table" id="submod-table">
+      <thead><tr>
+        <th class="sortable" data-col="0" data-type="string">Submodule</th>
+        <th class="sortable" data-col="1" data-type="number">Genes</th>
+        <th>Notable genes</th>
+      </tr></thead>
+      <tbody>
+        {% for s in submodules %}
+        <tr>
+          <td>
+            <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{{ s.color }};margin-right:7px;vertical-align:middle;flex-shrink:0"></span><a class="node-link" href="/perturbseq/module/{{ s.id }}">{{ s.id }}</a>
+          </td>
+          <td>{{ s.n_genes }}</td>
+          <td style="white-space:normal">
+            {% for g in s.top_genes %}<a class="gene-chip" href="/perturbseq/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a> {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <div>
+    <h2>Module Genes <span class="gene-count" id="gene-count"></span></h2>
+    <div class="tf-search-wrap">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
+    </div>
+    <table class="data-table" id="gene-table">
+      <thead><tr>
+        <th class="sortable" data-key="name" data-type="string">Gene</th>
+        <th class="sortable" data-key="tfStatus" data-type="string">Type</th>
+        <th class="sortable" data-key="submodule" data-type="string">Submodule</th>
+        <th class="sortable" data-key="pubs" data-type="number">Publications</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="gene-pagination" style="display:none"></div>
+  </div>
+</div>
+
+<div style="margin-top:28px">
+  <h2>Enriched Terms</h2>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="tf-search-wrap" style="margin-bottom:0">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="enrich-search" type="text" placeholder="Search term…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="enrich-source-filters" id="enrich-source-filters"></div>
+  </div>
+      <th class="sortable" data-key="intersection_size" data-type="number">Genes</th>
+      <th class="sortable" data-key="precision_val"     data-type="number">Precision</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="enrich-pagination" style="display:none"></div>
+  <p id="enrich-empty" style="display:none">No significant enrichment terms.</p>
+</div>
+
+{% endif %}{# end super #}
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# SUBMODULE: connected submodules + member genes + co-expr network #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% if module_type == 'sub' %}
+
+<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this submodule (↑ = KD upregulates; ↓ = KD downregulates).</p>
+
+<div id="tf-empty-state" class="empty-state" style="display:none">
+  <strong>No TF regulatory links found</strong>
+  <span>This submodule has no significant perturbation or binding associations in the current dataset.</span>
+</div>
+
+{{ filter_bar('filter-bar', dir_label_id='dir-label', bind_label_id='bind-label', bind_slider_id='bind-slider', bind_range_id='bind-range') }}
+
+{{ landing_split('cy', 'reg-table', cols_full, variant='full', search_id='tf-search') }}
+
+<div class="bottom-split" style="margin-top:28px">
+  <div>
+    <h2>Enriched Terms</h2>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="tf-search-wrap" style="margin-bottom:0">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input class="tf-search-input" id="enrich-search" type="text" placeholder="Search term…" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="enrich-source-filters" id="enrich-source-filters"></div>
+    </div>
+    <table class="data-table" id="enrich-table" style="display:none">
+      <thead><tr>
+        <th class="sortable" data-key="term_name"         data-type="string">Term</th>
+        <th class="sortable" data-key="source"            data-type="string">Source</th>
+        <th class="sortable" data-key="p_value"           data-type="number">p-value</th>
+        <th class="sortable" data-key="intersection_size" data-type="number">Genes</th>
+        <th class="sortable" data-key="precision_val"     data-type="number">Precision</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="enrich-pagination" style="display:none"></div>
+    <p id="enrich-empty" style="display:none">No significant enrichment terms.</p>
+  </div>
+  <div>
+    <h2>Module Genes <span class="gene-count" id="sub-gene-count">({{ genes|length }})</span></h2>
+    <div class="tf-search-wrap">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="sub-gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
+    </div>
+    <table class="data-table" id="sub-gene-table">
+      <thead><tr>
+        <th class="sortable" data-key="name" data-type="string">Gene</th>
+        <th class="sortable" data-key="tf_status" data-type="string">Type</th>
+        <th class="sortable" data-key="pubs" data-type="number">Publications</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="sub-gene-pagination" style="display:none"></div>
+  </div>
+</div>
+
+<div class="gene-net-section">
+  <div class="gene-net-header">
+    <h2>Gene Co-expression Network</h2>
+    <div class="net-controls">
+      <label>Min z: <strong id="slider-val">—</strong>
+        <input type="range" id="z-slider" step="1"></label>
+      <span class="ctrl-sep">|</span>
+      <label>Repulsion: <strong id="rep-val">80k</strong>
+        <input type="range" id="rep-slider" min="10000" max="200000" step="5000" value="80000"></label>
+      <span class="ctrl-sep">|</span>
+      <label>Node scale: <strong id="scale-val">1.0×</strong>
+        <input type="range" id="scale-slider" min="0.3" max="3" step="0.1" value="1"></label>
+      <span class="net-edge-count" id="edge-count"></span>
+    </div>
+    <div class="net-legend">
+      <span>Low</span><div class="net-legend-grad"></div><span>High z</span>
+    </div>
+  </div>
+  <div id="gene-cy"></div>
+</div>
+
+{% endif %}{# end sub #}
+
+{# ════════════════════════════════════════════════════════════════ #}
+{# GC / PC: TF network/table + associated clusters + member genes    #}
+{# ════════════════════════════════════════════════════════════════ #}
+{% if module_type in ('gc', 'pc') %}
+
+{% if module_type == 'gc' %}
+<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this gene cluster (↑ = KD upregulates; ↓ = KD downregulates).</p>
+
+{{ filter_bar('gc-filter-bar', dir_label_id='gc-dir-label', bind_label_id='gc-bind-label', bind_slider_id='gc-bind-slider', bind_range_id='gc-bind-range', count_id='gc-filter-count') }}
+
+{{ landing_split('gc-cy', 'gc-tf-table', cols_gc, variant='full', search_id='gc-tf-search') }}
+
+<div style="margin-top:28px">
+  <h2>Module Genes <span class="gene-count" id="gc-gene-count"></span></h2>
+  <div class="tf-search-wrap">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input class="tf-search-input" id="gc-gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
+  </div>
+  <table class="data-table" id="gc-gene-table">
+    <thead><tr>
+      <th class="sortable" data-key="name" data-type="string">Gene</th>
+      <th class="sortable" data-key="tf_status" data-type="string">Type</th>
+      <th class="sortable" data-key="pubs" data-type="number">Publications</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="gc-gene-pagination" style="display:none;gap:8px;align-items:center;margin-top:8px"></div>
+</div>
+
+{% else %}{# PC #}
+
+<div class="bottom-split">
+  <div>
+    <h2>TF Binders</h2>
+    <div class="tf-search-wrap">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="tf-search" type="text" placeholder="Search TF…" autocomplete="off" spellcheck="false">
+    </div>
+    <table class="data-table" id="tf-table">
+      <thead><tr>
+        <th>TF</th>
+        <th class="sortable" data-col="odds_ratio">OR</th>
+        <th>FDR</th>
+        <th>Source</th>
+      </tr></thead>
+      <tbody>
+        {% for tf in top_tfs %}
+        <tr>
+          <td><a class="node-link" href="/perturbseq/gene/{{ tf.tf }}">{{ tf.tf }}</a></td>
+          <td>{{ '∞' if tf.odds_ratio >= 1e300 else "%.1f"|format(tf.odds_ratio) }}</td>
+          <td>{{ "%.2e"|format(tf.fdr) }}</td>
+          <td><span class="intro-tag {{ 'term-tag' if tf.source == 'footprint' else 'gene-tag' }}">{{ tf.source }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="color:var(--text-muted);font-style:italic">No binding data</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <h2>Associated {{ assoc_label }}</h2>
+    <table class="data-table">
+      <thead><tr>
+        <th>Cluster</th><th>Odds ratio</th><th>FDR</th>
+      </tr></thead>
+      <tbody>
+        {% for a in assoc %}
+        <tr>
+          <td><a class="node-link" href="{{ a.url }}">{{ a.name }}</a></td>
+          <td>{{ '∞' if a.odds_ratio >= 1e300 else "%.2f"|format(a.odds_ratio) }}</td>
+          <td>{{ "%.2e"|format(a.fdr) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="color:var(--text-muted);font-style:italic">None significant</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mod-members">
+  <h2>Members <span class="gene-count">({{ genes|length }})</span></h2>
+  <div class="gene-list">
+    {% for g in genes %}
+    <span class="gene-chip">{{ g }}</span>
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}{# end gc vs pc #}
+{% endif %}{# end gc/pc #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MODULE_TYPE = {{ module_type | tojson }};
+const NAME        = {{ name       | tojson }};
+const COLOR       = {{ color      | tojson }};
+const EXPR        = {{ expr       | tojson }};
+const EXPR_Z      = {{ expr_z     | tojson }};
+const PROFILE     = {{ profile    | tojson }};
+
+// ── D3 expression chart (super / sub / gc) ───────────────────────────────────
+{% if module_type in ('super', 'sub', 'gc') %}
+(function() {
+  if (!(EXPR_Z && EXPR_Z.length) && !(EXPR && EXPR.length)) return;
+  const svgEl = document.getElementById('mod-expr-chart');
+  if (!svgEl) return;
+
+  const ngEl = document.getElementById('mod-chart-ngenes');
+  if (ngEl && EXPR && EXPR.length) ngEl.textContent = EXPR[0].n_genes + ' genes';
+
+  function render(mode) {
+    const data    = mode === 'z' ? EXPR_Z : EXPR;
+    const valKey  = mode === 'z' ? 'mean_z'  : 'mean_tpm';
+    const errKey  = mode === 'z' ? 'sem_z'   : 'sd_tpm';
+    const yLabel  = mode === 'z' ? 'Mean gene z-score' : 'mean TPM';
+    const yFloor  = mode === 'z' ? -Infinity : 0;
+
+    if (!data || !data.length) return;
+
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const margin = { top:14, right:14, bottom:40, left:52 };
+    const W = svgEl.parentElement.clientWidth - 2, H = 180;
+    const iW = W - margin.left - margin.right, iH = H - margin.top - margin.bottom;
+    const svg = d3.select('#mod-expr-chart').attr('width', W).attr('height', H)
+      .append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const tps = data.map(d => d.timepoint);
+    const x   = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+
+    const spreadKey = mode === 'z' ? 'sd_z' : errKey;
+    const yLo = d3.min(data, d => Math.max(yFloor, (d[valKey]||0) - (d[spreadKey]||0)));
+    const yHi = d3.max(data, d => (d[valKey]||0) + (d[spreadKey]||0));
+    const pad = (yHi - yLo) * 0.08 || 0.2;
+    const y   = d3.scaleLinear()
+      .domain([mode === 'z' ? yLo - pad : 0, yHi + pad]).range([iH, 0]).nice();
+
+    svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+    svg.append('g').attr('class','axis').attr('transform', `translate(0,${iH})`)
+      .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+      .selectAll('text').attr('transform','rotate(-30)').style('text-anchor','end');
+    svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(4));
+    svg.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-40)
+      .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)').text(yLabel);
+
+    if (mode === 'z') {
+      svg.append('path').datum(data).attr('class','sd-outer-band').attr('fill', COLOR)
+        .attr('d', d3.area().x(d => x(d.timepoint))
+          .y0(d => y((d[valKey]||0) - (d.sd_z||0)))
+          .y1(d => y((d[valKey]||0) + (d.sd_z||0))).curve(d3.curveCatmullRom.alpha(0.5)));
+      svg.append('line').attr('class','zero-line')
+        .attr('x1',0).attr('x2',iW).attr('y1',y(0)).attr('y2',y(0));
+    }
+    svg.append('path').datum(data).attr('class','sd-band').attr('fill', COLOR)
+      .attr('d', d3.area().x(d => x(d.timepoint))
+        .y0(d => y(Math.max(yFloor, (d[valKey]||0) - (d[errKey]||0))))
+        .y1(d => y((d[valKey]||0) + (d[errKey]||0))).curve(d3.curveCatmullRom.alpha(0.5)));
+    svg.append('path').datum(data).attr('class','mean-line').attr('stroke', COLOR)
+      .attr('d', d3.line().x(d => x(d.timepoint)).y(d => y(d[valKey]||0)).curve(d3.curveCatmullRom.alpha(0.5)));
+    data.forEach(d => {
+      svg.append('circle').attr('cx', x(d.timepoint)).attr('cy', y(d[valKey]||0))
+        .attr('r', 4).attr('fill', COLOR).attr('stroke','#fff').attr('stroke-width',1.5);
+    });
+  }
+
+  render('z');
+
+  document.querySelectorAll('.chart-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chart-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render(btn.dataset.mode);
+    });
+  });
+})();
+{% endif %}
+
+// ── Chart.js profile chart (pc) ──────────────────────────────────────────────
+{% if module_type == 'pc' %}
+(function() {
+  if (!PROFILE || !PROFILE.length) return;
+  const labels = PROFILE.map(p => p.timepoint);
+  const values = PROFILE.map(p => p.value);
+  new Chart(document.getElementById('profile-chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ data: values, borderColor: COLOR,
+        backgroundColor: COLOR + '18', borderWidth: 2.5,
+        pointRadius: 4, pointBackgroundColor: COLOR, tension: 0.35, fill: true }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(3)}` } } },
+      scales: {
+        x: { grid: { color:'rgba(0,0,0,0.04)' },
+             ticks: { font:{ size:11 }, color:'#9098b8' } },
+        y: { grid: { color:'rgba(0,0,0,0.04)' },
+             ticks: { font:{ size:11 }, color:'#9098b8' },
+             title: { display:true,
+               text: MODULE_TYPE==='gc' ? 'Z-score expression' : 'Std. accessibility',
+               font:{ size:11 }, color:'#9098b8' } }
+      }
+    }
+  });
+})();
+{% endif %}
+
+// ── GC: TF regulatory network + filterable table ─────────────────────────────
+{% if module_type == 'gc' %}
+(function() {
+  const gcTFs = {{ top_tfs | tojson }};
+  if (!gcTFs.length) return;
+
+  // Sort binding-only TFs by odds_ratio so slider reveals most significant first
+  const orderedBindTFs = gcTFs.filter(r => r.evidence === 'binding')
+    .sort((a, b) => (b.odds_ratio || 0) - (a.odds_ratio || 0))
+    .map(r => r.tf);
+
+  // Binding slider setup
+  const bindSlider = document.getElementById('gc-bind-slider');
+  const bindRange  = document.getElementById('gc-bind-range');
+  const initVal    = Math.min(15, orderedBindTFs.length);
+  if (bindSlider) { bindSlider.max = orderedBindTFs.length; bindSlider.value = initVal; }
+  if (bindRange)  { bindRange.max  = orderedBindTFs.length; bindRange.value  = initVal; }
+
+  // Sector positions
+  const upTFs   = gcTFs.filter(r => r.evidence !== 'binding' && r.nes >  0).map(r => r.tf);
+  const downTFs = gcTFs.filter(r => r.evidence !== 'binding' && r.nes <= 0).map(r => r.tf);
+  const positions = Object.assign({ [NAME]: {x:0, y:0} },
+    TFNetwork.placeSector(upTFs,         180, 110, 160, 130, 10),
+    TFNetwork.placeSector(downTFs,         0, 110, 160, 130, 10),
+    TFNetwork.placeSector(orderedBindTFs,  90, 140, 160, 130, 14)
+  );
+
+  // Cytoscape init — non-binding TFs always added; binding TFs lazy-loaded via slider
+  const elements = [{data:{id:NAME,label:NAME,type:'module',color:COLOR}, position:{x:0,y:0}}];
+  const existingIds = new Set([NAME]);
+  gcTFs.filter(r => r.evidence !== 'binding').forEach(r => {
+    const cyDir = r.nes > 0 ? 'up' : 'down';
+    elements.push({data:{id:r.tf,label:r.tf,type:'tf'}, position:positions[r.tf]||{x:0,y:0}});
+    elements.push({data:{id:`e_${r.tf}`,source:r.tf,target:NAME,direction:cyDir,evidence:r.evidence}});
+    existingIds.add(r.tf);
+  });
+  let addedBindTFs = new Set(orderedBindTFs.slice(0, initVal));
+  orderedBindTFs.slice(0, initVal).forEach(tf => {
+    if (!existingIds.has(tf)) { elements.push({data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:90}}); existingIds.add(tf); }
+    elements.push({data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
+  });
+
+  const cy = cytoscape({
+    container: document.getElementById('gc-cy'),
+    elements,
+    minZoom: 0.2, wheelSensitivity: 0.25,
+    style: [
+      {selector:'node[type="module"]', style:{'background-color':'data(color)','label':'data(label)','font-size':'12px','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'}},
+      {selector:'node[type="tf"]',     style:{'background-color':'#4a56b0','label':'data(label)','font-size':'9px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':22,'height':22}},
+      ...TFNetwork.EDGE_STYLES_FULL,
+    ],
+    layout: {name:'preset', animate:false}
+  });
+  cy.on('tap', 'node[type="tf"]', evt => {
+    window.location.href = '/perturbseq/gene/' + encodeURIComponent(evt.target.id());
+  });
+
+  const tbody    = document.querySelector('#gc-tf-table tbody');
+  const countEl  = document.getElementById('gc-filter-count');
+  const evBtns   = document.querySelectorAll('#gc-filter-bar button[data-ev]');
+  const dirBtns  = document.querySelectorAll('#gc-filter-bar button[data-dir]');
+  const dirLabel = document.getElementById('gc-dir-label');
+  let sortKey = 'nes', sortDir = 'desc';
+
+  function getEvFilter()  { return (document.querySelector('#gc-filter-bar button[data-ev].active')  || {}).dataset?.ev  || 'all'; }
+  function getDirFilter() { return (document.querySelector('#gc-filter-bar button[data-dir].active') || {}).dataset?.dir || 'all'; }
+  function getSearchQ()   { return (document.getElementById('gc-tf-search')?.value || '').trim().toLowerCase(); }
+
+  function syncDirDisabled() {
+    const disabled = getEvFilter() === 'binding';
+    dirBtns.forEach(b => { b.disabled = disabled; b.classList.toggle('filter-disabled', disabled); });
+    if (dirLabel) dirLabel.classList.toggle('filter-disabled', disabled);
+    if (disabled) dirBtns.forEach(b => b.classList.toggle('active', b.dataset.dir === 'all'));
+  }
+
+  function filteredSorted(evF, dirF, q) {
+    let d = gcTFs;
+    if (evF === 'both')              d = d.filter(r => r.evidence === 'both');
+    else if (evF === 'perturbation') d = d.filter(r => r.evidence === 'perturbation' || r.evidence === 'both');
+    else if (evF === 'binding')      d = d.filter(r => r.evidence === 'binding' || r.evidence === 'both');
+    if (evF !== 'binding') {
+      if (dirF === 'up')   d = d.filter(r => r.nes != null && r.nes >  0);
+      if (dirF === 'down') d = d.filter(r => r.nes != null && r.nes <= 0);
+    }
+    if (q) d = d.filter(r => r.tf.toLowerCase().includes(q));
+    return [...d].sort((a, b) => {
+      if (sortKey === 'tf') return sortDir === 'asc' ? a.tf.localeCompare(b.tf) : b.tf.localeCompare(a.tf);
+      if (sortKey === 'dir') {
+        const da = a.nes == null ? 0 : (a.nes > 0 ? 1 : -1);
+        const db2 = b.nes == null ? 0 : (b.nes > 0 ? 1 : -1);
+        return sortDir === 'asc' ? da - db2 : db2 - da;
+      }
+      const va = sortKey === 'nes' ? Math.abs(a.nes ?? 0) : (a[sortKey] ?? -1);
+      const vb = sortKey === 'nes' ? Math.abs(b.nes ?? 0) : (b[sortKey] ?? -1);
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+  }
+
+  function refreshTable(evF, dirF, q) {
+    const d = filteredSorted(evF, dirF, q);
+    tbody.innerHTML = '';
+    d.forEach(r => {
+      const hasNES = r.nes != null;
+      const dir = hasNES
+        ? (r.nes > 0 ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
+        : '<span style="color:var(--text-muted)">—</span>';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td class="${hasNES?(r.nes>0?'nes-pos':'nes-neg'):''}">${hasNES?r.nes.toFixed(3):'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding||''}</td><td>${r.odds_ratio!=null?r.odds_ratio.toFixed(2):'—'}</td>`;
+      tbody.appendChild(tr);
+    });
+    if (countEl) countEl.textContent = `${d.length} of ${gcTFs.length}`;
+  }
+
+  function applyGcFilter() {
+    const evF  = getEvFilter();
+    const dirF = getDirFilter();
+    const q    = getSearchQ();
+
+    // Disable binding slider when binding-only evidence is excluded by the filter
+    const bindingExcluded = evF === 'perturbation' || evF === 'both';
+    if (bindSlider) { bindSlider.disabled = bindingExcluded; bindSlider.classList.toggle('filter-disabled', bindingExcluded); }
+    if (bindRange)  { bindRange.disabled  = bindingExcluded; bindRange.classList.toggle('filter-disabled',  bindingExcluded); }
+    const bindRangeWrap = document.querySelector('#gc-filter-bar .bind-range-wrap');
+    if (bindRangeWrap) bindRangeWrap.classList.toggle('filter-disabled', bindingExcluded);
+    const bindLabelEl = document.getElementById('gc-bind-label');
+    if (bindLabelEl) bindLabelEl.classList.toggle('filter-disabled', bindingExcluded);
+
+    // Search: pull matching binding TFs into graph regardless of slider limit
+    if (q) {
+      const toAdd = orderedBindTFs.filter(tf => tf.toLowerCase().includes(q) && !addedBindTFs.has(tf));
+      if (toAdd.length) {
+        const newEls = [];
+        toAdd.forEach(tf => {
+          newEls.push({group:'nodes', data:{id:tf,label:tf,type:'tf'}, position:positions[tf]||{x:0,y:90}});
+          newEls.push({group:'edges', data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
+          addedBindTFs.add(tf);
+        });
+        cy.add(newEls);
+      }
+    } else {
+      // Search cleared: prune binding TFs back to slider limit
+      const sliderSet = new Set(orderedBindTFs.slice(0, parseInt(bindSlider?.value || initVal)));
+      const toRemove = [...addedBindTFs].filter(tf => !sliderSet.has(tf));
+      if (toRemove.length) {
+        toRemove.forEach(tf => {
+          cy.$(`#eb_${CSS.escape(tf)}`).remove();
+          if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
+        });
+        addedBindTFs = sliderSet;
+      }
+    }
+
+    // Edge + node visibility
+    cy.elements().show();
+    cy.edges().forEach(e => {
+      const dir = e.data('direction'), ev = e.data('evidence');
+      let hide = false;
+      if      (evF === 'perturbation') hide = ev !== 'perturbation';
+      else if (evF === 'both')         hide = ev !== 'both';
+      else if (evF === 'binding')      hide = ev !== 'binding';
+      if (!hide && dirF === 'up')   hide = dir !== 'up';
+      if (!hide && dirF === 'down') hide = dir !== 'down';
+      if (hide) e.hide();
+    });
+    cy.nodes('[type="tf"]').forEach(n => {
+      if (!n.connectedEdges(':visible').length || (q && !n.id().toLowerCase().includes(q))) n.hide();
+    });
+    cy.fit(cy.elements(':visible'), 20);
+    refreshTable(evF, dirF, q);
+  }
+
+  function updateBindCount(newCount) {
+    if (bindSlider) bindSlider.value = newCount;
+    if (bindRange)  bindRange.value  = newCount;
+    const needed   = new Set(orderedBindTFs.slice(0, newCount));
+    const toRemove = [...addedBindTFs].filter(tf => !needed.has(tf));
+    const toAdd    = [...needed].filter(tf => !addedBindTFs.has(tf));
+    toRemove.forEach(tf => {
+      cy.$(`#eb_${CSS.escape(tf)}`).remove();
+      if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
+    });
+    if (toAdd.length) {
+      const newEls = [];
+      toAdd.forEach(tf => {
+        if (!cy.$(`#${CSS.escape(tf)}`).length) newEls.push({group:'nodes',data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:90}});
+        newEls.push({group:'edges',data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
+      });
+      cy.add(newEls);
+    }
+    addedBindTFs = needed;
+    applyGcFilter();
+  }
+
+  // Event wiring
+  evBtns.forEach(btn => btn.addEventListener('click', () => {
+    evBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    syncDirDisabled();
+    applyGcFilter();
+  }));
+  dirBtns.forEach(btn => btn.addEventListener('click', () => {
+    if (getEvFilter() === 'binding') return;
+    dirBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyGcFilter();
+  }));
+  const searchEl = document.getElementById('gc-tf-search');
+  if (searchEl) searchEl.addEventListener('input', () => applyGcFilter());
+  if (bindSlider) bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
+  if (bindRange)  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
+  document.querySelectorAll('#gc-tf-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = key; sortDir = key === 'tf' ? 'asc' : 'desc'; }
+      document.querySelectorAll('#gc-tf-table th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      refreshTable(getEvFilter(), getDirFilter(), getSearchQ());
+    });
+  });
+
+  applyGcFilter();
+})();
+
+// ── GC gene table ─────────────────────────────────────────────────────────────
+(function() {
+  const data = {{ gc_gene_data | tojson }};
+  const PAGE = 25;
+  let sKey = 'pubs', sDir = 'desc', q = '', page = 0;
+  const countEl = document.getElementById('gc-gene-count');
+  if (countEl) countEl.textContent = `(${data.length})`;
+  function refresh() {
+    let d = data;
+    if (q) d = d.filter(r => r.name.toLowerCase().includes(q) || r.tf_status.toLowerCase().includes(q));
+    d = [...d].sort((a, b) => {
+      if (sKey === 'pubs') return sDir === 'asc' ? a.pubs - b.pubs : b.pubs - a.pubs;
+      return sDir === 'asc' ? String(a[sKey]).localeCompare(String(b[sKey])) : String(b[sKey]).localeCompare(String(a[sKey]));
+    });
+    const total = Math.max(1, Math.ceil(d.length / PAGE));
+    page = Math.min(page, total - 1);
+    const tb = document.querySelector('#gc-gene-table tbody');
+    tb.innerHTML = '';
+    d.slice(page * PAGE, (page + 1) * PAGE).forEach(r => {
+      const tr = document.createElement('tr');
+      const type = r.tf_status === 'Active TF' ? `<span class="tf-type-active">Active TF</span>`
+                 : r.tf_status === 'TF'        ? `<span class="tf-type-tf">TF</span>`
+                 : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${type}</td><td>${r.pubs || '—'}</td>`;
+      tb.appendChild(tr);
+    });
+    const pag = document.getElementById('gc-gene-pagination');
+    if (!pag) return;
+    pag.style.display = total <= 1 ? 'none' : 'flex';
+    pag.innerHTML = `<button id="gc-gp" ${page===0?'disabled':''}>← Prev</button><span>${page+1} / ${total}</span><button id="gc-gn" ${page>=total-1?'disabled':''}>Next →</button>`;
+    document.getElementById('gc-gp')?.addEventListener('click', () => { page--; refresh(); });
+    document.getElementById('gc-gn')?.addEventListener('click', () => { page++; refresh(); });
+  }
+  document.querySelectorAll('#gc-gene-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (sKey === key) sDir = sDir === 'asc' ? 'desc' : 'asc';
+      else { sKey = key; sDir = key === 'pubs' ? 'desc' : 'asc'; }
+      document.querySelectorAll('#gc-gene-table th').forEach(t => t.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(sDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      page = 0; refresh();
+    });
+  });
+  const searchEl = document.getElementById('gc-gene-search');
+  if (searchEl) searchEl.addEventListener('input', () => { q = searchEl.value.trim().toLowerCase(); page = 0; refresh(); });
+  document.querySelector('#gc-gene-table th[data-key="pubs"]')?.classList.add('sort-desc');
+  refresh();
+})();
+{% endif %}
+
+// ── Supermodule / Submodule: filter+sort + cytoscape + module API ────────────
+{% if module_type in ('super', 'sub') %}
+// Use shared utilities from TFNetwork
+const { makeFilterSortTable, makeSortable, makeEnrichTable, placeSector, initNetwork, MODULE_COLORS, EDGE_STYLES_FULL } = TFNetwork;
+
+const MODULE_NODE_COLOR = {{ color | tojson }};
+
+async function main() {
+  // Fetch network data (fast) and aux data in parallel.
+  // Submodule pages only need enrichment (no gene detail); super needs full detail.
+  const enc = encodeURIComponent(NAME);
+  const isSub = MODULE_TYPE === 'sub';
+  const [data, aux] = await Promise.all([
+    fetch('/perturbseq/api/module/' + enc).then(r => r.json()),
+    isSub
+      ? fetch('/perturbseq/api/module/' + enc + '/enrichment').then(r => r.json())
+      : fetch('/perturbseq/api/module/' + enc + '/detail').then(r => r.json()),
+  ]);
+  const detail = isSub ? null : aux;
+  const bindMap = new Map(data.binding.map(e=>[e.tf,e]));
+  const pertTFs = new Set(data.perturbation.map(e=>e.tf));
+  const allRows = [];
+  data.perturbation.forEach(e=>{
+    const hasBind=bindMap.has(e.tf);
+    allRows.push({tf:e.tf,direction:e.mean_NES>0?'Up':'Down',mean_NES:e.mean_NES,n_sig_gRNA:e.n_sig_gRNA,padj:e.padj,binding:hasBind?'✓':'',odds_ratio:hasBind?bindMap.get(e.tf).odds_ratio:null,evidence:hasBind?'both':'perturbation'});
+  });
+  data.binding.filter(e=>!pertTFs.has(e.tf)).forEach(e=>{
+    allRows.push({tf:e.tf,direction:'—',mean_NES:null,n_sig_gRNA:null,padj:null,binding:'✓',odds_ratio:e.odds_ratio,evidence:'binding'});
+  });
+  allRows.sort((a,b)=>{
+    const na=Math.abs(a.mean_NES||0), nb=Math.abs(b.mean_NES||0);
+    if(na!==nb) return nb-na;
+    return (b.odds_ratio||0)-(a.odds_ratio||0);
+  });
+  if (allRows.length === 0) {
+    document.getElementById('tf-empty-state').style.display = '';
+    document.getElementById('filter-bar').style.display = 'none';
+    document.querySelector('.landing-split').style.display = 'none';
+    const enrichTerms = isSub ? (aux || []) : (aux.enrichment || []);
+    makeEnrichTable(enrichTerms);
+    return;
+  }
+  // Sort binding-only rows by odds_ratio so slider reveals most significant first
+  const bindingRows = allRows.filter(r=>r.evidence==='binding').sort((a,b)=>(b.odds_ratio||0)-(a.odds_ratio||0));
+  const orderedBindingTFs = bindingRows.map(r=>r.tf);
+  const bindSlider = document.getElementById('bind-slider');
+  const bindRange = document.getElementById('bind-range');
+  const initVal = Math.min(15, orderedBindingTFs.length);
+  bindSlider.max = orderedBindingTFs.length;
+  bindSlider.value = initVal;
+  bindRange.max = orderedBindingTFs.length;
+  bindRange.value = initVal;
+  // Pre-compute sector positions: up TFs left, down TFs right, binding-only TFs bottom
+  const upTFs   = allRows.filter(r => r.evidence !== 'binding' && r.mean_NES >  0).map(r => r.tf);
+  const downTFs = allRows.filter(r => r.evidence !== 'binding' && r.mean_NES <= 0).map(r => r.tf);
+  const positions = Object.assign({ [NAME]: {x:0, y:0} },
+    placeSector(upTFs,              180, 110, 160, 130, 10),
+    placeSector(downTFs,              0, 110, 160, 130, 10),
+    placeSector(orderedBindingTFs,   90, 140, 160, 130, 14)
+  );
+  // Cytoscape — only add the initially visible binding TFs to avoid layout cost on hidden nodes
+  const initBindCount = parseInt(bindSlider.value);
+  const elements=[{data:{id:NAME,label:NAME,type:'module',color:MODULE_NODE_COLOR||MODULE_COLORS[NAME]||'#f59e0b'},position:{x:0,y:0}}];
+  const existingIds = new Set([NAME]);
+  allRows.filter(r=>r.evidence!=='binding').forEach(r=>{
+    elements.push({data:{id:r.tf,label:r.tf,type:'tf'}, position: positions[r.tf] || {x:0,y:0}});
+    elements.push({data:{id:`e_${r.tf}`,source:r.tf,target:NAME,direction:r.mean_NES>0?'up':'down',evidence:r.evidence}});
+    existingIds.add(r.tf);
+  });
+  let addedBindingTFs = new Set(orderedBindingTFs.slice(0, initBindCount));
+  bindingRows.slice(0, initBindCount).forEach(r=>{
+    if(!existingIds.has(r.tf)){elements.push({data:{id:r.tf,label:r.tf,type:'tf'},position:positions[r.tf]||{x:0,y:160}});existingIds.add(r.tf);}
+    elements.push({data:{id:`eb_${r.tf}`,source:r.tf,target:NAME,direction:'bind',evidence:'binding'}});
+  });
+  const cy=cytoscape({container:document.getElementById('cy'),elements,
+    minZoom:0.2, wheelSensitivity:0.25,
+    style:[
+      {selector:'node[type="module"]',style:{'background-color':'data(color)','label':'data(label)','font-size':'12px','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'}},
+      {selector:'node[type="tf"]',style:{'background-color':'#4a56b0','label':'data(label)','font-size':'9px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':22,'height':22}},
+      {selector:'edge[direction="up"][evidence="both"]',style:{'line-color':'#ec4899','width':2.5,'curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle'}},
+      {selector:'edge[direction="down"][evidence="both"]',style:{'line-color':'#3b82f6','width':2.5,'curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle'}},
+      {selector:'edge[direction="up"][evidence="perturbation"]',style:{'line-color':'#ec4899','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle'}},
+      {selector:'edge[direction="down"][evidence="perturbation"]',style:{'line-color':'#3b82f6','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle'}},
+      {selector:'edge[direction="bind"]',style:{'line-color':'#9098b8','width':1.5,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#9098b8','target-arrow-shape':'triangle'}},
+    ],
+    layout:{name:'preset',animate:false}
+  });
+  cy.on('tap','node[type="tf"]',evt=>{window.location.href='/perturbseq/gene/'+encodeURIComponent(evt.target.id());});
+  // TF table
+  makeFilterSortTable(document.getElementById('reg-table'), allRows, r=>{
+    const dir=r.direction==='Up'?'<span class="direction-up">↑ Up</span>':r.direction==='Down'?'<span class="direction-down">↓ Down</span>':'—';
+    const tr=document.createElement('tr');
+    const or_s=r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
+    tr.innerHTML=`<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!==null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!==null?r.n_sig_gRNA:'—'}</td><td>${r.padj!==null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    return tr;
+  }, { barId:'filter-bar', countId:'filter-count', searchId:'tf-search', onChange:applyCyFilter });
+  // Sync filter bar + search to Cytoscape network
+  function applyCyFilter() {
+    const evFilter  = (document.querySelector('#filter-bar button[data-ev].active')  || {}).dataset?.ev  || 'all';
+    const dirFilter = (document.querySelector('#filter-bar button[data-dir].active') || {}).dataset?.dir || 'all';
+    const searchQ = (document.getElementById('tf-search')?.value || '').trim().toLowerCase();
+    // Disable binding-only slider when the active filter excludes binding-only evidence
+    const bindingExcluded = evFilter === 'perturbation' || evFilter === 'both';
+    const bindSliderEl = document.getElementById('bind-slider');
+    const bindRangeEl  = document.getElementById('bind-range');
+    if (bindSliderEl) { bindSliderEl.disabled = bindingExcluded; bindSliderEl.classList.toggle('filter-disabled', bindingExcluded); }
+    if (bindRangeEl)  { bindRangeEl.disabled  = bindingExcluded; bindRangeEl.classList.toggle('filter-disabled',  bindingExcluded); }
+    const bindRangeWrap = document.querySelector('.bind-range-wrap');
+    if (bindRangeWrap) bindRangeWrap.classList.toggle('filter-disabled', bindingExcluded);
+    const bindLabelEl = document.getElementById('bind-label');
+    if (bindLabelEl) bindLabelEl.classList.toggle('filter-disabled', bindingExcluded);
+    // Search: pull matching binding TFs into the graph regardless of slider limit
+    if (searchQ) {
+      const toAdd = orderedBindingTFs.filter(tf => tf.toLowerCase().includes(searchQ) && !addedBindingTFs.has(tf));
+      if (toAdd.length) {
+        const newEls = [];
+        toAdd.forEach(tf => {
+          newEls.push({group:'nodes', data:{id:tf,label:tf,type:'tf'}, position: positions[tf] || {x:0,y:160}});
+          newEls.push({group:'edges', data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
+          addedBindingTFs.add(tf);
+        });
+        cy.add(newEls);
+      }
+    } else {
+      // Search cleared: prune binding TFs that exceed the slider limit
+      const sliderSet = new Set(orderedBindingTFs.slice(0, parseInt(bindSlider.value)));
+      const toRemove = [...addedBindingTFs].filter(tf => !sliderSet.has(tf));
+      if (toRemove.length) {
+        toRemove.forEach(tf => {
+          cy.$(`#eb_${CSS.escape(tf)}`).remove();
+          if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
+        });
+        addedBindingTFs = sliderSet;
+      }
+    }
+    cy.elements().show();
+    cy.edges().forEach(e => {
+      const dir = e.data('direction'), ev = e.data('evidence');
+      let hide = false;
+      if      (evFilter === 'perturbation') hide = ev !== 'perturbation';
+      else if (evFilter === 'both')         hide = ev !== 'both';
+      else if (evFilter === 'binding')      hide = ev !== 'binding';
+      if (!hide && dirFilter === 'up')   hide = dir !== 'up';
+      if (!hide && dirFilter === 'down') hide = dir !== 'down';
+      if (hide) e.hide();
+    });
+    cy.nodes('[type = "tf"]').forEach(node => {
+      if (node.connectedEdges(':visible').length === 0 || (searchQ && !node.id().toLowerCase().includes(searchQ)))
+        node.hide();
+    });
+    cy.fit(cy.elements(':visible'), 20);
+  }
+  // Shared logic for both binding-count controls; syncs the other input then updates the graph
+  function updateBindCount(newCount) {
+    bindSlider.value = newCount;
+    bindRange.value  = newCount;
+    const needed = new Set(orderedBindingTFs.slice(0, newCount));
+    const toRemove = [...addedBindingTFs].filter(tf => !needed.has(tf));
+    const toAdd    = [...needed].filter(tf => !addedBindingTFs.has(tf));
+    toRemove.forEach(tf => {
+      cy.$(`#eb_${tf}`).remove();
+      if (!cy.$(`#${tf}`).connectedEdges().length) cy.$(`#${tf}`).remove();
+    });
+    if (toAdd.length) {
+      const newEls = [];
+      toAdd.forEach(tf => {
+        if (!cy.$(`#${CSS.escape(tf)}`).length) newEls.push({group:'nodes',data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:160}});
+        newEls.push({group:'edges',data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
+      });
+      cy.add(newEls);
+    }
+    addedBindingTFs = needed;
+    applyCyFilter();
+  }
+  bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
+  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
+  applyCyFilter();
+  // Enrichment — isSub: aux is already the enrichment array; super: aux.enrichment
+  const enrichTerms = isSub ? (aux || []) : (aux.enrichment || []);
+  makeEnrichTable(enrichTerms);
+  if (isSub) return;  // submodule: gene table not needed here (handled by SUB_GENE_DATA block below)
+  // Genes table with pub counts + search/sort
+  const genes = detail.genes || [];
+  const pubCounts = detail.pub_counts || {};
+  const geneTfStatus = detail.gene_tf_status || {};
+  const geneSubmodule = detail.gene_submodule || {};
+  document.getElementById('gene-count').textContent = `(${genes.length} genes)`;
+  let geneAllData = genes.map(g => ({
+    name: g,
+    pubs: pubCounts[g] || 0,
+    tfStatus: geneTfStatus[g] || 'Gene',
+    submodule: geneSubmodule[g]?.id || '',
+    submoduleColor: geneSubmodule[g]?.color || '',
+  }));
+  const GENE_PAGE_SIZE = 25;
+  let geneSortKey = 'pubs', geneSortDir = 'desc', geneQ = '', genePage = 0;
+  function geneRefresh() {
+    let d = geneAllData;
+    if (geneQ) d = d.filter(r => r.name.toLowerCase().includes(geneQ) || r.submodule.toLowerCase().includes(geneQ) || r.tfStatus.toLowerCase().includes(geneQ));
+    d = [...d].sort((a, b) => {
+      const va = a[geneSortKey], vb = b[geneSortKey];
+      if (geneSortKey === 'pubs') return geneSortDir === 'asc' ? va - vb : vb - va;
+      return geneSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    });
+    const totalPages = Math.max(1, Math.ceil(d.length / GENE_PAGE_SIZE));
+    genePage = Math.min(genePage, totalPages - 1);
+    const pageData = d.slice(genePage * GENE_PAGE_SIZE, (genePage + 1) * GENE_PAGE_SIZE);
+    const tb = document.querySelector('#gene-table tbody');
+    tb.innerHTML = '';
+    pageData.forEach(r => {
+      const tr = document.createElement('tr');
+      const typeHtml = r.tfStatus === 'Active TF'
+        ? `<span class="tf-type-active">Active TF</span>`
+        : r.tfStatus === 'TF'
+        ? `<span class="tf-type-tf">TF</span>`
+        : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      const dot = r.submodule
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.submoduleColor};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>`
+        : '';
+      const subCell = r.submodule
+        ? `${dot}<a class="node-link" href="/perturbseq/submodule/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
+        : '<span style="color:var(--text-muted)">—</span>';
+      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${subCell}</td><td>${r.pubs || '—'}</td>`;
+      tb.appendChild(tr);
+    });
+    const pag = document.getElementById('gene-pagination');
+    if (pag) {
+      pag.style.display = totalPages <= 1 ? 'none' : 'flex';
+      pag.innerHTML = `
+        <button id="gene-prev" ${genePage === 0 ? 'disabled' : ''}>← Prev</button>
+        <span>${genePage + 1} / ${totalPages}</span>
+        <button id="gene-next" ${genePage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>`;
+      document.getElementById('gene-prev')?.addEventListener('click', () => { genePage--; geneRefresh(); });
+      document.getElementById('gene-next')?.addEventListener('click', () => { genePage++; geneRefresh(); });
+    }
+  }
+  document.querySelectorAll('#gene-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (geneSortKey === key) geneSortDir = geneSortDir === 'asc' ? 'desc' : 'asc';
+      else { geneSortKey = key; geneSortDir = key === 'pubs' ? 'desc' : 'asc'; }
+      document.querySelectorAll('#gene-table th').forEach(t => t.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(geneSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      genePage = 0; geneRefresh();
+    });
+  });
+  const geneSearchEl = document.getElementById('gene-search');
+  if (geneSearchEl) geneSearchEl.addEventListener('input', () => { geneQ = geneSearchEl.value.trim().toLowerCase(); genePage = 0; geneRefresh(); });
+  document.querySelector('#gene-table th[data-key="pubs"]')?.classList.add('sort-desc');
+  geneRefresh();
+}
+main();
+
+// ── Submodule table: search + sort ───────────────────────────────────────────
+(function() {
+  const table = document.getElementById('submod-table');
+  if (!table) return;
+  // Sort
+  table.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = parseInt(th.dataset.col), type = th.dataset.type;
+      const asc = th.classList.toggle('sort-asc');
+      table.querySelectorAll('th').forEach(t => { if (t !== th) t.classList.remove('sort-asc', 'sort-desc'); });
+      if (!asc) th.classList.add('sort-desc');
+      const rows = [...table.querySelectorAll('tbody tr')];
+      rows.sort((a, b) => {
+        const va = a.cells[col]?.textContent.trim(), vb = b.cells[col]?.textContent.trim();
+        if (type === 'number') { const na = parseFloat(va) || 0, nb = parseFloat(vb) || 0; return asc ? na - nb : nb - na; }
+        return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      const tbody = table.querySelector('tbody');
+      rows.forEach(r => tbody.appendChild(r));
+      applySubmodSearch();
+    });
+  });
+  // Search
+  function applySubmodSearch() {
+    const q = (document.getElementById('submod-search')?.value || '').trim().toLowerCase();
+    table.querySelectorAll('tbody tr').forEach(row => {
+      row.style.display = (q && !(row.cells[0]?.textContent.toLowerCase().includes(q))) ? 'none' : '';
+    });
+  }
+  const searchEl = document.getElementById('submod-search');
+  if (searchEl) searchEl.addEventListener('input', applySubmodSearch);
+})();
+{% endif %}
+
+// ── Submodule: neighbor table sort + gene co-expression network ──────────────
+{% if module_type == 'sub' %}
+const NODE_COLOR = {{ color | tojson }};
+const SUBMODULE_ID = {{ name | tojson }};
+const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
+
+// Member genes searchable table
+(function() {
+  const PAGE_SIZE = 25;
+  let sortKey = 'pubs', sortDir = 'desc', searchQ = '', page = 0;
+  function filteredSorted() {
+    let d = SUB_GENE_DATA;
+    if (searchQ) d = d.filter(r => r.name.toLowerCase().includes(searchQ) || r.tf_status.toLowerCase().includes(searchQ));
+    return [...d].sort((a, b) => {
+      if (sortKey === 'pubs') return sortDir === 'asc' ? a.pubs - b.pubs : b.pubs - a.pubs;
+      const va = String(a[sortKey]), vb = String(b[sortKey]);
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }
+  function renderGeneTable() {
+    const d = filteredSorted();
+    const totalPages = Math.max(1, Math.ceil(d.length / PAGE_SIZE));
+    page = Math.min(page, totalPages - 1);
+    const tb = document.querySelector('#sub-gene-table tbody');
+    tb.innerHTML = '';
+    d.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(r => {
+      const tr = document.createElement('tr');
+      const typeHtml = r.tf_status === 'Active TF'
+        ? `<span class="tf-type-active">Active TF</span>`
+        : r.tf_status === 'TF'
+        ? `<span class="tf-type-tf">TF</span>`
+        : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${r.pubs || '—'}</td>`;
+      tb.appendChild(tr);
+    });
+    const countEl = document.getElementById('sub-gene-count');
+    if (countEl) countEl.textContent = d.length < SUB_GENE_DATA.length
+      ? `(${d.length} of ${SUB_GENE_DATA.length})`
+      : `(${SUB_GENE_DATA.length})`;
+    const pag = document.getElementById('sub-gene-pagination');
+    if (pag) {
+      pag.style.display = totalPages <= 1 ? 'none' : 'flex';
+      pag.innerHTML = `<button id="sgp-prev" ${page===0?'disabled':''}>← Prev</button><span>${page+1} / ${totalPages}</span><button id="sgp-next" ${page>=totalPages-1?'disabled':''}>Next →</button>`;
+      document.getElementById('sgp-prev')?.addEventListener('click', () => { page--; renderGeneTable(); });
+      document.getElementById('sgp-next')?.addEventListener('click', () => { page++; renderGeneTable(); });
+    }
+  }
+  const tbl = document.getElementById('sub-gene-table');
+  if (tbl) {
+    tbl.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = key; sortDir = th.dataset.type === 'number' ? 'desc' : 'asc'; }
+      tbl.querySelectorAll('th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      page = 0; renderGeneTable();
+    }));
+    tbl.querySelector('th[data-key="pubs"]')?.classList.add('sort-desc');
+  }
+  const searchEl = document.getElementById('sub-gene-search');
+  if (searchEl) searchEl.addEventListener('input', () => { searchQ = searchEl.value.trim().toLowerCase(); page = 0; renderGeneTable(); });
+  renderGeneTable();
+})();
+
+// Neighbor table sort
+(function() {
+  const table=document.getElementById('neighbor-table');
+  if(!table) return;
+  const headers=table.querySelectorAll('th.sortable');
+  let sortKey=null, sortDir='asc';
+  headers.forEach(th=>th.addEventListener('click',()=>{
+    const key=th.dataset.key,type=th.dataset.type;
+    if(sortKey===key) sortDir=sortDir==='asc'?'desc':'asc'; else{sortKey=key;sortDir=type==='number'?'desc':'asc';}
+    headers.forEach(h=>h.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(sortDir==='asc'?'sort-asc':'sort-desc');
+    const rows=[...table.querySelectorAll('tbody tr')];
+    rows.sort((a,b)=>{
+      const ai=['other','mean_z','n_pairs'].indexOf(key);
+      const va=a.cells[ai]?.textContent.trim(), vb=b.cells[ai]?.textContent.trim();
+      if(type==='number'){const na=parseFloat(va)||0,nb=parseFloat(vb)||0;return sortDir==='asc'?na-nb:nb-na;}
+      return sortDir==='asc'?va.localeCompare(vb):vb.localeCompare(va);
+    });
+    const tbody=table.querySelector('tbody'); rows.forEach(r=>tbody.appendChild(r));
+  }));
+})();
+
+(async function() {
+  const resp=await fetch('/perturbseq/api/submodule/'+encodeURIComponent(SUBMODULE_ID)+'/gene_network');
+  const data=await resp.json();
+  if(!data.edges||!data.edges.length) return;
+  const allEdges=data.edges, zMin=data.z_min, zMax=data.z_max, zDefault=data.z_p75;
+  function zColor(z){const t=Math.max(0,Math.min(1,(z-zMin)/(zMax-zMin||1)));const L=Math.round(85-t*55);const S=Math.round(40+t*40);return `hsl(215,${S}%,${L}%)`;}
+  const genes=[...new Set(allEdges.flatMap(e=>[e.gene1,e.gene2]))];
+  const nodeEls=genes.map(g=>({data:{id:g,label:g}}));
+  const edgeEls=allEdges.map((e,i)=>({data:{id:`e${i}`,source:e.gene1,target:e.gene2,z:e.z_score,color:zColor(e.z_score),width:0.6+((e.z_score-zMin)/(zMax-zMin||1))*3.4}}));
+  const totalStrength={};
+  genes.forEach(g=>{totalStrength[g]=0;});
+  allEdges.forEach(e=>{totalStrength[e.gene1]=(totalStrength[e.gene1]||0)+e.z_score;totalStrength[e.gene2]=(totalStrength[e.gene2]||0)+e.z_score;});
+  const maxStr=Math.max(...Object.values(totalStrength))||1;
+  let nodeScale=1.0;
+  function nodeSize(s,m){return(18+Math.sqrt(s/m)*34)*nodeScale;}
+  const top5=new Set(genes.slice().sort((a,b)=>totalStrength[b]-totalStrength[a]).slice(0,5));
+  edgeEls.forEach(e=>{e.data.vis=e.data.z>=zDefault?1:0;});
+  const cy=cytoscape({container:document.getElementById('gene-cy'),elements:[...nodeEls,...edgeEls],
+    minZoom:0.2, wheelSensitivity:0.25,
+    style:[
+      {selector:'node',style:{'background-color':NODE_COLOR&&NODE_COLOR!=='#FFFFFF'?NODE_COLOR:'#4a56b0','border-color':'#fff','border-width':1.5,'label':'','font-size':11,'color':'#111','text-valign':'center','text-halign':'center','text-background-color':'#ffffff','text-background-opacity':0,'text-background-padding':'4px','text-background-shape':'roundrectangle','width':'data(sz)','height':'data(sz)'}},
+      {selector:'edge',style:{'line-color':'data(color)','width':'data(width)','opacity':0.65,'curve-style':'haystack'}},
+      {selector:'edge[vis = 0]',style:{'display':'none'}},
+      {selector:'node:selected',style:{'border-color':'var(--accent)','border-width':2.5}},
+    ],
+    layout:{name:'cose',animate:false,randomize:true,nodeRepulsion:()=>80000,gravity:0.05,idealEdgeLength:()=>100,numIter:1500}
+  });
+  cy.nodes().forEach(n=>n.data('sz',nodeSize(totalStrength[n.id()]||0,maxStr)));
+  cy.nodes().forEach(n=>{if(top5.has(n.id()))n.style({'label':n.id(),'text-background-opacity':0.9});});
+  cy.on('tap','node',evt=>{window.location.href='/perturbseq/gene/'+encodeURIComponent(evt.target.id());});
+  cy.on('mouseover','node',evt=>{evt.target.style({'label':evt.target.id(),'text-background-opacity':0.9});});
+  cy.on('mouseout','node',evt=>{if(top5.has(evt.target.id()))return;evt.target.style({'label':'','text-background-opacity':0});});
+  const repSlider=document.getElementById('rep-slider'),repVal=document.getElementById('rep-val');
+  repSlider.addEventListener('change',()=>{const rep=+repSlider.value;repVal.textContent=Math.round(rep/1000)+'k';cy.layout({name:'cose',animate:false,randomize:false,nodeRepulsion:()=>rep,gravity:0.05,idealEdgeLength:()=>100,numIter:500}).run();});
+  const slider=document.getElementById('z-slider'),sliderVal=document.getElementById('slider-val'),edgeCnt=document.getElementById('edge-count');
+  slider.min=Math.floor(zMin); slider.max=Math.ceil(zMax); slider.value=Math.round(zDefault);
+  function applyThreshold(threshold){
+    sliderVal.textContent=threshold.toFixed(0);let visible=0;
+    cy.edges().forEach(e=>{const show=e.data('z')>=threshold;e.data('vis',show?1:0);if(show)visible++;});
+    const str={};genes.forEach(g=>{str[g]=0;});
+    cy.edges('[vis = 1]').forEach(e=>{const z=e.data('z');str[e.data('source')]+=z;str[e.data('target')]+=z;});
+    const maxS=Math.max(...Object.values(str),1);
+    cy.nodes().forEach(n=>n.data('sz',nodeSize(str[n.id()]||0,maxS)));
+    edgeCnt.textContent=`${visible} / ${allEdges.length} edges`;
+  }
+  slider.addEventListener('input',()=>applyThreshold(+slider.value));
+  const scaleSlider=document.getElementById('scale-slider'),scaleVal=document.getElementById('scale-val');
+  scaleSlider.addEventListener('input',()=>{nodeScale=+scaleSlider.value;scaleVal.textContent=nodeScale.toFixed(1)+'×';applyThreshold(+slider.value);});
+  applyThreshold(+slider.value);
+})();
+{% endif %}
+
+// ── PC: sortable TF table + search ──────────────────────────────────────────
+{% if module_type == 'pc' %}
+document.querySelectorAll('#tf-table th.sortable').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const col=th.dataset.col;
+    const tbody=document.querySelector('#tf-table tbody');
+    const rows=Array.from(tbody.querySelectorAll('tr'));
+    const asc=th.classList.toggle('sort-asc');
+    th.closest('thead').querySelectorAll('.sort-asc,.sort-desc').forEach(t=>{if(t!==th){t.classList.remove('sort-asc','sort-desc');}});
+    if(!asc) th.classList.add('sort-desc');
+    const colIdx=Array.from(th.parentNode.children).indexOf(th);
+    rows.sort((a,b)=>{const va=parseFloat(a.cells[colIdx].textContent)||0;const vb=parseFloat(b.cells[colIdx].textContent)||0;return asc?va-vb:vb-va;});
+    rows.forEach(r=>tbody.appendChild(r));
+    applyTfSearch();
+  });
+});
+function applyTfSearch() {
+  const q = (document.getElementById('tf-search')?.value || '').trim().toLowerCase();
+  document.querySelectorAll('#tf-table tbody tr').forEach(row => {
+    const name = (row.cells[0]?.textContent || '').toLowerCase();
+    row.style.display = (q && !name.includes(q)) ? 'none' : '';
+  });
+}
+const tfSearchEl = document.getElementById('tf-search');
+if (tfSearchEl) tfSearchEl.addEventListener('input', applyTfSearch);
+{% endif %}
+</script>
+{% endblock %}

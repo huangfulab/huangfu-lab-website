@@ -1,0 +1,99 @@
+{#
+  Shared macros for TF regulatory network displays.
+  Import with: {% from "perturbseq/_network_macros.html" import network_legend, landing_split, filter_bar %}
+#}
+
+{# ── Network legend ───────────────────────────────────────────────────────── #}
+{% macro network_legend(variant='full') %}
+<div class="ps-inline-legend">
+  {% if variant == 'full' %}
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Perturbation + Binding</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#ec4899" stroke-width="2.5"/></svg>↑</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#3b82f6" stroke-width="2.5"/></svg>↓</span>
+  </div>
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Perturbation only</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#ec4899" stroke-width="2" stroke-dasharray="4,2"/></svg>↑</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4,2"/></svg>↓</span>
+  </div>
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Binding only</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#9098b8" stroke-width="2" stroke-dasharray="4,2"/></svg></span>
+  </div>
+  {% elif variant == 'gc' %}
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Activating</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#ec4899" stroke-width="2" stroke-dasharray="4,2"/></svg>↑</span>
+  </div>
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Repressing</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4,2"/></svg>↓</span>
+  </div>
+  {% elif variant == 'dev' %}
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Activating</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#ec4899" stroke-width="2.5"/></svg>↑</span>
+  </div>
+  <div class="ps-inline-legend-group">
+    <span class="ps-inline-legend-group-label">Repressing</span>
+    <span class="ps-inline-legend-item"><svg width="22" height="10" style="overflow:visible"><line x1="2" y1="5" x2="20" y2="5" stroke="#3b82f6" stroke-width="2.5"/></svg>↓</span>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# ── Full TF filter bar (Evidence + Direction + Binding slider) ───────────── #}
+{% macro filter_bar(bar_id, dir_label_id=None, bind_label_id=None, bind_slider_id=None, bind_range_id=None, count_id=None) %}
+<div class="filter-bar" id="{{ bar_id }}">
+  <span class="filter-label">Evidence:</span>
+  <button class="active" data-ev="all">All</button>
+  <button data-ev="both">Perturbation + Binding</button>
+  <button data-ev="perturbation">Perturbation only</button>
+  <button data-ev="binding">Binding only</button>
+  <span class="filter-sep"></span>
+  <span class="filter-label"{% if dir_label_id %} id="{{ dir_label_id }}"{% endif %}>Direction:</span>
+  <button class="active" data-dir="all">All</button>
+  <button data-dir="up">↑ Up</button>
+  <button data-dir="down">↓ Down</button>
+  {% if bind_slider_id %}
+  <span class="filter-sep"></span>
+  <span class="filter-label"{% if bind_label_id %} id="{{ bind_label_id }}"{% endif %}>Max binding-only shown:</span>
+  <input type="number" id="{{ bind_slider_id }}" min="0" max="50" value="15" step="1"
+    style="width:4rem;font-size:0.72rem;padding:0.2rem 0.3rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);align-self:center">
+  <div class="bind-range-wrap">
+    <input type="range" id="{{ bind_range_id or (bind_slider_id ~ '-range') }}" min="0" max="50" value="15" step="1">
+  </div>
+  {% endif %}
+  {% if count_id %}<span class="filter-count" id="{{ count_id }}"></span>{% endif %}
+</div>
+{% endmacro %}
+
+{# ── Landing split layout (cytoscape + side table) ─────────────────────────── #}
+{% macro landing_split(cy_id, table_id, columns, variant='full', search_id=None, search_placeholder='Search TF…', reset_btn=False) %}
+<div class="landing-split">
+  <div class="cy-wrap"{% if reset_btn %} style="position:relative"{% endif %}>
+    {% if reset_btn %}
+    <button id="{{ cy_id }}-reset" style="position:absolute;top:6px;right:6px;z-index:10;padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer">Reset view</button>
+    {% endif %}
+    {{ network_legend(variant) }}
+    <div id="{{ cy_id }}"></div>
+  </div>
+  <div class="side-table-wrap">
+    {% if search_id %}
+    <div class="tf-search-wrap"{% if variant == 'gc' %} style="padding:8px 10px 0"{% endif %}>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="{{ search_id }}" type="text" placeholder="{{ search_placeholder }}" autocomplete="off" spellcheck="false">
+    </div>
+    {% endif %}
+    <table class="data-table" id="{{ table_id }}">
+      <thead><tr>
+        {% for col in columns %}
+        <th class="sortable" data-key="{{ col.key }}" data-type="{{ col.type }}"{% if col.title %} title="{{ col.title }}"{% endif %}>{{ col.label }}</th>
+        {% endfor %}
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}

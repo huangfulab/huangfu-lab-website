@@ -1,0 +1,385 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}{{ peak.chr }}:{{ "{:,}".format(peak.start) }}–{{ "{:,}".format(peak.end) }} → {{ gene }}{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+:root {
+  --el-accent:   #10b981;
+  --el-accent-2: #059669;
+  --el-blue:     #4a56b0;
+  --mono:        'IBM Plex Mono', monospace;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.egl-hero { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.egl-coord {
+  font-family: var(--mono); font-size: clamp(15px, 2.4vw, 20px);
+  font-weight: 600; color: var(--text); letter-spacing: -0.02em; line-height: 1.2;
+}
+.egl-arrow { font-size: clamp(15px, 2.4vw, 20px); color: var(--text-muted); }
+.egl-gene  { font-size: clamp(17px, 2.8vw, 24px); font-weight: 700; color: var(--text); }
+
+.egl-stat-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.egl-pill {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
+  font-weight: 600; padding: 3px 10px; border-radius: 20px; border: 1.5px solid;
+  letter-spacing: 0.2px; white-space: nowrap;
+}
+.egl-pill.dist { color: var(--el-blue);     border-color: #a5b0e8; background: rgba(74,86,176,0.07); }
+.egl-pill.tss_proximal_1kb      { color: var(--el-accent-2); border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
+.egl-pill.tss_distal_10kb       { color: #2563eb;            border-color: #93c5fd; background: rgba(59,130,246,0.08); }
+.egl-pill.distal_multiome       { color: #7c3aed;            border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
+.egl-pill.distal_multiome_hicar { color: #b45309;            border-color: #fcd34d; background: rgba(245,158,11,0.08); }
+
+/* ── Breadcrumb back link ─────────────────────────────────────────── */
+.egl-back {
+  font-size: 11.5px; color: var(--text-muted); text-decoration: none;
+  display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px;
+  transition: color 0.12s;
+}
+.egl-back:hover { color: var(--accent); }
+
+/* ── Charts grid ──────────────────────────────────────────────────── */
+.egl-charts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
+}
+@media (max-width: 720px) { .egl-charts { grid-template-columns: 1fr; } }
+.egl-chart-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.egl-chart-header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.egl-chart-title {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.egl-chart-body { padding: 8px 12px 10px; }
+.chart-mode-toggle {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; margin-left: auto;
+}
+.chart-mode-btn {
+  padding: 3px 9px; font-size: 10.5px; font-weight: 600; border: none;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.chart-mode-btn.active { background: var(--el-accent); color: #fff; }
+.axis text { font-size: 10px; fill: var(--text-muted); }
+.axis path, .axis line { stroke: var(--border); }
+.grid line { stroke: var(--border); stroke-opacity: 0.6; }
+.grid path { stroke: none; }
+.mean-line { fill: none; stroke-width: 2; }
+.area-fill { opacity: 0.12; }
+.rep-dot   { opacity: 0.55; }
+.zero-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3,3; }
+
+/* ── Mediating TFs panel ──────────────────────────────────────────── */
+.egl-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  margin-bottom: 28px;
+}
+.egl-panel-header {
+  padding: 10px 16px 9px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.egl-panel-title {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.egl-panel-count { font-size: 11px; color: var(--text-muted); }
+
+.tf-group-list  { max-height: 480px; overflow-y: auto; scrollbar-width: thin; }
+.tf-group-item  { border-bottom: 1px solid var(--border); }
+.tf-group-item:last-child { border-bottom: none; }
+.tf-group-name  {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 16px 7px;
+  font-weight: 700; font-size: 13px; color: var(--text);
+  text-decoration: none;
+  background: var(--bg-elevated);
+  transition: background 0.12s;
+}
+.tf-group-name:hover { background: rgba(74,86,176,0.06); color: var(--accent); }
+.tf-ds-count {
+  font-size: 10px; font-weight: 600; color: var(--text-muted);
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1px 7px; margin-left: auto;
+}
+.tf-ds-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 16px 5px 28px;
+  font-size: 11.5px; color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+.tf-ds-row:first-of-type { border-top: none; }
+.tf-source-pill {
+  font-size: 10px; font-weight: 700; padding: 1px 6px;
+  border-radius: 4px; letter-spacing: 0.3px; flex-shrink: 0;
+}
+.tf-source-pill.motif { background: rgba(16,185,129,0.12); color: var(--el-accent-2); }
+.tf-source-pill.chip  { background: rgba(74,86,176,0.10);  color: var(--el-blue); }
+.tf-ds-cell    { font-weight: 600; color: var(--text); }
+.tf-ds-dataset { font-family: var(--mono); font-size: 10px; color: inherit; text-decoration: none; }
+.tf-ds-dataset:hover { color: var(--el-blue); text-decoration: underline; }
+.tf-ds-overlap { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--el-accent-2); white-space: nowrap; }
+.egl-empty { padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 12px; font-style: italic; }
+</style>
+{% endblock %}
+
+{% set lt_labels = {
+  'tss_proximal_1kb':       'Proximal 1 kb',
+  'tss_distal_10kb':        'Distal 10 kb',
+  'distal_multiome':        'Distal · Multiome',
+  'distal_multiome_hicar':  'Distal · Multiome · HiCAR',
+} %}
+
+{% block content %}
+
+<a class="egl-back" href="{{ url_for('perturbseq.element_page', atac_peak_id=peak.atac_peak_id) }}">
+  ← Element {{ peak.chr }}:{{ "{:,}".format(peak.start) }}–{{ "{:,}".format(peak.end) }}
+</a>
+
+<!-- ── Hero ───────────────────────────────────────────────────────────── -->
+<div class="egl-hero">
+  <span class="egl-coord">{{ peak.chr }}:{{ "{:,}".format(peak.start) }}–{{ "{:,}".format(peak.end) }}</span>
+  <span class="egl-arrow">→</span>
+  <a class="egl-gene" href="{{ url_for('perturbseq.gene_page', gene_name=gene) }}" style="text-decoration:none;color:var(--accent)">{{ gene }}</a>
+</div>
+<div class="egl-stat-row">
+  <span class="egl-pill {{ link_type }}">{{ lt_labels.get(link_type, link_type) }}</span>
+  <span class="egl-pill dist">{{ dist_label }} to TSS</span>
+  <span class="egl-pill dist" style="color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.07)">{{ mediating_tfs | length }} mediating TF{{ 's' if mediating_tfs | length != 1 else '' }}</span>
+</div>
+
+<!-- ── Charts ─────────────────────────────────────────────────────────── -->
+{% if atac_counts or gene_expr %}
+<div class="egl-charts">
+  {% if atac_counts %}
+  <div class="egl-chart-card">
+    <div class="egl-chart-header">
+      <span class="egl-chart-title">Element Accessibility</span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-atac-mode="count">Count</button>
+        <button class="chart-mode-btn" data-atac-mode="z">Z-score</button>
+      </span>
+    </div>
+    <div class="egl-chart-body">
+      <svg id="atac-chart" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+  {% endif %}
+  {% if gene_expr %}
+  <div class="egl-chart-card">
+    <div class="egl-chart-header">
+      <span class="egl-chart-title">{{ gene }} Expression</span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-gene-mode="tpm">TPM</button>
+        <button class="chart-mode-btn" data-gene-mode="z">Z-score</button>
+      </span>
+    </div>
+    <div class="egl-chart-body">
+      <svg id="expr-chart" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Mediating TFs ───────────────────────────────────────────────────── -->
+<div class="egl-panel">
+  <div class="egl-panel-header">
+    <span class="egl-panel-title">Mediating TFs</span>
+    <span class="egl-panel-count">{{ mediating_tfs | length }} transcription factor{{ 's' if mediating_tfs | length != 1 else '' }} bind this element and link it to <strong>{{ gene }}</strong></span>
+  </div>
+  {% if mediating_tfs %}
+  <div class="tf-group-list">
+    {% for tf_group in mediating_tfs %}
+    <div class="tf-group-item">
+      <a class="tf-group-name" href="{{ url_for('perturbseq.gene_page', gene_name=tf_group.tf) }}">
+        {{ tf_group.tf }}
+        <span class="tf-ds-count">{{ tf_group.datasets | length }} dataset{{ 's' if tf_group.datasets | length != 1 else '' }}</span>
+      </a>
+      {% for ds in tf_group.datasets %}
+      <div class="tf-ds-row">
+        <span class="tf-source-pill {% if ds.source == 'tobias' %}motif{% else %}chip{% endif %}">
+          {% if ds.source == 'tobias' %}Motif{% else %}ChIP{% endif %}
+        </span>
+        <span class="tf-ds-cell">{{ ds.cell_type }}</span>
+        <a class="tf-ds-dataset" href="{{ url_for('perturbseq.dataset_page', dataset_id=ds.dataset_id) }}">{{ ds.dataset }}</a>
+        {% if ds.overlap_bp %}<span class="tf-ds-overlap">{{ ds.overlap_bp }} bp overlap</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="egl-empty">No mediating TF data found for this element–gene pair.</div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ATAC_COUNTS = {{ atac_counts | tojson }};
+const GENE_EXPR   = {{ gene_expr   | tojson }};
+
+/* ── ATAC accessibility chart ───────────────────────────────────── */
+(function() {
+  const svgEl = document.getElementById('atac-chart');
+  if (!svgEl || !ATAC_COUNTS.length || typeof d3 === 'undefined') return;
+  const COLOR  = '#10b981';
+  const margin = { top:10, right:10, bottom:36, left:44 };
+  const W = svgEl.parentElement.clientWidth - 2;
+  const H = 160, iW = W - margin.left - margin.right, iH = H - margin.top - margin.bottom;
+  const tps = ATAC_COUNTS.map(d => d.timepoint);
+  const x   = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+  const tip = d3.select('body').append('div')
+    .style('position','fixed').style('pointer-events','none')
+    .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+    .style('border-radius','6px').style('padding','5px 9px').style('font-size','11px')
+    .style('color','var(--text)').style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+    .style('display','none').style('z-index','9999').style('white-space','nowrap').style('line-height','1.5');
+  function showTip(ev, html) { tip.html(html).style('display','block'); moveTip(ev); }
+  function moveTip(ev) { tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'); }
+  function hideTip() { tip.style('display','none'); }
+
+  function render(mode) {
+    hideTip();
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
+    const svg = d3.select(svgEl).append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+    const val  = d => mode === 'z' ? (d.mean_z ?? 0) : (d.mean ?? 0);
+    const reps = d => mode === 'z' ? d.z_replicates : d.replicates;
+    const allReps  = ATAC_COUNTS.flatMap(d => reps(d).filter(v => v != null));
+    const allMeans = ATAC_COUNTS.map(val);
+    const yLo = mode === 'z' ? Math.min(d3.min(allReps) ?? 0, d3.min(allMeans)) : 0;
+    const yHi = Math.max(d3.max(allReps) ?? 0, d3.max(allMeans));
+    const pad = (yHi - yLo) * 0.08 || 0.5;
+    const y   = d3.scaleLinear().domain([yLo - (mode==='z'?pad:0), yHi + pad]).range([iH, 0]).nice();
+    svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+    svg.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`)
+      .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+      .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+    svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+    svg.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-40)
+      .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)')
+      .text(mode === 'z' ? 'Z-score' : 'Norm. count');
+    if (mode === 'z') {
+      svg.append('line').attr('class','zero-line').attr('x1',0).attr('x2',iW).attr('y1',y(0)).attr('y2',y(0));
+    } else {
+      svg.append('path').datum(ATAC_COUNTS).attr('class','area-fill').attr('fill',COLOR)
+        .attr('d', d3.area().x(d=>x(d.timepoint)).y0(iH).y1(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    }
+    svg.append('path').datum(ATAC_COUNTS).attr('class','mean-line').attr('stroke',COLOR)
+      .attr('d', d3.line().x(d=>x(d.timepoint)).y(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    ATAC_COUNTS.forEach(d => {
+      const label = d.timepoint.replace('_',' '), unit = mode==='z'?'z':'count';
+      reps(d).forEach(v => {
+        if (v == null) return;
+        svg.append('circle').attr('class','rep-dot').attr('cx',x(d.timepoint)).attr('cy',y(v)).attr('r',3.5).attr('fill',COLOR)
+          .style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${label}</strong><br>${v.toFixed(3)} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      });
+      if (val(d) != null) {
+        svg.append('circle').attr('cx',x(d.timepoint)).attr('cy',y(val(d))).attr('r',5)
+          .attr('fill',COLOR).attr('stroke','#fff').attr('stroke-width',1.5).style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${label}</strong><br>mean ${val(d).toFixed(3)} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      }
+    });
+  }
+  render('count');
+  document.querySelectorAll('[data-atac-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-atac-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); render(btn.dataset.atacMode);
+    });
+  });
+})();
+
+/* ── Gene expression chart ──────────────────────────────────────── */
+(function() {
+  const svgEl = document.getElementById('expr-chart');
+  if (!svgEl || !GENE_EXPR.length || typeof d3 === 'undefined') return;
+  const COLOR  = '#4a56b0';
+  const margin = { top:10, right:10, bottom:36, left:44 };
+  const W = svgEl.parentElement.clientWidth - 2;
+  const H = 160, iW = W - margin.left - margin.right, iH = H - margin.top - margin.bottom;
+  const tps  = GENE_EXPR.map(d => d.timepoint);
+  const x    = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+  const tpmMeans = GENE_EXPR.map(d => d.mean_tpm || 0);
+  const mu = tpmMeans.reduce((a,b)=>a+b,0)/tpmMeans.length;
+  const sigma = Math.sqrt(tpmMeans.reduce((s,v)=>s+(v-mu)**2,0)/Math.max(tpmMeans.length-1,1));
+  const toZ = v => sigma > 1e-6 ? (v - mu) / sigma : 0;
+  const tip = d3.select('body').append('div')
+    .style('position','fixed').style('pointer-events','none')
+    .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+    .style('border-radius','6px').style('padding','5px 9px').style('font-size','11px')
+    .style('color','var(--text)').style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+    .style('display','none').style('z-index','9999').style('white-space','nowrap').style('line-height','1.5');
+  function showTip(ev, html) { tip.html(html).style('display','block'); moveTip(ev); }
+  function moveTip(ev) { tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'); }
+  function hideTip() { tip.style('display','none'); }
+
+  function render(mode) {
+    hideTip();
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
+    const svg = d3.select(svgEl).append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+    const val = d => mode === 'z' ? toZ(d.mean_tpm || 0) : (d.mean_tpm || 0);
+    const allMeans = GENE_EXPR.map(val);
+    const yLo = mode === 'z' ? d3.min(allMeans) : 0;
+    const yHi = d3.max(allMeans);
+    const pad = (yHi - (yLo||0)) * 0.08 || 0.2;
+    const y = d3.scaleLinear().domain([yLo - (mode==='z'?pad:0), yHi + pad]).range([iH, 0]).nice();
+    svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+    svg.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`)
+      .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+      .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+    svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+    svg.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-40)
+      .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)')
+      .text(mode === 'z' ? 'Z-score' : 'TPM');
+    if (mode === 'z') {
+      svg.append('line').attr('class','zero-line').attr('x1',0).attr('x2',iW).attr('y1',y(0)).attr('y2',y(0));
+    } else {
+      svg.append('path').datum(GENE_EXPR).attr('class','area-fill').attr('fill',COLOR)
+        .attr('d', d3.area().x(d=>x(d.timepoint)).y0(iH).y1(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    }
+    svg.append('path').datum(GENE_EXPR).attr('class','mean-line').attr('stroke',COLOR)
+      .attr('d', d3.line().x(d=>x(d.timepoint)).y(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    GENE_EXPR.forEach(d => {
+      const label = d.timepoint.replace('_',' '), unit = mode==='z'?'z':'TPM';
+      const v = val(d);
+      if (v != null) {
+        svg.append('circle').attr('cx',x(d.timepoint)).attr('cy',y(v)).attr('r',5)
+          .attr('fill',COLOR).attr('stroke','#fff').attr('stroke-width',1.5).style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${label}</strong><br>${v.toFixed(2)} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      }
+    });
+  }
+  render('tpm');
+  document.querySelectorAll('[data-gene-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-gene-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); render(btn.dataset.geneMode);
+    });
+  });
+})();
+</script>
+{% endblock %}

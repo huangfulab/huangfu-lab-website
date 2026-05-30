@@ -1,0 +1,219 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}TF–Module Network{% endblock %}
+
+{% block search_hints %}
+<div class="nav-search-hints">
+  e.g.
+  <a href="/perturbseq/go/Translation (GO:0006412)">Translation</a> ·
+  <a href="/perturbseq/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a> ·
+  <a href="/perturbseq/go/Cell Cycle (GO:0007049)">Cell Cycle</a> ·
+  <a href="/perturbseq/gene/NANOG">NANOG</a>
+</div>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+  body { overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+  .container { flex: 1; padding: 0; margin: 0; max-width: none; overflow: hidden; display: flex; flex-direction: column; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ps-layout">
+
+  <aside class="ps-sidebar">
+    <div class="ps-sidebar-title">TF–Module Network</div>
+
+    <div class="ps-section">
+      <div class="ps-label">Strength threshold</div>
+      <input type="range" id="strength-slider" min="0" max="100" value="70" class="ps-range">
+      <div id="strength-val" class="ps-hint"></div>
+    </div>
+
+    <div class="ps-section">
+      <div class="ps-label">Evidence</div>
+      <div class="ps-radio-group">
+        <label class="ps-radio-label"><input type="radio" name="evidence" value="all" checked> All</label>
+        <label class="ps-radio-label"><input type="radio" name="evidence" value="both"> Both sources</label>
+        <label class="ps-radio-label"><input type="radio" name="evidence" value="perturbation"> Perturbation only</label>
+        <label class="ps-radio-label"><input type="radio" name="evidence" value="binding"> Binding only</label>
+      </div>
+    </div>
+
+    <div class="ps-section">
+      <div class="ps-label">TF</div>
+      <input type="text" id="tf-filter" class="ps-input" placeholder="Filter…">
+    </div>
+
+    <div class="ps-section">
+      <div class="ps-label">Module</div>
+      <input type="text" id="mod-filter" class="ps-input" placeholder="Filter…">
+    </div>
+
+    <button id="btn-reset" class="ps-reset">Reset</button>
+
+    <div class="ps-divider"></div>
+
+    <div class="ps-legend-title">Edges</div>
+    <p style="font-size:10px;color:var(--text-muted);margin:0 0 6px;line-height:1.4">Direction reflects the effect of TF knockdown on the target module.</p>
+    <div class="ps-legend">
+
+      <div class="ps-legend-group">
+        <div class="ps-legend-group-label">Both sources</div>
+        <div class="ps-legend-row ps-legend-sub">
+          <svg width="26" height="10" style="overflow:visible"><line x1="2" y1="5" x2="24" y2="5" stroke="#ec4899" stroke-width="2.5"/></svg>
+          <span>↑ Upregulates</span>
+        </div>
+        <div class="ps-legend-row ps-legend-sub">
+          <svg width="26" height="10" style="overflow:visible"><line x1="2" y1="5" x2="24" y2="5" stroke="#3b82f6" stroke-width="2.5"/></svg>
+          <span>↓ Downregulates</span>
+        </div>
+      </div>
+
+      <div class="ps-legend-group">
+        <div class="ps-legend-group-label">Perturbation only</div>
+        <div class="ps-legend-row ps-legend-sub">
+          <svg width="26" height="10" style="overflow:visible"><line x1="2" y1="5" x2="24" y2="5" stroke="#ec4899" stroke-width="2" stroke-dasharray="4,2"/></svg>
+          <span>↑ Upregulates</span>
+        </div>
+        <div class="ps-legend-row ps-legend-sub">
+          <svg width="26" height="10" style="overflow:visible"><line x1="2" y1="5" x2="24" y2="5" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4,2"/></svg>
+          <span>↓ Downregulates</span>
+        </div>
+      </div>
+
+      <div class="ps-legend-group">
+        <div class="ps-legend-group-label">Binding only</div>
+        <div class="ps-legend-row ps-legend-sub">
+          <svg width="26" height="10" style="overflow:visible"><line x1="2" y1="5" x2="24" y2="5" stroke="#9098b8" stroke-width="2" stroke-dasharray="4,2"/></svg>
+          <span>No directionality</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="ps-divider"></div>
+
+    <div class="ps-legend-title">Nodes</div>
+    <div class="ps-legend">
+      <div class="ps-legend-row">
+        <svg width="16" height="16" style="overflow:visible"><circle cx="8" cy="8" r="6" fill="#4a56b0"/></svg>
+        <span>TF Perturbation</span>
+      </div>
+      <div class="ps-legend-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <span>Module <span style="font-size:10px;color:var(--text-muted)">(color-coded)</span></span>
+        <div style="display:flex;gap:3px;flex-wrap:wrap">
+          <span title="DE-1"  style="width:9px;height:9px;border-radius:2px;background:#4E79A7;display:inline-block"></span>
+          <span title="DE-2"  style="width:9px;height:9px;border-radius:2px;background:#A0CBE8;display:inline-block"></span>
+          <span title="DE-3"  style="width:9px;height:9px;border-radius:2px;background:#F28E2B;display:inline-block"></span>
+          <span title="DE-4"  style="width:9px;height:9px;border-radius:2px;background:#FFBE7D;display:inline-block"></span>
+          <span title="DE-5"  style="width:9px;height:9px;border-radius:2px;background:#59A14F;display:inline-block"></span>
+          <span title="DE-6"  style="width:9px;height:9px;border-radius:2px;background:#8CD17D;display:inline-block"></span>
+          <span title="DE-7"  style="width:9px;height:9px;border-radius:2px;background:#B6992D;display:inline-block"></span>
+          <span title="DE-8"  style="width:9px;height:9px;border-radius:2px;background:#F1CE63;display:inline-block"></span>
+          <span title="DE-9"  style="width:9px;height:9px;border-radius:2px;background:#499894;display:inline-block"></span>
+          <span title="DE-10" style="width:9px;height:9px;border-radius:2px;background:#86BCB6;display:inline-block"></span>
+          <span title="DE-11" style="width:9px;height:9px;border-radius:2px;background:#E15759;display:inline-block"></span>
+          <span title="DE-12" style="width:9px;height:9px;border-radius:2px;background:#FF9D9A;display:inline-block"></span>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <main class="ps-main">
+    <div id="cy"></div>
+  </main>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MODULE_COLORS = TFNetwork.MODULE_COLORS;
+
+let cy = null;
+let strengths = [];
+let cachedEdges = null;
+
+function getPercentileValue(pct) {
+    const idx = Math.floor((pct / 100) * (strengths.length - 1));
+    return strengths[idx] || 0;
+}
+
+async function loadEdges() {
+    const resp = await fetch('/perturbseq/api/edges');
+    cachedEdges = await resp.json();
+    strengths = cachedEdges.map(e => e.strength).sort((a, b) => a - b);
+    buildGraph();
+}
+
+function buildGraph() {
+    const minStrength = getPercentileValue(parseInt(document.getElementById('strength-slider').value));
+    const evidenceMode = document.querySelector('input[name="evidence"]:checked').value;
+    const tfFilter = document.getElementById('tf-filter').value.toUpperCase();
+    const modFilter = document.getElementById('mod-filter').value.toUpperCase();
+
+    let filtered = cachedEdges.filter(e => e.strength >= minStrength);
+    if (evidenceMode === 'both')         filtered = filtered.filter(e => e.perturbation && e.binding);
+    else if (evidenceMode === 'perturbation') filtered = filtered.filter(e => e.perturbation && !e.binding);
+    else if (evidenceMode === 'binding')     filtered = filtered.filter(e => !e.perturbation && e.binding);
+    if (tfFilter) filtered = filtered.filter(e => e.tf.toUpperCase().includes(tfFilter));
+    if (modFilter) filtered = filtered.filter(e => e.module.toUpperCase().includes(modFilter));
+
+    const tfs = new Set(filtered.map(e => e.tf));
+    const mods = new Set(filtered.map(e => e.module));
+
+    const elements = [];
+    tfs.forEach(tf => elements.push({ data: { id: tf, label: tf, type: 'tf' } }));
+    mods.forEach(m => elements.push({ data: { id: m, label: m, type: 'module', color: MODULE_COLORS[m] || '#f59e0b' } }));
+    filtered.forEach((e, i) => {
+        let evidence = 'both';
+        if (e.perturbation && !e.binding) evidence = 'perturbation';
+        else if (!e.perturbation && e.binding) evidence = 'binding';
+        const direction = (e.mean_NES != null) ? (e.mean_NES > 0 ? 'up' : 'down') : 'none';
+        elements.push({ data: { id: `e${i}`, source: e.tf, target: e.module, evidence, direction, strength: e.strength } });
+    });
+
+    if (cy) cy.destroy();
+    cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements,
+        style: [
+            { selector: 'node[type="tf"]', style: { 'background-color': '#4a56b0', 'label': 'data(label)', 'font-size': '7px', 'color': '#1e2448', 'text-valign': 'bottom', 'text-margin-y': 3, 'width': 16, 'height': 16 } },
+            { selector: 'node[type="module"]', style: { 'background-color': 'data(color)', 'label': 'data(label)', 'font-size': '11px', 'font-weight': 'bold', 'color': '#1e2448', 'text-valign': 'bottom', 'text-margin-y': 4, 'width': 40, 'height': 40, 'shape': 'round-rectangle', 'border-width': 1, 'border-color': 'rgba(0,0,0,0.15)' } },
+            { selector: 'edge[evidence="both"][direction="up"]',            style: { 'line-color': '#ec4899', 'width': 2,   'curve-style': 'bezier', 'opacity': 0.85, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#ec4899', 'arrow-scale': 0.6 } },
+            { selector: 'edge[evidence="both"][direction="down"]',          style: { 'line-color': '#3b82f6', 'width': 2,   'curve-style': 'bezier', 'opacity': 0.85, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#3b82f6', 'arrow-scale': 0.6 } },
+            { selector: 'edge[evidence="perturbation"][direction="up"]',   style: { 'line-color': '#ec4899', 'width': 1.5, 'line-style': 'dashed', 'curve-style': 'bezier', 'opacity': 0.65, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#ec4899', 'arrow-scale': 0.6 } },
+            { selector: 'edge[evidence="perturbation"][direction="down"]', style: { 'line-color': '#3b82f6', 'width': 1.5, 'line-style': 'dashed', 'curve-style': 'bezier', 'opacity': 0.65, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#3b82f6', 'arrow-scale': 0.6 } },
+            { selector: 'edge[evidence="binding"]', style: { 'line-color': '#9098b8', 'width': 1, 'line-style': 'dashed', 'curve-style': 'bezier', 'opacity': 0.55, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9098b8', 'arrow-scale': 0.6 } },
+        ],
+        layout: { name: 'cose', idealEdgeLength: 120, nodeRepulsion: 8000, nodeOverlap: 20, gravity: 0.25, numIter: 1000, animate: false }
+    });
+
+    cy.on('tap', 'node', evt => {
+        const node = evt.target;
+        if (node.data('type') === 'tf') window.location.href = '/perturbseq/tf/' + encodeURIComponent(node.id());
+        else window.location.href = '/perturbseq/module/' + encodeURIComponent(node.id());
+    });
+
+    document.getElementById('strength-val').textContent = `${filtered.length} edges · ${tfs.size} TFs · ${mods.size} modules`;
+}
+
+const slider = document.getElementById('strength-slider');
+const tfInput = document.getElementById('tf-filter');
+const modInput = document.getElementById('mod-filter');
+slider.addEventListener('input', buildGraph);
+tfInput.addEventListener('input', buildGraph);
+modInput.addEventListener('input', buildGraph);
+document.querySelectorAll('input[name="evidence"]').forEach(r => r.addEventListener('change', buildGraph));
+document.getElementById('btn-reset').addEventListener('click', () => {
+    slider.value = 70;
+    document.querySelector('input[name="evidence"][value="all"]').checked = true;
+    tfInput.value = ''; modInput.value = '';
+    buildGraph();
+});
+
+loadEdges();
+</script>
+{% endblock %}

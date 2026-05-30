@@ -1,0 +1,390 @@
+{% extends "perturbseq/base.html" %}
+{% from "perturbseq/_network_macros.html" import network_legend, landing_split %}
+{% set cols_tf = [
+  {'key':'module','type':'string','label':'Module'},
+  {'key':'direction','type':'string','label':'Dir', 'title':'Direction: effect of TF knockdown on this module'},
+  {'key':'mean_NES','type':'number','label':'NES', 'title':'Normalized Enrichment Score from GSEA (positive = KD upregulates; negative = KD downregulates)'},
+  {'key':'n_sig_gRNA','type':'number','label':'#gRNA'},
+  {'key':'padj','type':'number','label':'padj'},
+  {'key':'binding','type':'string','label':'Bind'},
+  {'key':'odds_ratio','type':'number','label':'OR'},
+] %}
+{% block title %}TF: {{ tf }}{% endblock %}
+
+{% block extra_style %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+  /* ── Hero header ─────────────────────────────────────────────────────── */
+  .tf-hero {
+    display: flex; align-items: baseline; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 2px;
+  }
+  .tf-symbol { font-size: 26px; font-weight: 700; color: var(--text); }
+  .tf-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+    background: var(--accent); color: #fff; letter-spacing: 0.4px;
+    position: relative; top: -2px;
+  }
+  .tf-fullname { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
+
+  .tf-stats {
+    display: flex; gap: 22px; flex-wrap: wrap;
+    font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+  }
+  .tf-stats strong { color: var(--text); font-weight: 600; }
+
+  /* ── Two-column intro ────────────────────────────────────────────────── */
+  .tf-intro-row {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 400px);
+    gap: 18px; margin-bottom: 20px; align-items: start;
+  }
+  @media (max-width: 860px) { .tf-intro-row { grid-template-columns: 1fr; } }
+
+  .tf-desc-card { margin: 0 !important; }
+
+  .tf-chart-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow);
+  }
+  .tf-chart-label {
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  #expr-chart { width: 100%; display: block; }
+
+  /* ── Module section header ───────────────────────────────────────────── */
+  .modules-header {
+    display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .modules-header h2 { margin: 0; }
+  .modules-intro-text { font-size: 13px; color: var(--text-muted); flex: 1; }
+
+  .ps-inline-legend {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    padding: 8px 14px; margin-bottom: 10px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 11px; color: var(--text-muted);
+  }
+  .ps-inline-legend-group { display: flex; gap: 10px; align-items: center; }
+  .ps-inline-legend-group-label {
+    font-weight: 600; color: var(--text); font-size: 11px;
+    padding-right: 4px; border-right: 1px solid var(--border);
+  }
+  .ps-inline-legend-item { display: flex; align-items: center; gap: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
+<div class="tf-hero">
+  <span class="tf-symbol">{{ tf }}</span>
+  <span class="tf-badge">Transcription Factor</span>
+</div>
+{% if desc %}<div class="tf-fullname">{{ desc.name }}</div>{% endif %}
+<div class="tf-stats" id="tf-stats">
+  <span>Loading…</span>
+</div>
+
+<!-- ── Description + expression chart ───────────────────────────────────── -->
+{% if desc and expr %}
+<div class="tf-intro-row">
+  <div class="module-intro tf-desc-card">
+    <p>{{ desc.summary }}</p>
+  </div>
+  <div class="tf-chart-card">
+    <div class="tf-chart-label">Expression (TPM)</div>
+    <svg id="expr-chart"></svg>
+  </div>
+</div>
+{% elif desc %}
+<div class="module-intro" style="margin-bottom:18px">
+  <p>{{ desc.summary }}</p>
+</div>
+{% elif expr %}
+<div class="tf-chart-card" style="max-width:460px;margin-bottom:18px">
+  <div class="tf-chart-label">Expression (TPM)</div>
+  <svg id="expr-chart"></svg>
+</div>
+{% endif %}
+
+<!-- ── Regulated modules ─────────────────────────────────────────────────── -->
+<div class="modules-header">
+  <h2>Regulated Modules</h2>
+  <p style="font-size:12px;color:var(--text-muted);margin:2px 0 10px">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
+</div>
+
+{{ network_legend('full') }}
+
+<div class="landing-split">
+    <div id="cy"></div>
+    <div class="side-table-wrap">
+        <div class="filter-bar" id="filter-bar">
+            <span class="filter-label">Show:</span>
+            <button class="active" data-filter="all">All</button>
+            <button data-filter="perturbation">Perturbation</button>
+            <button data-filter="binding">Binding only</button>
+            <button data-filter="both">Both</button>
+            <button data-filter="up">↑ Up</button>
+            <button data-filter="down">↓ Down</button>
+            <span class="filter-count" id="filter-count"></span>
+        </div>
+        <table class="data-table" id="reg-table">
+            <thead><tr>
+                {% for col in cols_tf %}
+                <th class="sortable" data-key="{{ col.key }}" data-type="{{ col.type }}"{% if col.title %} title="{{ col.title }}"{% endif %}>{{ col.label }}</th>
+                {% endfor %}
+            </tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+{% if submodules_by_mod %}
+<div style="margin-top:28px">
+  <h2>Regulated Submodules</h2>
+  <p style="font-size:13px;color:var(--text-muted);margin:4px 0 12px">
+    Click a supermodule to expand its submodules.
+  </p>
+  {% for mod, subs in submodules_by_mod.items() %}
+  <details class="submod-accordion">
+    <summary>
+      <span class="submod-acc-mod">
+        <a class="node-link" href="/perturbseq/module/{{ mod }}"
+           onclick="event.stopPropagation()">{{ mod }}</a>
+      </span>
+      {% if mod in pert_by_mod %}
+        {% if pert_by_mod[mod] > 0 %}
+          <span class="direction-up">↑ Up</span>
+        {% else %}
+          <span class="direction-down">↓ Down</span>
+        {% endif %}
+      {% else %}
+        <span style="font-size:11px;color:var(--text-muted)">binding only</span>
+      {% endif %}
+      <span class="submod-acc-count">{{ subs|length }} submodule{{ 's' if subs|length != 1 }}</span>
+    </summary>
+    <div class="submod-grid" style="padding:10px 0 4px 16px">
+      {% for s in subs %}
+      <a class="submod-card" href="/perturbseq/submodule/{{ s.id }}">
+        <span class="submod-card-swatch" style="background:{{ s.color }}"></span>
+        <span class="submod-card-id">{{ s.id }}</span>
+        <span class="submod-card-meta">{{ s.n_genes }} genes</span>
+        <span class="submod-card-meta">z = {{ "%.2f"|format(s.within_mean_z) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 style="margin-top:28px">Module Details</h2>
+<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
+  Click a module to expand enrichment and gene list.
+</p>
+<div id="module-details"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TF   = {{ tf | tojson }};
+const EXPR = {{ expr | tojson }};
+
+// ── Expression chart ──────────────────────────────────────────────────────────
+(function() {
+  if (!EXPR || !EXPR.length) return;
+  const svgEl = document.getElementById('expr-chart');
+  if (!svgEl) return;
+
+  const margin = { top: 14, right: 14, bottom: 40, left: 48 };
+  const W = svgEl.parentElement.clientWidth - 2;   // card has 14px padding each side
+  const H = 180;
+  const iW = W - margin.left - margin.right;
+  const iH = H - margin.top - margin.bottom;
+
+  const svg = d3.select('#expr-chart')
+    .attr('width', W).attr('height', H)
+    .append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const tps = EXPR.map(d => d.timepoint);
+  const x = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+
+  const allVals = EXPR.flatMap(d => (d.replicates || []).filter(v => v != null));
+  const yMax = d3.max(allVals) * 1.08 || 1;
+  const y = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
+
+  svg.append('g').attr('class', 'grid')
+    .call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+
+  svg.append('g').attr('class', 'axis')
+    .attr('transform', `translate(0,${iH})`)
+    .call(d3.axisBottom(x).tickFormat(t => t.replace('_', ' ')))
+    .selectAll('text').attr('transform', 'rotate(-30)').style('text-anchor', 'end');
+
+  svg.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(4));
+
+  svg.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('x', -iH / 2).attr('y', -36)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 10).attr('fill', 'var(--text-muted)')
+    .text('TPM');
+
+  const lineColor = '#4a56b0';
+
+  svg.append('path').datum(EXPR)
+    .attr('class', 'area-fill').attr('fill', lineColor)
+    .attr('d', d3.area()
+      .x(d => x(d.timepoint)).y0(iH).y1(d => y(d.mean_tpm || 0))
+      .curve(d3.curveCatmullRom.alpha(0.5)));
+
+  svg.append('path').datum(EXPR)
+    .attr('class', 'mean-line').attr('stroke', lineColor)
+    .attr('d', d3.line()
+      .x(d => x(d.timepoint)).y(d => y(d.mean_tpm || 0))
+      .curve(d3.curveCatmullRom.alpha(0.5)));
+
+  EXPR.forEach(d => {
+    (d.replicates || []).forEach(v => {
+      if (v == null) return;
+      svg.append('circle').attr('class', 'rep-dot')
+        .attr('cx', x(d.timepoint)).attr('cy', y(v))
+        .attr('r', 3).attr('fill', lineColor);
+    });
+    if (d.mean_tpm != null) {
+      svg.append('circle')
+        .attr('cx', x(d.timepoint)).attr('cy', y(d.mean_tpm))
+        .attr('r', 4.5).attr('fill', lineColor).attr('stroke', '#fff').attr('stroke-width', 1.5);
+    }
+  });
+})();
+
+// ── Table + filter ────────────────────────────────────────────────────────────
+const { makeFilterSortTable, MODULE_COLORS } = TFNetwork;
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+async function main() {
+  const resp = await fetch('/perturbseq/api/tf/' + encodeURIComponent(TF));
+  const data = await resp.json();
+
+  const bindMap = new Map(data.binding.map(e => [e.module, e]));
+  const pertMods = new Set(data.perturbation.map(e => e.module));
+
+  const allRows = [];
+  data.perturbation.forEach(e => {
+    const hasBind = bindMap.has(e.module);
+    allRows.push({
+      module: e.module,
+      direction: e.mean_NES > 0 ? 'Up' : 'Down',
+      mean_NES: e.mean_NES, n_sig_gRNA: e.n_sig_gRNA, padj: e.padj,
+      binding: hasBind ? '✓' : '',
+      odds_ratio: hasBind ? bindMap.get(e.module).odds_ratio : null,
+      evidence: hasBind ? 'both' : 'perturbation',
+    });
+  });
+  data.binding.filter(e => !pertMods.has(e.module)).forEach(e => {
+    allRows.push({
+      module: e.module, direction: '—', mean_NES: null,
+      n_sig_gRNA: null, padj: null, binding: '✓',
+      odds_ratio: e.odds_ratio, evidence: 'binding',
+    });
+  });
+  allRows.sort((a,b) => Math.abs(b.mean_NES||0) - Math.abs(a.mean_NES||0));
+
+  // Stats row
+  const nPert  = data.perturbation.length;
+  const nBind  = [...new Set(data.binding.map(e => e.module))].length;
+  const nBoth  = allRows.filter(r => r.evidence === 'both').length;
+  const nUp    = allRows.filter(r => r.direction === 'Up').length;
+  const nDown  = allRows.filter(r => r.direction === 'Down').length;
+  const peakTpm = EXPR.length ? Math.max(...EXPR.map(e => e.mean_tpm || 0)) : null;
+  document.getElementById('tf-stats').innerHTML = [
+    `<span>Regulates <strong>${allRows.length}</strong> module${allRows.length!==1?'s':''}</span>`,
+    nPert  ? `<span><strong>${nPert}</strong> perturbation</span>` : '',
+    nBind  ? `<span><strong>${nBind}</strong> binding</span>` : '',
+    nBoth  ? `<span><strong>${nBoth}</strong> convergent</span>` : '',
+    nUp    ? `<span><strong>${nUp}</strong> ↑ up</span>` : '',
+    nDown  ? `<span><strong>${nDown}</strong> ↓ down</span>` : '',
+    peakTpm != null ? `<span>Peak expr <strong>${peakTpm.toFixed(1)}</strong> TPM</span>` : '',
+  ].filter(Boolean).join('');
+
+  // Cytoscape
+  const elements = [{ data:{id:TF,label:TF,type:'tf'} }];
+  allRows.forEach(r => {
+    elements.push({data:{id:r.module,label:r.module,type:'module',color:MODULE_COLORS[r.module]||'#f59e0b'}});
+    const dir = r.direction==='Up'?'up':r.direction==='Down'?'down':'bind';
+    elements.push({data:{id:`e_${r.module}`,source:TF,target:r.module,direction:dir,evidence:r.evidence}});
+  });
+
+  const cy = cytoscape({
+    container: document.getElementById('cy'), elements,
+    style: [
+      { selector:'node[type="tf"]', style:{'background-color':'#4a56b0','label':'data(label)','font-size':'12px','font-weight':'bold','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50} },
+      { selector:'node[type="module"]', style:{'background-color':'data(color)','label':'data(label)','font-size':'10px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':30,'height':30,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'} },
+      { selector:'edge[direction="up"][evidence="both"]',         style:{'line-color':'#ec4899','width':2.5,'curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle','arrow-scale':0.7} },
+      { selector:'edge[direction="down"][evidence="both"]',       style:{'line-color':'#3b82f6','width':2.5,'curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle','arrow-scale':0.7} },
+      { selector:'edge[direction="up"][evidence="perturbation"]', style:{'line-color':'#ec4899','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle','arrow-scale':0.7} },
+      { selector:'edge[direction="down"][evidence="perturbation"]',style:{'line-color':'#3b82f6','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle','arrow-scale':0.7} },
+      { selector:'edge[direction="bind"]', style:{'line-color':'#9098b8','width':1.5,'line-style':'dashed','curve-style':'bezier'} },
+    ],
+    layout:{name:'cose',idealEdgeLength:100,nodeRepulsion:4000,gravity:0.4,numIter:400,animate:false}
+  });
+  cy.on('tap','node[type="module"]', evt => {
+    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+  });
+
+  // Table
+  makeFilterSortTable(document.getElementById('reg-table'), allRows, r => {
+    const dir = r.direction==='Up'   ? '<span class="direction-up">↑ Up</span>'
+              : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td>
+      <td>${dir}</td>
+      <td>${r.mean_NES   != null ? r.mean_NES.toFixed(3)      : '—'}</td>
+      <td>${r.n_sig_gRNA != null ? r.n_sig_gRNA               : '—'}</td>
+      <td>${r.padj       != null ? r.padj.toExponential(2)    : '—'}</td>
+      <td>${r.binding}</td>
+      <td>${r.odds_ratio != null ? r.odds_ratio.toFixed(3)    : '—'}</td>`;
+    return tr;
+  }, { barId:'filter-bar', countId:'filter-count', searchKey:'module' });
+
+  // Module details (lazy accordion)
+  const detailsContainer = document.getElementById('module-details');
+  const mods = [...new Set(allRows.map(r => r.module))];
+  mods.forEach(mod => {
+    const detail = document.createElement('details');
+    detail.className = 'module-accordion';
+    detail.innerHTML = `<summary>${mod}</summary><div class="accordion-content"><p class="loading-msg">Loading…</p></div>`;
+    detail.addEventListener('toggle', async () => {
+      if (!detail.open) return;
+      const content = detail.querySelector('.accordion-content');
+      if (content.dataset.loaded) return;
+      content.dataset.loaded = '1';
+      try {
+        const mr = await fetch('/perturbseq/api/module/' + encodeURIComponent(mod));
+        const md = await mr.json();
+        let html = '';
+        if (md.enrichment && md.enrichment.length) {
+          html += '<h4>Enriched Terms (top 10)</h4><table class="data-table mini"><thead><tr><th>Term</th><th>Source</th><th>p-value</th></tr></thead><tbody>';
+          md.enrichment.slice(0,10).forEach(t => html += `<tr><td>${t.term_name}</td><td>${t.source}</td><td>${t.p_value.toExponential(2)}</td></tr>`);
+          html += '</tbody></table>';
+        }
+        if (md.genes && md.genes.length) {
+          html += `<h4>Genes (${md.genes.length})</h4><div class="gene-list">`;
+          md.genes.forEach(g => html += `<a class="gene-chip" href="/perturbseq/gene/${encodeURIComponent(g)}" style="text-decoration:none;color:inherit">${g}</a>`);
+          html += '</div>';
+        }
+        content.innerHTML = html || '<p>No additional data.</p>';
+      } catch(e) { content.innerHTML = '<p>Error loading data.</p>'; }
+    });
+    detailsContainer.appendChild(detail);
+  });
+}
+main();
+</script>
+{% endblock %}

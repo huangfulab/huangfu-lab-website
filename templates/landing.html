@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESC→Endoderm Regulatory Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #f4f7ff;
+    color: #1e2448;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #bg-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .bg-glow {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 60%, rgba(180,200,255,0.45) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 60% at 80% 30%, rgba(200,180,255,0.30) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 55% 85%, rgba(160,230,255,0.25) 0%, transparent 70%);
+  }
+
+  .hero {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 48px 24px 56px;
+    max-width: 680px;
+    width: 100%;
+  }
+
+  /* --- Logo icon --- */
+  .logo {
+    margin-bottom: 32px;
+    display: flex;
+    justify-content: center;
+  }
+  .logo svg { overflow: visible; cursor: default; }
+
+  /* --- Title --- */
+  h1 {
+    font-size: clamp(2.2rem, 5.5vw, 3.4rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 18px;
+    background: linear-gradient(135deg, #2c5fe8 0%, #7c3fc0 45%, #0892c8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: titleFade 0.7s ease both;
+  }
+  @keyframes titleFade { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+
+  .subtitle {
+    font-size: 15px;
+    line-height: 1.65;
+    color: #5a6580;
+    margin-bottom: 48px;
+    animation: titleFade 0.7s 0.12s ease both;
+  }
+
+  /* --- Search section --- */
+  .search-section {
+    max-width: 420px;
+    margin: 0 auto;
+    animation: titleFade 0.7s 0.22s ease both;
+  }
+
+  .search-block { position: relative; }
+
+  .search-label {
+    display: block;
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: #8090b0;
+    margin-bottom: 8px;
+  }
+
+  .search-wrap { position: relative; }
+
+  .search-wrap svg.s-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #aab4cc;
+    pointer-events: none;
+    transition: color 0.2s;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 14px 14px 14px 40px;
+    background: #ffffff;
+    border: 1px solid #dce1f0;
+    border-radius: 12px;
+    font-size: 14.5px;
+    color: #1e2448;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    caret-color: #4a7aee;
+  }
+  .search-input::placeholder { color: #b0bcd4; }
+  .search-input:focus {
+    border-color: #6b8fff;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(107,143,255,0.14), 0 4px 16px rgba(44,95,232,0.08);
+  }
+  .search-input:focus + svg.s-icon,
+  .search-wrap:focus-within svg.s-icon { color: #4a7aee; }
+
+  /* icon inside wrap trick — re-order in DOM */
+  .search-wrap svg.s-icon { z-index: 1; }
+
+  .ac-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0; right: 0;
+    background: #ffffff;
+    border: 1px solid #dce1f0;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    overflow: hidden;
+    z-index: 200;
+    display: none;
+    max-height: 230px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #dce1f0 transparent;
+  }
+  .ac-dropdown.open { display: block; animation: dropIn 0.15s ease; }
+  @keyframes dropIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+  .ac-item {
+    padding: 10px 14px;
+    font-size: 13.5px;
+    color: #3a4468;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .ac-item:hover, .ac-item.active {
+    background: rgba(107,143,255,0.08);
+    color: #2c5fe8;
+  }
+  .ac-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-left: auto;
+    background: rgba(44,95,232,0.10);
+    color: #2c5fe8;
+  }
+  .ac-badge.mod  { background: rgba(24,168,216,0.12); color: #0e86ad; }
+  .ac-badge.sub  { background: rgba(138,95,216,0.12); color: #7040b8; }
+
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0 14px;
+    color: #b0bcd4;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+  }
+  .or-divider::before, .or-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e4e8f4;
+  }
+
+  a.explore-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 0;
+    padding: 11px 22px;
+    background: rgba(44,95,232,0.06);
+    border: 1px solid rgba(44,95,232,0.22);
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #2c5fe8;
+    text-decoration: none;
+    transition: all 0.2s;
+    letter-spacing: 0.01em;
+  }
+  a.explore-btn:hover {
+    background: rgba(44,95,232,0.11);
+    border-color: rgba(44,95,232,0.38);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(44,95,232,0.12);
+  }
+
+  .example-genes {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 7px;
+    flex-wrap: wrap;
+  }
+  .example-genes:first-of-type { margin-top: 6px; }
+  .examples-header {
+    margin-top: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8090b0;
+    text-align: left;
+  }
+  .example-label {
+    font-size: 11.5px;
+    color: #8090b0;
+    font-weight: 600;
+    min-width: 120px;
+  }
+  .example-chip {
+    font-size: 12px;
+    font-weight: 600;
+    color: #4a7aee;
+    text-decoration: none;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(74,122,238,0.25);
+    background: rgba(74,122,238,0.05);
+    transition: all 0.15s;
+    letter-spacing: 0.01em;
+  }
+  .example-chip:hover {
+    background: rgba(74,122,238,0.12);
+    border-color: rgba(74,122,238,0.45);
+    transform: translateY(-1px);
+  }
+  .example-chip.mod {
+    color: #7040b8;
+    border-color: rgba(112,64,184,0.25);
+    background: rgba(112,64,184,0.05);
+  }
+  .example-chip.mod:hover {
+    background: rgba(112,64,184,0.12);
+    border-color: rgba(112,64,184,0.45);
+  }
+  .example-chip.gc {
+    color: #b8860b;
+    border-color: rgba(184,134,11,0.25);
+    background: rgba(184,134,11,0.05);
+  }
+  .example-chip.gc:hover {
+    background: rgba(184,134,11,0.12);
+    border-color: rgba(184,134,11,0.45);
+  }
+  .example-chip.go {
+    color: #0e86ad;
+    border-color: rgba(24,168,216,0.25);
+    background: rgba(24,168,216,0.05);
+  }
+  .example-chip.go:hover {
+    background: rgba(24,168,216,0.12);
+    border-color: rgba(24,168,216,0.45);
+  }
+  .example-chip.lk {
+    color: #b5396a;
+    border-color: rgba(181,57,106,0.25);
+    background: rgba(181,57,106,0.05);
+  }
+  .example-chip.lk:hover {
+    background: rgba(181,57,106,0.12);
+    border-color: rgba(181,57,106,0.45);
+  }
+  .example-chip.el {
+    color: #059669;
+    border-color: rgba(5,150,105,0.25);
+    background: rgba(5,150,105,0.05);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+  }
+  .example-chip.el:hover {
+    background: rgba(5,150,105,0.12);
+    border-color: rgba(5,150,105,0.45);
+  }
+  .example-sep { color: #d0d6e8; font-size: 14px; line-height: 1; align-self: center; }
+
+  .nav-row { display: none; }
+
+  @media (max-width: 520px) {
+    h1 { letter-spacing: -0.02em; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="bg-glow"></div>
+
+<div class="hero">
+
+  <!-- Animated network icon -->
+  <div class="logo">
+    <svg id="logo-svg" width="110" height="90" viewBox="0 0 64 52"></svg>
+  </div>
+
+  <h1>ESC&rarr;Endoderm<br>Regulatory Browser</h1>
+
+  <p class="subtitle">
+    Explore co-expression modules, transcription factor networks,<br>
+    and ESC&rarr;DE differentiation dynamics at single-cell resolution.
+  </p>
+
+  <!-- Search -->
+  <div class="search-section">
+    <div class="search-block">
+      <label class="search-label" for="gene-input">Search gene, pathway, or module</label>
+      <div class="search-wrap">
+        <input class="search-input" id="gene-input" type="text"
+               placeholder="e.g. SOX17, NANOG, Translation…" autocomplete="off" spellcheck="false">
+        <svg class="s-icon" width="15" height="15" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <div class="ac-dropdown" id="gene-ac"></div>
+      </div>
+    </div>
+    <div class="examples-header">Examples:</div>
+    <div class="example-genes">
+      <span class="example-label">Genes:</span>
+      <a class="example-chip" href="/perturbseq/gene/SOX17">SOX17</a>
+      <a class="example-chip" href="/perturbseq/gene/GATA4">GATA4</a>
+      <a class="example-chip" href="/perturbseq/gene/SMARCC1">SMARCC1</a>
+      <a class="example-chip" href="/perturbseq/gene/FOXH1">FOXH1</a>
+    </div>
+    <div class="example-genes">
+      <span class="example-label">Pathways:</span>
+      <a class="example-chip go" href="/perturbseq/go/Translation (GO:0006412)">Translation</a>
+      <a class="example-chip go" href="/perturbseq/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a>
+      <a class="example-chip go" href="/perturbseq/go/RNA Processing (GO:0006396)">RNA Processing</a>
+    </div>
+    <div class="example-genes">
+      <span class="example-label">Modules:</span>
+      <a class="example-chip mod" href="/perturbseq/module/DE-3">DE-3</a>
+      <a class="example-chip mod" href="/perturbseq/module/DE-1.1">DE-1.1</a>
+      <a class="example-chip gc" href="/perturbseq/module/GC6">GC6</a>
+    </div>
+    <div class="example-genes">
+      <span class="example-label">TF&rarr;Gene:</span>
+      <a class="example-chip lk" href="/perturbseq/link/FOXA2/SOX17">FOXA2&nbsp;&rarr;&nbsp;SOX17</a>
+      <a class="example-chip lk" href="/perturbseq/link/SOX17/CXCR4">SOX17&nbsp;&rarr;&nbsp;CXCR4</a>
+    </div>
+    <div class="example-genes">
+      <span class="example-label">Elements:</span>
+      <a class="example-chip el" href="/perturbseq/element/58938">chr8 &middot; SOX17 locus</a>
+    </div>
+    <div class="or-divider">or</div>
+    <a class="explore-btn" href="/modules">
+      <svg width="16" height="16" viewBox="0 0 32 32" fill="none" style="flex-shrink:0">
+        <line x1="16" y1="5"  x2="6"  y2="15" stroke="#4a7aee" stroke-width="2" stroke-linecap="round"/>
+        <line x1="16" y1="5"  x2="26" y2="13" stroke="#4a7aee" stroke-width="2" stroke-linecap="round"/>
+        <line x1="16" y1="5"  x2="14" y2="26" stroke="#8a5fd8" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="6"  y1="15" x2="14" y2="26" stroke="#18a8d8" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="26" y1="13" x2="14" y2="26" stroke="#4a7aee" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="26" y1="13" x2="6"  y2="15" stroke="#8a5fd8" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="16" cy="5"  r="3.5" fill="#4a7aee"/>
+        <circle cx="6"  cy="15" r="2.8" fill="#f59e42"/>
+        <circle cx="26" cy="13" r="3"   fill="#18a8d8"/>
+        <circle cx="14" cy="26" r="2.5" fill="#8a5fd8"/>
+      </svg>
+      Explore gene modules
+    </a>
+  </div>
+
+  <!-- Nav links -->
+  <div class="nav-row">
+    <a class="nav-pill" href="/network">Co-expression Network</a>
+    <a class="nav-pill" href="/perturbseq/">TF&ndash;Module Network</a>
+    <a class="nav-pill" href="/timecourse/">Time-Course</a>
+    <a class="nav-pill" href="/timecourse/sankey">Sankey Flow</a>
+  </div>
+
+</div>
+
+<script>
+/* ── Logo network (physics-driven) ── */
+(function () {
+  const svg = document.getElementById('logo-svg');
+  const NS  = 'http://www.w3.org/2000/svg';
+  function mk(tag, attrs) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  }
+
+  const nodeDefs = [
+    { rx: 32, ry:  7, r: 6.5, fill: '#4a7aee', delay:  80 },
+    { rx: 12, ry: 28, r: 5,   fill: '#f59e42', delay: 160 },
+    { rx: 52, ry: 22, r: 5.5, fill: '#18a8d8', delay: 200 },
+    { rx: 30, ry: 45, r: 4.5, fill: '#8a5fd8', delay: 280 },
+    { rx: 50, ry: 42, r: 4,   fill: '#e05252', delay: 340 },
+  ];
+  const edgeDefs = [
+    { a: 0, b: 1, stroke: '#4a7aee', sw: 1.4, delay: 220 },
+    { a: 0, b: 2, stroke: '#4a7aee', sw: 1.4, delay: 260 },
+    { a: 0, b: 3, stroke: '#8a5fd8', sw: 1.0, delay: 300 },
+    { a: 1, b: 3, stroke: '#18a8d8', sw: 1.2, delay: 340 },
+    { a: 2, b: 3, stroke: '#4a7aee', sw: 1.0, delay: 380 },
+    { a: 1, b: 2, stroke: '#8a5fd8', sw: 1.4, delay: 320 },
+    { a: 2, b: 4, stroke: '#e05252', sw: 1.2, delay: 400 },
+    { a: 3, b: 4, stroke: '#e05252', sw: 1.0, delay: 420 },
+  ];
+
+  const edgeEls = edgeDefs.map(({ a, b, stroke, sw, delay }) => {
+    const na = nodeDefs[a], nb = nodeDefs[b];
+    const line = mk('line', { x1: na.rx, y1: na.ry, x2: nb.rx, y2: nb.ry,
+      stroke, 'stroke-width': sw, 'stroke-linecap': 'round' });
+    line.style.opacity = '0';
+    svg.appendChild(line);
+    setTimeout(() => { line.style.transition = 'opacity 0.4s ease'; line.style.opacity = '0.5'; }, delay);
+    return line;
+  });
+
+  const nodes = nodeDefs.map(({ rx, ry, r, fill, delay }) => {
+    const g = mk('g', { transform: `translate(${rx},${ry})` });
+    const c = mk('circle', { cx: 0, cy: 0, r: 0, fill });
+    c.style.opacity = '0';
+    g.appendChild(c); svg.appendChild(g);
+    setTimeout(() => {
+      c.style.transition = 'r 0.45s cubic-bezier(.34,1.56,.64,1), opacity 0.3s ease';
+      c.setAttribute('r', r); c.style.opacity = '1';
+    }, delay);
+    return { rx, ry, x: rx, y: ry, vx: 0, vy: 0, el: g };
+  });
+
+  let mx = -9999, my = -9999;
+  function toSvg(cx, cy) {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: -9999, y: -9999 };
+    const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy;
+    return pt.matrixTransform(ctm.inverse());
+  }
+  window.addEventListener('mousemove', e => { const p = toSvg(e.clientX, e.clientY); mx = p.x; my = p.y; });
+  window.addEventListener('touchmove', e => {
+    if (e.touches.length) { const p = toSvg(e.touches[0].clientX, e.touches[0].clientY); mx = p.x; my = p.y; }
+  }, { passive: true });
+
+  function frame() {
+    nodes.forEach(n => {
+      let fx = (n.rx - n.x) * 0.09;
+      let fy = (n.ry - n.y) * 0.09;
+      const dx = n.x - mx, dy = n.y - my;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      const R  = 15;
+      if (d < R && d > 0.1) { const f = ((R - d) / R) * 2.0; fx += (dx / d) * f; fy += (dy / d) * f; }
+      n.vx = (n.vx + fx) * 0.80; n.vy = (n.vy + fy) * 0.80;
+      n.x += n.vx; n.y += n.vy;
+      n.el.setAttribute('transform', `translate(${n.x.toFixed(2)},${n.y.toFixed(2)})`);
+    });
+    edgeDefs.forEach(({ a, b }, i) => {
+      const na = nodes[a], nb = nodes[b];
+      edgeEls[i].setAttribute('x1', na.x.toFixed(2)); edgeEls[i].setAttribute('y1', na.y.toFixed(2));
+      edgeEls[i].setAttribute('x2', nb.x.toFixed(2)); edgeEls[i].setAttribute('y2', nb.y.toFixed(2));
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ── Particle network background ── */
+(function () {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, pts;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function mkPts(n) {
+    return Array.from({ length: n }, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.28,
+      vy: (Math.random() - 0.5) * 0.28,
+      r: Math.random() * 1.6 + 0.8,
+    }));
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    const LINK = 130;
+
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      for (let j = i + 1; j < pts.length; j++) {
+        const b = pts[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < LINK * LINK) {
+          const alpha = 0.38 * (1 - Math.sqrt(d2) / LINK);
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(80,110,220,${alpha * 0.55})`;
+          ctx.lineWidth = 0.55;
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    pts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(80,110,220,0.25)';
+      ctx.fill();
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+    });
+
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  pts = mkPts(65);
+  window.addEventListener('resize', () => { resize(); pts = mkPts(65); });
+  frame();
+})();
+
+/* ── Autocomplete ── */
+(function () {
+  const input    = document.getElementById('gene-input');
+  const dropdown = document.getElementById('gene-ac');
+  let items = [], activeIdx = -1, timer;
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (!q) { hide(); return; }
+      try {
+        const r = await fetch(`/perturbseq/api/search?q=${encodeURIComponent(q)}`);
+        items = await r.json();
+        render();
+      } catch { hide(); }
+    }, 140);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (!dropdown.classList.contains('open')) {
+      if (e.key === 'Enter' && input.value.trim()) go(input.value.trim());
+      return;
+    }
+    if (e.key === 'ArrowDown')      { activeIdx = Math.min(activeIdx + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp')   { activeIdx = Math.max(activeIdx - 1, 0);                render(); e.preventDefault(); }
+    else if (e.key === 'Enter')     { go(activeIdx >= 0 ? items[activeIdx] : items[0]); }
+    else if (e.key === 'Escape')    { hide(); }
+  });
+
+  document.addEventListener('pointerdown', e => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) hide();
+  });
+
+  function render() {
+    dropdown.innerHTML = '';
+    if (!items.length) { hide(); return; }
+    items.forEach((item, i) => {
+      const d = document.createElement('div');
+      d.className = 'ac-item' + (i === activeIdx ? ' active' : '');
+      d.appendChild(document.createTextNode(item.name));
+      if (item.type !== 'gene') {
+        const badge = document.createElement('span');
+        const t = item.type;
+        badge.className = 'ac-badge' + (t === 'module' || t === 'gc_cluster' || t === 'pc_cluster' ? ' mod' : t === 'submodule' ? ' sub' : '');
+        badge.textContent = t === 'active_tf' ? 'Active TF' : t === 'tf' ? 'TF' : t === 'submodule' ? 'Sub' : t === 'gc_cluster' ? 'Gene Cluster' : t === 'pc_cluster' ? 'Peak Cluster' : 'Module';
+        d.appendChild(badge);
+      }
+      d.addEventListener('pointerdown', ev => { ev.preventDefault(); go(item); });
+      dropdown.appendChild(d);
+    });
+    activeIdx = -1;
+    dropdown.classList.add('open');
+  }
+
+  function go(item) {
+    if (!item) return;
+    const name = typeof item === 'object' ? item.name : item;
+    const type = typeof item === 'object' ? item.type : 'gene';
+    input.value = name;
+    hide();
+    if (item && item.url)          window.location.href = item.url;
+    else if (type === 'module' || type === 'submodule')
+                                   window.location.href = '/perturbseq/module/'  + encodeURIComponent(name);
+    else                           window.location.href = '/perturbseq/gene/'    + encodeURIComponent(name);
+  }
+
+  function hide() {
+    dropdown.classList.remove('open');
+    items = []; activeIdx = -1;
+  }
+})();
+</script>
+
+</body>
+</html>

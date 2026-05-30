@@ -1,0 +1,334 @@
+{% extends "perturbseq/base.html" %}
+{% from "perturbseq/_network_macros.html" import network_legend, landing_split, filter_bar %}
+{% block title %}{{ term_name }}{% endblock %}
+
+{% set cols_tf = [
+  {'key':'tf',         'type':'string', 'label':'TF',    'title':''},
+  {'key':'direction',  'type':'string', 'label':'Dir',   'title':'Effect of TF knockdown on this pathway'},
+  {'key':'mean_NES',   'type':'number', 'label':'NES',   'title':'Normalized Enrichment Score'},
+  {'key':'n_sig_gRNA', 'type':'number', 'label':'#gRNA', 'title':''},
+  {'key':'padj',       'type':'number', 'label':'padj',  'title':''},
+  {'key':'binding',    'type':'string', 'label':'Bind',  'title':''},
+  {'key':'odds_ratio', 'type':'number', 'label':'OR',    'title':''},
+] %}
+
+{% block extra_style %}
+<style>
+  .go-hero { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .go-hero h1 { font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.3; }
+  .go-badge {
+    font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px;
+    background:rgba(78,121,167,0.12); color:#2e5c8a; border:1px solid rgba(78,121,167,0.3);
+    letter-spacing:0.4px; white-space:nowrap;
+  }
+  .go-id { font-size:12px; color:var(--text-muted); margin-bottom:18px; }
+  .go-id a { color:var(--accent); text-decoration:none; }
+  .go-id a:hover { text-decoration:underline; }
+
+  .go-table-card {
+    background:var(--bg-card); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .go-table-card h3 {
+    font-size:13px; font-weight:600; margin:0 0 10px; color:var(--text);
+    display:flex; align-items:center; gap:8px;
+  }
+  .go-table-card .count-badge {
+    font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px;
+    background:var(--bg-elevated); color:var(--text-muted); border:1px solid var(--border);
+  }
+  .go-table-wrap { max-height:420px; overflow-y:auto; }
+  .go-gene-wrap  { max-height:520px; overflow-y:auto; }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="go-hero">
+  <h1>{{ term_name }}</h1>
+  <span class="go-badge">{{ n_genes }} genes</span>
+</div>
+{% if go_id %}
+<div class="go-id">
+  <a href="https://amigo.geneontology.org/amigo/term/{{ go_id }}" target="_blank" rel="noopener">{{ go_id }}</a>
+  · GO Biological Process
+</div>
+{% endif %}
+
+{# ── Enriched Modules ─────────────────────────────────────────────── #}
+<div class="go-table-card" style="margin-bottom:28px">
+  <h3>Enriched Modules <span class="count-badge">{{ enriched_modules|length }}</span></h3>
+  {% if enriched_modules %}
+  <div class="tf-search-wrap" style="padding:0 0 8px">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input class="tf-search-input" id="mod-search" type="text" placeholder="Search module…" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="go-table-wrap">
+    <table class="data-table" id="mod-table">
+      <thead><tr>
+        <th class="sortable" data-key="module"            data-type="string">Module</th>
+        <th class="sortable" data-key="module_type"       data-type="string">Type</th>
+        <th class="sortable" data-key="p_value"           data-type="number">p-value</th>
+        <th class="sortable" data-key="intersection_size" data-type="number">Overlap</th>
+        <th class="sortable" data-key="precision_val"     data-type="number">Precision</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><strong>No enriched modules</strong><span>This GO term is not significantly enriched in any co-expression module.</span></div>
+  {% endif %}
+</div>
+
+{# ── TF Regulatory Network ─────────────────────────────────────────── #}
+<h2 style="margin-top:4px;margin-bottom:4px">
+  TF Regulation
+  <span class="gene-count" id="go-tf-heading-count">{% if tf_rows %}({{ tf_rows|length }}){% endif %}</span>
+</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">
+  TFs whose knockdown significantly affects genes in this pathway.
+  ↑ Up = upregulated upon KD; ↓ Down = downregulated upon KD.
+</p>
+
+{% if tf_rows %}
+{{ filter_bar('go-tf-filter-bar', dir_label_id='go-dir-label', bind_label_id='go-bind-label', bind_slider_id='go-bind-slider', bind_range_id='go-bind-range', count_id='go-tf-count') }}
+
+{{ landing_split('go-tf-cy', 'tf-table', cols_tf, variant='full', search_id='go-tf-search', search_placeholder='Search TF…') }}
+{% else %}
+<div class="empty-state">
+  <strong>No TF associations</strong>
+  <span>No TFs have significant perturbation or binding enrichment for this gene set.</span>
+</div>
+{% endif %}
+
+{# ── Gene Members ──────────────────────────────────────────────────── #}
+<div style="margin-top:28px">
+  <h2 style="margin-top:4px;margin-bottom:10px">Gene Members</h2>
+  <div class="go-table-card">
+    <div class="tf-search-wrap" style="padding:0 0 8px">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="go-gene-wrap">
+      <table class="data-table" id="gene-table">
+        <thead><tr>
+          <th class="sortable" data-key="gene"      data-type="string">Gene</th>
+          <th class="sortable" data-key="tf_status" data-type="string">TF Status</th>
+          <th class="sortable" data-key="pub_count" data-type="number">Publications</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ENRICHED_MODULES = {{ enriched_modules | tojson }};
+const TF_ROWS          = {{ tf_rows | tojson }};
+const GENE_DATA        = {{ genes | tojson }};
+const GO_LABEL         = {{ (go_id or 'GO') | tojson }};
+
+const { placeSector, makeFilterSortTable, EDGE_STYLES_FULL, peripheralNodeStyle } = TFNetwork;
+
+// ── Enriched Modules table ────────────────────────────────────────────────────
+makeFilterSortTable(
+  document.getElementById('mod-table'),
+  ENRICHED_MODULES,
+  r => {
+    const typeLabel = r.module_type === 'supermodule' ? 'Super'
+                    : r.module_type === 'submodule'   ? 'Sub' : 'TC';
+    const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.color};margin-right:6px;vertical-align:middle"></span>`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="${r.url}">${r.module}</a></td><td>${typeLabel}</td><td>${r.p_value.toExponential(2)}</td><td>${r.intersection_size}/${r.term_size||'?'}</td><td>${r.precision_val!=null?(r.precision_val*100).toFixed(1)+'%':'—'}</td>`;
+    return tr;
+  },
+  {
+    searchId: 'mod-search',
+    filterFn: (d, {searchQ}) => searchQ ? d.filter(r => r.module.toLowerCase().includes(searchQ) || r.module_type.toLowerCase().includes(searchQ)) : d,
+  }
+);
+
+// ── Gene Members table ────────────────────────────────────────────────────────
+makeFilterSortTable(
+  document.getElementById('gene-table'),
+  GENE_DATA,
+  r => {
+    const badge = r.tf_status === 'Active TF'
+      ? '<span class="intro-tag gene-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">Active TF</span>'
+      : r.tf_status === 'TF'
+      ? '<span class="intro-tag term-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">TF</span>' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.tf_status||'—'}</td><td>${r.pub_count}</td>`;
+    return tr;
+  },
+  { searchId: 'gene-search', searchKey: 'gene' }
+);
+
+// ── TF Regulation: Cytoscape network + filterable table ───────────────────────
+(function () {
+  if (!TF_ROWS.length) return;
+
+  const GO_NODE = '__go__';
+
+  const perturbRows   = TF_ROWS.filter(r => r.evidence !== 'binding');
+  const bindingRows   = TF_ROWS.filter(r => r.evidence === 'binding')
+                                .slice().sort((a, b) => (b.odds_ratio || 0) - (a.odds_ratio || 0));
+  const orderedBindingTFs = bindingRows.map(r => r.tf);
+
+  const bindSlider = document.getElementById('go-bind-slider');
+  const bindRange  = document.getElementById('go-bind-range');
+  const initVal    = Math.min(15, orderedBindingTFs.length);
+  if (bindSlider) { bindSlider.max = orderedBindingTFs.length; bindSlider.value = initVal; }
+  if (bindRange)  { bindRange.max  = orderedBindingTFs.length; bindRange.value  = initVal; }
+  if (!orderedBindingTFs.length) {
+    const bindLabel = document.getElementById('go-bind-label');
+    const bindWrap  = document.querySelector('.bind-range-wrap');
+    [bindSlider, bindRange, bindLabel, bindWrap].forEach(el => { if (el) el.style.display = 'none'; });
+  }
+
+  const upTFs   = perturbRows.filter(r => r.mean_NES >  0).map(r => r.tf);
+  const downTFs = perturbRows.filter(r => r.mean_NES <= 0).map(r => r.tf);
+  const positions = Object.assign(
+    { [GO_NODE]: { x: 0, y: 0 } },
+    placeSector(upTFs,            180, 110, 160, 130, 10),
+    placeSector(downTFs,            0, 110, 160, 130, 10),
+    placeSector(orderedBindingTFs, 90, 140, 160, 130, 14)
+  );
+
+  const elements = [{ data: { id: GO_NODE, label: GO_LABEL, type: 'go' }, position: positions[GO_NODE] }];
+  const addedIds = new Set([GO_NODE]);
+
+  perturbRows.forEach(r => {
+    const dir = r.direction === 'Up' ? 'up' : 'down';
+    elements.push({ data: { id: r.tf, label: r.tf, type: 'tf', direction: dir, evidence: r.evidence }, position: positions[r.tf] || { x: 0, y: 0 } });
+    elements.push({ data: { id: 'e_' + r.tf, source: r.tf, target: GO_NODE, direction: dir, evidence: r.evidence } });
+    addedIds.add(r.tf);
+  });
+
+  let addedBindingTFs = new Set(orderedBindingTFs.slice(0, initVal));
+  bindingRows.slice(0, initVal).forEach(r => {
+    if (!addedIds.has(r.tf)) {
+      elements.push({ data: { id: r.tf, label: r.tf, type: 'tf', direction: 'bind', evidence: 'binding' }, position: positions[r.tf] || { x: 0, y: 160 } });
+      addedIds.add(r.tf);
+    }
+    elements.push({ data: { id: 'eb_' + r.tf, source: r.tf, target: GO_NODE, direction: 'bind', evidence: 'binding' } });
+  });
+
+  const cy = cytoscape({
+    container: document.getElementById('go-tf-cy'),
+    elements,
+    minZoom: 0.2, wheelSensitivity: 0.25,
+    style: [
+      { selector: 'node[type="go"]', style: { 'background-color': '#4a56b0', 'label': 'data(label)', 'font-size': '11px', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'width': 54, 'height': 54, 'shape': 'round-rectangle', 'border-width': 1, 'border-color': 'rgba(0,0,0,0.15)' } },
+      { selector: 'node[type="tf"]', style: peripheralNodeStyle({}) },
+      ...EDGE_STYLES_FULL,
+    ],
+    layout: { name: 'preset', animate: false }
+  });
+
+  cy.on('tap', 'node[type="tf"]', evt => {
+    window.location.href = '/perturbseq/gene/' + encodeURIComponent(evt.target.id());
+  });
+
+  function applyCyFilter() {
+    const evFilter  = (document.querySelector('#go-tf-filter-bar button[data-ev].active')  || {}).dataset?.ev  || 'all';
+    const dirFilter = (document.querySelector('#go-tf-filter-bar button[data-dir].active') || {}).dataset?.dir || 'all';
+    const searchQ   = (document.getElementById('go-tf-search')?.value || '').trim().toLowerCase();
+
+    // Disable bind slider when filtering excludes binding evidence
+    const bindingExcluded = evFilter === 'perturbation' || evFilter === 'both';
+    const bindLabel = document.getElementById('go-bind-label');
+    const bindWrap  = document.querySelector('.bind-range-wrap');
+    if (bindSlider) { bindSlider.disabled = bindingExcluded; bindSlider.classList.toggle('filter-disabled', bindingExcluded); }
+    if (bindRange)  { bindRange.disabled  = bindingExcluded; bindRange.classList.toggle('filter-disabled',  bindingExcluded); }
+    if (bindLabel)  bindLabel.classList.toggle('filter-disabled', bindingExcluded);
+    if (bindWrap)   bindWrap.classList.toggle('filter-disabled', bindingExcluded);
+
+    // Search: pull matching binding TFs into the graph regardless of slider limit
+    if (searchQ) {
+      const toAdd = orderedBindingTFs.filter(tf => tf.toLowerCase().includes(searchQ) && !addedBindingTFs.has(tf));
+      if (toAdd.length) {
+        const newEls = [];
+        toAdd.forEach(tf => {
+          if (!cy.$('#' + CSS.escape(tf)).length)
+            newEls.push({ group: 'nodes', data: { id: tf, label: tf, type: 'tf', direction: 'bind', evidence: 'binding' }, position: positions[tf] || { x: 0, y: 160 } });
+          newEls.push({ group: 'edges', data: { id: 'eb_' + tf, source: tf, target: GO_NODE, direction: 'bind', evidence: 'binding' } });
+          addedBindingTFs.add(tf);
+        });
+        if (newEls.length) cy.add(newEls);
+      }
+    } else {
+      const sliderSet = new Set(orderedBindingTFs.slice(0, parseInt((bindSlider && bindSlider.value) || initVal)));
+      const toRemove = [...addedBindingTFs].filter(tf => !sliderSet.has(tf));
+      if (toRemove.length) {
+        toRemove.forEach(tf => {
+          cy.$('#eb_' + CSS.escape(tf)).remove();
+          if (!cy.$('#' + CSS.escape(tf)).connectedEdges().length) cy.$('#' + CSS.escape(tf)).remove();
+        });
+        addedBindingTFs = sliderSet;
+      }
+    }
+
+    cy.elements().show();
+    cy.edges().forEach(e => {
+      const dir = e.data('direction'), ev = e.data('evidence');
+      let hide = false;
+      if      (evFilter === 'perturbation') hide = ev !== 'perturbation';
+      else if (evFilter === 'both')         hide = ev !== 'both';
+      else if (evFilter === 'binding')      hide = ev !== 'binding';
+      if (!hide && dirFilter === 'up')   hide = dir !== 'up';
+      if (!hide && dirFilter === 'down') hide = dir !== 'down';
+      if (hide) e.hide();
+    });
+    cy.nodes('[type="tf"]').forEach(n => {
+      if (n.connectedEdges(':visible').length === 0 || (searchQ && !n.id().toLowerCase().includes(searchQ)))
+        n.hide();
+    });
+    cy.fit(cy.elements(':visible'), 20);
+  }
+
+  function updateBindCount(newCount) {
+    if (bindSlider) bindSlider.value = newCount;
+    if (bindRange)  bindRange.value  = newCount;
+    const needed   = new Set(orderedBindingTFs.slice(0, newCount));
+    const toRemove = [...addedBindingTFs].filter(tf => !needed.has(tf));
+    const toAdd    = [...needed].filter(tf => !addedBindingTFs.has(tf));
+    toRemove.forEach(tf => {
+      cy.$('#eb_' + CSS.escape(tf)).remove();
+      if (!cy.$('#' + CSS.escape(tf)).connectedEdges().length) cy.$('#' + CSS.escape(tf)).remove();
+    });
+    if (toAdd.length) {
+      const newEls = [];
+      toAdd.forEach(tf => {
+        if (!cy.$('#' + CSS.escape(tf)).length)
+          newEls.push({ group: 'nodes', data: { id: tf, label: tf, type: 'tf', direction: 'bind', evidence: 'binding' }, position: positions[tf] || { x: 0, y: 160 } });
+        newEls.push({ group: 'edges', data: { id: 'eb_' + tf, source: tf, target: GO_NODE, direction: 'bind', evidence: 'binding' } });
+      });
+      if (newEls.length) cy.add(newEls);
+    }
+    addedBindingTFs = needed;
+    applyCyFilter();
+  }
+  if (bindSlider) bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
+  if (bindRange)  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
+
+  makeFilterSortTable(
+    document.getElementById('tf-table'),
+    TF_ROWS,
+    r => {
+      const dir = r.direction === 'Up'   ? '<span class="direction-up">↑ Up</span>'
+                : r.direction === 'Down' ? '<span class="direction-down">↓ Down</span>' : '—';
+      const or_s = r.odds_ratio == null ? '—' : r.odds_ratio >= 1e300 ? '∞' : r.odds_ratio.toFixed(1);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+      return tr;
+    },
+    { barId: 'go-tf-filter-bar', searchId: 'go-tf-search', countId: 'go-tf-count', onChange: applyCyFilter }
+  );
+
+  applyCyFilter();
+})();
+</script>
+{% endblock %}

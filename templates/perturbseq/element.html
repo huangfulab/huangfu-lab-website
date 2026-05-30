@@ -1,0 +1,960 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}{{ peak.chr }}:{{ "{:,}".format(peak.start) }}–{{ "{:,}".format(peak.end) }}{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/igv@3.0.2/dist/igv.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ── Design tokens (extend base vars) ─────────────────────────────────── */
+:root {
+  --el-accent:   #10b981;
+  --el-accent-2: #059669;
+  --el-blue:     #4a56b0;
+  --el-distal:   #3b82f6;
+  --el-multiome: #8b5cf6;
+  --el-hicar:    #f59e0b;
+  --mono:        'IBM Plex Mono', monospace;
+}
+
+
+.el-coord {
+  font-family: var(--mono);
+  font-size: clamp(17px, 3vw, 24px);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.el-coord-sep { color: var(--text-muted); font-weight: 400; margin: 0 2px; }
+
+.el-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.el-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.el-stat-pill.size     { color: var(--el-accent-2); border-color: #6ee7b7; background: rgba(16,185,129,0.07); }
+.el-stat-pill.tfs      { color: var(--el-blue);     border-color: #a5b0e8; background: rgba(74,86,176,0.07); }
+.el-stat-pill.genes    { color: #b45309;             border-color: #fcd34d; background: rgba(245,158,11,0.07); }
+
+/* ── Chromosome ruler ─────────────────────────────────────────────────── */
+.chr-ruler-wrap {
+  margin: 14px 0 24px;
+  max-width: 640px;
+}
+.chr-ruler-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+.chr-ruler {
+  position: relative;
+  height: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.chr-ruler-el {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: var(--el-accent);
+  border-radius: 2px;
+  min-width: 3px;
+  opacity: 0.85;
+}
+.chr-ruler-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* ── IGV card ─────────────────────────────────────────────────────────── */
+.igv-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; margin-bottom: 28px;
+}
+.igv-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.igv-locus-tag {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--text); background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+}
+.igv-track-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+.igv-track-swatch {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--text-muted);
+}
+.igv-track-swatch-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+#igv-container { min-height: 700px; }
+
+/* ── Section header ───────────────────────────────────────────────────── */
+.section-h2 {
+  font-size: 14px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+  margin: 0 0 12px; padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Two-panel grid ───────────────────────────────────────────────────── */
+.el-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+@media (max-width: 860px) { .el-panels { grid-template-columns: 1fr; } }
+
+.el-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.el-panel-header {
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.el-panel-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.el-panel-count {
+  font-size: 11px; color: var(--text-muted); margin-top: 1px;
+}
+
+/* ── TF binding list ──────────────────────────────────────────────────── */
+.tf-group-list { max-height: 480px; overflow-y: auto; scrollbar-width: thin; }
+.tf-group-item { border-bottom: 1px solid var(--border); }
+.tf-group-item:last-child { border-bottom: none; }
+.tf-group-name {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 16px 7px;
+  font-weight: 700; font-size: 13px; color: var(--text);
+  text-decoration: none;
+  background: var(--bg-elevated);
+  transition: background 0.12s;
+}
+.tf-group-name:hover { background: rgba(74,86,176,0.06); color: var(--accent); }
+.tf-ds-count {
+  font-size: 10px; font-weight: 600; color: var(--text-muted);
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1px 7px; margin-left: auto;
+}
+
+.tf-ds-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 16px 5px 28px;
+  font-size: 11.5px; color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+.tf-ds-row:first-of-type { border-top: none; }
+.tf-source-pill {
+  font-size: 10px; font-weight: 700; padding: 1px 6px;
+  border-radius: 4px; letter-spacing: 0.3px; flex-shrink: 0;
+}
+.tf-source-pill.motif { background: rgba(16,185,129,0.12); color: var(--el-accent-2); }
+.tf-source-pill.chip  { background: rgba(74,86,176,0.10);  color: var(--el-blue); }
+.tf-ds-cell { font-weight: 600; color: var(--text); }
+.tf-ds-dataset { font-family: var(--mono); font-size: 10px; color: inherit; text-decoration: none; }
+.tf-ds-dataset:hover { color: var(--el-blue); text-decoration: underline; }
+.tf-ds-overlap {
+  margin-left: auto; font-family: var(--mono); font-size: 10px;
+  color: var(--el-accent-2); white-space: nowrap;
+}
+
+/* ── Linked genes table ───────────────────────────────────────────────── */
+.gene-table-wrap { overflow-y: auto; max-height: 360px; scrollbar-width: thin; }
+.gene-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gene-table th {
+  position: sticky; top: 0; z-index: 1;
+  padding: 7px 12px; text-align: left;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+  background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.gene-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.gene-table tr:last-child td { border-bottom: none; }
+.gene-table tr[hidden] { display: none; }
+.gene-table-search {
+  font-size: 11.5px; padding: 3px 8px; border-radius: 6px; width: 130px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text); outline: none; margin-left: auto;
+}
+.gene-table-search:focus { border-color: var(--el-blue); box-shadow: 0 0 0 2px rgba(74,86,176,0.12); }
+.gene-link-name {
+  font-size: 12.5px; font-weight: 700; color: var(--text);
+  text-decoration: none; transition: color 0.12s;
+}
+.gene-link-name:hover { color: var(--accent); }
+.gene-dist { font-family: var(--mono); font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.gene-tf-links { display: flex; gap: 4px; flex-wrap: wrap; }
+.lt-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 10px; border: 1.5px solid; letter-spacing: 0.3px;
+  white-space: nowrap; width: fit-content;
+}
+.lt-pill.tss_proximal_1kb      { color: var(--el-accent-2); border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
+.lt-pill.tss_distal_10kb       { color: #2563eb;            border-color: #93c5fd; background: rgba(59,130,246,0.08); }
+.lt-pill.distal_multiome       { color: #7c3aed;            border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
+.lt-pill.distal_multiome_hicar { color: #b45309;            border-color: #fcd34d; background: rgba(245,158,11,0.08); }
+
+.tf-chip-row { display: flex; gap: 5px; flex-wrap: wrap; }
+.tf-chip {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
+  border-radius: 10px; background: rgba(74,86,176,0.08);
+  border: 1px solid rgba(74,86,176,0.2); color: var(--el-blue);
+  text-decoration: none; transition: all 0.12s;
+}
+.tf-chip:hover { background: rgba(74,86,176,0.15); }
+
+/* Split TF chip: [name | →] */
+.tf-via-group { display: inline-flex; border-radius: 10px; overflow: hidden; border: 1px solid rgba(74,86,176,0.22); }
+.tf-via-group .tf-via-name {
+  font-size: 10.5px; font-weight: 600; padding: 2px 7px;
+  background: rgba(74,86,176,0.08); color: var(--el-blue);
+  text-decoration: none; transition: background 0.12s;
+}
+.tf-via-group .tf-via-name:hover { background: rgba(74,86,176,0.16); }
+.tf-via-group .tf-via-link {
+  font-size: 10px; padding: 2px 6px;
+  background: rgba(74,86,176,0.14); color: var(--el-blue);
+  text-decoration: none; border-left: 1px solid rgba(74,86,176,0.22);
+  transition: background 0.12s; display: flex; align-items: center;
+}
+.tf-via-group .tf-via-link:hover { background: rgba(74,86,176,0.26); }
+
+/* ── TF filter bar ────────────────────────────────────────────────────── */
+.tf-filter-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.tf-search-wrap { position: relative; flex: 0 0 180px; }
+.tf-search-wrap svg {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
+}
+.tf-search-input {
+  width: 100%; padding: 5px 8px 5px 28px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg-card); color: var(--text); outline: none;
+}
+.tf-search-input:focus { border-color: var(--el-blue); box-shadow: 0 0 0 2px rgba(74,86,176,0.12); }
+.tf-filter-group { display: flex; align-items: center; gap: 6px; }
+.tf-filter-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); white-space: nowrap; }
+.tf-filter-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+.tf-filter-pill {
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-muted);
+  cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.tf-filter-pill:hover { border-color: var(--el-blue); color: var(--el-blue); }
+.tf-filter-pill.active { background: var(--el-blue); border-color: var(--el-blue); color: #fff; }
+.tf-filter-count {
+  margin-left: auto; font-size: 11px; color: var(--text-muted); white-space: nowrap;
+}
+.ct-search-wrap { position: relative; }
+.ct-search-input {
+  font-size: 11.5px; padding: 3px 7px; border-radius: 7px; width: 160px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text); cursor: pointer; outline: none;
+}
+.ct-search-input:focus { border-color: var(--el-blue); box-shadow: 0 0 0 2px rgba(74,86,176,0.12); cursor: text; }
+.ct-dropdown {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 180px; max-height: 220px; overflow-y: auto;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 200; scrollbar-width: thin;
+}
+.ct-dropdown.open { display: block; }
+.ct-option {
+  padding: 6px 12px; font-size: 11.5px; color: var(--text);
+  cursor: pointer; transition: background 0.1s;
+}
+.ct-option:hover, .ct-option.focused { background: rgba(74,86,176,0.08); color: var(--el-blue); }
+.ct-option.selected { color: var(--el-blue); font-weight: 600; }
+.ct-no-match { padding: 8px 12px; font-size: 11px; color: var(--text-muted); font-style: italic; }
+.tf-group-item[hidden] { display: none; }
+.tf-ds-row[hidden]     { display: none; }
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.el-empty {
+  padding: 32px 16px; text-align: center;
+  color: var(--text-muted); font-size: 12px; font-style: italic;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+.el-hero { display: flex; gap: 32px; align-items: flex-start; margin-bottom: 20px; }
+.el-hero-left  { flex: 0 0 auto; }
+.el-hero-right { flex: 1; min-width: 0; padding-top: 4px; }
+@media (max-width: 760px) { .el-hero { flex-direction: column; } }
+
+/* Single panel in info grid spans full width */
+.el-panels > :only-child { grid-column: 1 / -1; }
+
+/* ── Element description ─────────────────────────────────────────────── */
+.el-description {
+  font-size: 12.5px; line-height: 1.7; color: var(--text-muted);
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+}
+
+/* ── Accessibility chart ──────────────────────────────────────────────── */
+.atac-chart-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.atac-chart-header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.atac-chart-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.atac-chart-body { padding: 8px 12px 10px; }
+#atac-chart { width: 100%; display: block; }
+.chart-mode-toggle {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; margin-left: auto;
+}
+.chart-mode-btn {
+  padding: 3px 10px; font-size: 11px; font-weight: 600; border: none;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.chart-mode-btn.active { background: var(--el-accent); color: #fff; }
+.axis text { font-size: 10px; fill: var(--text-muted); }
+.axis path, .axis line { stroke: var(--border); }
+.grid line { stroke: var(--border); stroke-opacity: 0.6; }
+.grid path { stroke: none; }
+.mean-line { fill: none; stroke-width: 2; }
+.area-fill { opacity: 0.12; }
+.rep-dot { opacity: 0.55; }
+.zero-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3,3; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set lt_labels = {
+  'tss_proximal_1kb':       'Proximal 1 kb',
+  'tss_distal_10kb':        'Distal 10 kb',
+  'distal_multiome':        'Distal · Multiome',
+  'distal_multiome_hicar':  'Distal · Multiome · HiCAR',
+} %}
+
+<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<div class="el-hero">
+  <div class="el-hero-left">
+    <div class="el-coord">
+      <span>{{ peak.chr }}</span>
+      <span class="el-coord-sep">:</span>
+      <span>{{ "{:,}".format(peak.start) }}</span>
+      <span class="el-coord-sep">–</span>
+      <span>{{ "{:,}".format(peak.end) }}</span>
+    </div>
+    <div class="el-stat-row">
+      <span class="el-stat-pill size">{{ "{:,}".format(peak.end - peak.start) }} bp</span>
+      <span class="el-stat-pill tfs">{{ tfs | length }} TF{{ 's' if tfs | length != 1 else '' }}</span>
+      <span class="el-stat-pill genes">{{ genes | length }} linked gene{{ 's' if genes | length != 1 else '' }}</span>
+    </div>
+    <div class="chr-ruler-wrap" id="chr-ruler-wrap">
+      <div class="chr-ruler-label">Position on {{ peak.chr }}</div>
+      <div class="chr-ruler">
+        <div class="chr-ruler-el" id="chr-ruler-el"></div>
+      </div>
+      <div class="chr-ruler-ticks">
+        <span>0</span>
+        <span id="chr-ruler-mid"></span>
+        <span id="chr-ruler-end"></span>
+      </div>
+    </div>
+  </div>
+  <div class="el-hero-right">
+    <div class="el-description">{{ description }}</div>
+  </div>
+</div>
+
+<!-- ── Info panels: linked genes + accessibility ─────────────────────────── -->
+<div class="el-panels">
+  <div class="el-panel">
+    <div class="el-panel-header" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div class="el-panel-title">Linked Genes</div>
+      <div class="el-panel-count">{{ genes | length }} gene{{ 's' if genes | length != 1 else '' }}</div>
+      {% if genes | length > 1 %}
+      <input class="gene-table-search" id="gene-table-search" type="text" placeholder="Search gene…" autocomplete="off">
+      {% endif %}
+    </div>
+    {% if genes %}
+    <div class="gene-table-wrap">
+      <table class="gene-table">
+        <thead>
+          <tr>
+            <th>Gene</th>
+            <th>Dist. to TSS</th>
+            <th>Link type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="gene-table-body">
+          {% for g in genes %}
+          <tr data-gene="{{ g.gene | lower }}">
+            <td><a class="gene-link-name" href="/perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
+            <td class="gene-dist">{{ g.tss_dist_label }}</td>
+            <td><span class="lt-pill {{ g.link_type }}">{{ lt_labels.get(g.link_type, g.link_type) }}</span></td>
+            <td><a href="{{ url_for('perturbseq.element_gene_link_page', atac_peak_id=peak.atac_peak_id, gene=g.gene) }}" title="View element–gene link details" style="font-size:13px;color:var(--text-muted);text-decoration:none;transition:color 0.12s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">→</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="el-empty">No linked genes</div>
+    {% endif %}
+  </div>
+
+  {% if atac_counts %}
+  <div class="atac-chart-card">
+    <div class="atac-chart-header">
+      <span class="atac-chart-title">Chromatin Accessibility</span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-atac-mode="count">Count</button>
+        <button class="chart-mode-btn" data-atac-mode="z">Z-score</button>
+      </span>
+    </div>
+    <div class="atac-chart-body">
+      <svg id="atac-chart"></svg>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Genome browser ────────────────────────────────────────────────────── -->
+<h2 class="section-h2">Genome Browser</h2>
+<div style="position:relative">
+<div id="igv-bounds-toast" style="
+  display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:var(--bg-elevated); color:var(--text); border:1px solid var(--border);
+  border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.18);
+  padding:8px 16px; font-size:12px; font-weight:600; z-index:9999;
+  white-space:nowrap; pointer-events:none; text-align:center;
+">View limited to ±500 kb around this element.<br>For the full data, please see the UCSC track linked below.</div>
+<div class="igv-card">
+  <div class="igv-toolbar">
+    <span class="igv-locus-tag">{{ peak.chr }}:{{ "{:,}".format([peak.start - 5000, 0] | max) }} – {{ "{:,}".format(peak.end + 5000) }}</span>
+    <div class="igv-track-legend">
+      <span class="igv-track-swatch">
+        <span class="igv-track-swatch-dot" style="background:#10b981"></span>This element
+      </span>
+      {% if nearby_peaks %}
+      <span class="igv-track-swatch">
+        <span class="igv-track-swatch-dot" style="background:#d1d5db"></span>Other elements
+      </span>
+      {% endif %}
+      {% if genes %}
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#059669"></span><span class="igv-track-swatch-dot" style="background:#2563eb"></span><span class="igv-track-swatch-dot" style="background:#7c3aed"></span><span class="igv-track-swatch-dot" style="background:#b45309"></span>
+        Gene links
+      </span>
+      {% endif %}
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
+        ATAC-seq
+      </span>
+
+    </div>
+  </div>
+  <div id="igv-container"></div>
+</div>
+</div>
+
+<!-- ── TF binding ──────────────────────────────────────────────────────── -->
+<div class="el-panel" style="margin-bottom:28px" id="tf-binding-panel">
+  <div class="el-panel-header">
+    <div class="el-panel-title">TF Binding</div>
+    <div class="el-panel-count" id="tf-binding-count">{{ tfs | length }} transcription factor{{ 's' if tfs | length != 1 else '' }}</div>
+  </div>
+  {% if tfs %}
+  <div class="tf-filter-bar">
+    <div class="tf-search-wrap">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="tf-search-input" id="tf-search" type="text" placeholder="Search TF…" autocomplete="off">
+    </div>
+    <div class="tf-filter-group">
+      <span class="tf-filter-label">Source</span>
+      <div class="tf-filter-pills" id="source-filter">
+        <button class="tf-filter-pill active" data-source="">All</button>
+        <button class="tf-filter-pill" data-source="tobias">Motif</button>
+        <button class="tf-filter-pill" data-source="chip">ChIP</button>
+      </div>
+    </div>
+    <div class="tf-filter-group">
+      <span class="tf-filter-label">Cell type</span>
+      <div class="ct-search-wrap">
+        <input class="ct-search-input" id="celltype-input" type="text" placeholder="All cell types" autocomplete="off">
+        <div class="ct-dropdown" id="celltype-dropdown"></div>
+      </div>
+    </div>
+  </div>
+  <div class="tf-group-list" id="tf-group-list">
+    {% for tf_group in tfs %}
+    <div class="tf-group-item" data-tf="{{ tf_group.tf | lower }}">
+      <a class="tf-group-name" href="/perturbseq/gene/{{ tf_group.tf }}">
+        {{ tf_group.tf }}
+        <span class="tf-ds-count">{{ tf_group.datasets | length }} dataset{{ 's' if tf_group.datasets | length != 1 else '' }}</span>
+      </a>
+      {% for ds in tf_group.datasets %}
+      <div class="tf-ds-row" data-source="{{ ds.source }}" data-cell-type="{{ ds.cell_type }}">
+        <span class="tf-source-pill {% if ds.source == 'tobias' %}motif{% else %}chip{% endif %}">
+          {% if ds.source == 'tobias' %}Motif{% else %}ChIP{% endif %}
+        </span>
+        <span class="tf-ds-cell">{{ ds.cell_type }}</span>
+        <a class="tf-ds-dataset" href="/perturbseq/dataset/{{ ds.dataset_id }}">{{ ds.dataset }}</a>
+        {% if ds.overlap_bp %}<span class="tf-ds-overlap">{{ ds.overlap_bp }} bp overlap</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="el-empty" id="tf-no-results" style="display:none">No results match the current filters</div>
+  {% else %}
+  <div class="el-empty">No TF binding data for this element</div>
+  {% endif %}
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PEAK          = {{ peak | tojson }};
+const TF_PEAKS_IGV  = {{ tf_peaks_igv | tojson }};
+const ATAC_COUNTS   = {{ atac_counts | tojson }};
+const GENE_LINKS    = {{ genes | tojson }};
+const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
+
+/* ── Chromosome ruler ──────────────────────────────────────────────── */
+(function() {
+  const CHR_SIZES = {
+    chr1:248956422, chr2:242193529, chr3:198295559, chr4:190214555,
+    chr5:181538259, chr6:170805979, chr7:159345973, chr8:145138636,
+    chr9:138394717, chr10:133797422, chr11:135086622, chr12:133275309,
+    chr13:114364328, chr14:107043718, chr15:101991189, chr16:90338345,
+    chr17:83257441, chr18:80373285, chr19:58617616, chr20:64444167,
+    chr21:46709983, chr22:50818468, chrX:156040895, chrY:57227415,
+  };
+  const chrSize = CHR_SIZES[PEAK.chr];
+  if (!chrSize) return;
+  const pct = (v) => (v / chrSize * 100).toFixed(3) + '%';
+  const el = document.getElementById('chr-ruler-el');
+  if (el) { el.style.left = pct(PEAK.start); el.style.width = pct(PEAK.end - PEAK.start); }
+  const mid = document.getElementById('chr-ruler-mid');
+  const end = document.getElementById('chr-ruler-end');
+  const fmt = (n) => n >= 1e6 ? (n/1e6).toFixed(0)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'k' : n;
+  if (mid) mid.textContent = fmt(chrSize / 2);
+  if (end) end.textContent = fmt(chrSize);
+})();
+
+/* ── IGV genome browser ─────────────────────────────────────────── */
+(function() {
+  const container = document.getElementById('igv-container');
+  if (!container || typeof igv === 'undefined') return;
+
+  const _LINK_COLORS = {
+    tss_proximal_1kb:      '#059669',
+    tss_distal_10kb:       '#2563eb',
+    distal_multiome:       '#7c3aed',
+    distal_multiome_hicar: '#b45309',
+  };
+
+  const peakMid = Math.round((PEAK.start + PEAK.end) / 2);
+
+  const interactFeatures = GENE_LINKS
+    .filter(g => g.tss != null)
+    .map(g => ({
+      chr:    PEAK.chr,
+      start:  Math.min(peakMid, g.tss),
+      end:    Math.max(peakMid, g.tss),
+      chr1:   PEAK.chr,
+      start1: peakMid,
+      end1:   peakMid,
+      chr2:   g.tss_chr || PEAK.chr,
+      start2: g.tss,
+      end2:   g.tss,
+      name:   g.gene,
+      color:  _LINK_COLORS[g.link_type] || 'rgb(150,150,150)',
+    }));
+
+  const _allStarts = [PEAK.start].concat(interactFeatures.map(f => f.start2));
+  const _allEnds   = [PEAK.end].concat(interactFeatures.map(f => f.end2));
+  const _spanMin   = Math.min(..._allStarts);
+  const _spanMax   = Math.max(..._allEnds);
+  const _pad       = Math.round((_spanMax - _spanMin) * 0.20);
+  const locus = interactFeatures.length
+    ? `${PEAK.chr}:${Math.max(0, _spanMin - _pad)}-${_spanMax + _pad}`
+    : `${PEAK.chr}:${Math.max(0, PEAK.start - _pad)}-${PEAK.end + _pad}`;
+
+  const tracks = [];
+  if (interactFeatures.length) tracks.push({
+    name:              'Element → Gene links',
+    type:              'interact',
+    arcType:           'nested',
+    showBlocks:        true,
+    height:            80,
+    visibilityWindow:  -1,
+    features:          interactFeatures,
+  });
+
+  const _BW_TRACKS = [
+    { tp: 'ES_0h',  label: 'ES 0h',  color: '#6366f1' },
+    { tp: 'DE_12h', label: 'DE 12h', color: '#818cf8' },
+    { tp: 'DE_24h', label: 'DE 24h', color: '#38bdf8' },
+    { tp: 'DE_36h', label: 'DE 36h', color: '#34d399' },
+    { tp: 'DE_48h', label: 'DE 48h', color: '#fbbf24' },
+    { tp: 'DE_60h', label: 'DE 60h', color: '#fb923c' },
+    { tp: 'DE_72h', label: 'DE 72h', color: '#f87171' },
+  ];
+  _BW_TRACKS.forEach(bw => tracks.push({
+    name:          `${bw.label} (ATAC)`,
+    type:          'wig',
+    format:        'bigwig',
+    url:           `/perturbseq/bw/${bw.tp}/${bw.tp}-merged.bw`,
+    color:         bw.color,
+    height:         40,
+    autoscaleGroup: 'atac',
+  }));
+  tracks.push({
+    name:        'This element',
+    type:        'annotation',
+    displayMode: 'EXPANDED',
+    height:       40,
+    color:        '#10b981',
+    features:     [{ chr: PEAK.chr, start: PEAK.start, end: PEAK.end, name: `${PEAK.chr}:${PEAK.start.toLocaleString()}–${PEAK.end.toLocaleString()}` }],
+  });
+  if (NEARBY_PEAKS.length) tracks.push({
+    name:        'Other elements',
+    type:        'annotation',
+    displayMode: 'COLLAPSED',
+    height:       24,
+    color:        '#d1d5db',
+    features:     NEARBY_PEAKS,
+  });
+  tracks.push({
+    name:             'Ensembl genes (GRCh38.112)',
+    type:             'annotation',
+    format:           'gtf',
+    url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    displayMode:      'EXPANDED',
+    height:            140,
+    color:             '#6b7280',
+    visibilityWindow:  2000000,
+    nameField:        'gene_name',
+  });
+
+  const HALF_WINDOW   = 500000;
+  const elementCenter = Math.round((PEAK.start + PEAK.end) / 2);
+  const boundsStart   = Math.max(0, elementCenter - HALF_WINDOW);
+  const boundsEnd     = elementCenter + HALF_WINDOW;
+
+  igv.createBrowser(container, {
+    genome:              'hg38',
+    locus,
+    showChromosomeWidget: false,
+    maximumBases:        1000000,
+    tracks,
+  }).then(function(browser) {
+    // Remove the default RefSeq Genes track loaded by the hg38 genome preset
+    browser.trackViews
+      .filter(tv => tv.track.name && /refseq/i.test(tv.track.name))
+      .forEach(tv => browser.removeTrack(tv.track));
+
+    const toast = document.getElementById('igv-bounds-toast');
+    let _toastTimer = null;
+    function showToast() {
+      if (!toast) return;
+      toast.style.display = 'block';
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    }
+
+    let _constraining = false;
+    browser.on('locuschange', function(referenceFrameList) {
+      if (_constraining) return;
+      const frame = referenceFrameList[0];
+      if (!frame || frame.chr !== PEAK.chr) {
+        _constraining = true;
+        showToast();
+        browser.search(`${PEAK.chr}:${boundsStart + 1}-${boundsEnd}`).finally(() => { _constraining = false; });
+        return;
+      }
+      const viewWidthBp = frame.bpPerPixel * container.clientWidth;
+      const viewStart   = Math.round(frame.start);
+      const viewEnd     = Math.round(frame.start + viewWidthBp);
+      let newStart = viewStart, newEnd = viewEnd, clamped = false;
+      if (viewStart < boundsStart) { newStart = boundsStart; newEnd = newStart + viewWidthBp; clamped = true; }
+      if (newEnd   > boundsEnd)    { newEnd = boundsEnd; newStart = Math.max(boundsStart, newEnd - viewWidthBp); clamped = true; }
+      if (clamped) {
+        _constraining = true;
+        showToast();
+        browser.search(`${PEAK.chr}:${Math.round(newStart) + 1}-${Math.round(newEnd)}`).finally(() => { _constraining = false; });
+      }
+    });
+  }).catch(() => {});
+})();
+
+/* ── Linked genes table search ───────────────────────────────────── */
+(function() {
+  const input = document.getElementById('gene-table-search');
+  if (!input) return;
+  input.addEventListener('input', function() {
+    const q = this.value.trim().toLowerCase();
+    document.querySelectorAll('#gene-table-body tr').forEach(row => {
+      row.hidden = q && !row.dataset.gene.includes(q);
+    });
+  });
+})();
+
+/* ── TF binding filter ───────────────────────────────────────────── */
+(function() {
+  const list = document.getElementById('tf-group-list');
+  if (!list) return;
+
+  /* Searchable cell-type dropdown */
+  const allCellTypes = ['', ...new Set(
+    [...list.querySelectorAll('[data-cell-type]')].map(el => el.dataset.cellType)
+  )].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b));
+
+  const ctInput    = document.getElementById('celltype-input');
+  const ctDropdown = document.getElementById('celltype-dropdown');
+  let ctValue = '', focusedIdx = -1;
+
+  function renderDropdown(q) {
+    const filtered = allCellTypes.filter(ct =>
+      ct === '' || ct.toLowerCase().includes(q.toLowerCase())
+    );
+    ctDropdown.innerHTML = '';
+    if (!filtered.length) {
+      ctDropdown.innerHTML = '<div class="ct-no-match">No match</div>';
+    }
+    filtered.forEach((ct, i) => {
+      const d = document.createElement('div');
+      d.className = 'ct-option' + (ct === ctValue ? ' selected' : '');
+      d.textContent = ct === '' ? 'All cell types' : ct;
+      d.dataset.value = ct;
+      d.addEventListener('mousedown', e => { e.preventDefault(); selectCt(ct); });
+      ctDropdown.appendChild(d);
+    });
+    focusedIdx = -1;
+  }
+
+  function selectCt(val) {
+    ctValue = val;
+    activeCt = val;
+    ctInput.value = val === '' ? '' : val;
+    ctInput.placeholder = val === '' ? 'All cell types' : 'All cell types';
+    ctDropdown.classList.remove('open');
+    applyFilters();
+  }
+
+  ctInput.addEventListener('focus', () => { renderDropdown(''); ctDropdown.classList.add('open'); });
+  ctInput.addEventListener('input', () => { renderDropdown(ctInput.value); ctDropdown.classList.add('open'); });
+  ctInput.addEventListener('blur', () => {
+    setTimeout(() => ctDropdown.classList.remove('open'), 150);
+    if (ctValue === '') ctInput.value = '';
+  });
+  ctInput.addEventListener('keydown', e => {
+    const opts = [...ctDropdown.querySelectorAll('.ct-option')];
+    if (e.key === 'ArrowDown') { focusedIdx = Math.min(focusedIdx + 1, opts.length - 1); opts.forEach((o,i) => o.classList.toggle('focused', i === focusedIdx)); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { focusedIdx = Math.max(focusedIdx - 1, 0); opts.forEach((o,i) => o.classList.toggle('focused', i === focusedIdx)); e.preventDefault(); }
+    else if (e.key === 'Enter' && focusedIdx >= 0) { selectCt(opts[focusedIdx].dataset.value); }
+    else if (e.key === 'Escape') { ctDropdown.classList.remove('open'); ctInput.blur(); }
+  });
+
+  let searchQ = '', activeSrc = '', activeCt = '';
+
+  function applyFilters() {
+    const groups = list.querySelectorAll('.tf-group-item');
+    let visibleTFs = 0;
+    groups.forEach(group => {
+      const tfMatch = !searchQ || group.dataset.tf.includes(searchQ);
+      const rows = group.querySelectorAll('.tf-ds-row');
+      let visibleRows = 0;
+      rows.forEach(row => {
+        const srcMatch = !activeSrc || row.dataset.source === activeSrc;
+        const ctMatch  = !activeCt  || row.dataset.cellType === activeCt;
+        const show = tfMatch && srcMatch && ctMatch;
+        row.hidden = !show;
+        if (show) visibleRows++;
+      });
+      group.hidden = visibleRows === 0;
+      if (!group.hidden) visibleTFs++;
+    });
+    const noResults = document.getElementById('tf-no-results');
+    if (noResults) noResults.style.display = visibleTFs === 0 ? '' : 'none';
+    const countEl = document.getElementById('tf-binding-count');
+    if (countEl) {
+      const total = groups.length;
+      countEl.textContent = visibleTFs === total
+        ? `${total} transcription factor${total !== 1 ? 's' : ''}`
+        : `${visibleTFs} of ${total} transcription factors`;
+    }
+  }
+
+  /* Search */
+  document.getElementById('tf-search')?.addEventListener('input', e => {
+    searchQ = e.target.value.trim().toLowerCase();
+    applyFilters();
+  });
+
+  /* Source pills */
+  document.getElementById('source-filter')?.addEventListener('click', e => {
+    const btn = e.target.closest('.tf-filter-pill');
+    if (!btn) return;
+    document.querySelectorAll('#source-filter .tf-filter-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeSrc = btn.dataset.source;
+    applyFilters();
+  });
+
+})();
+
+/* ── ATAC accessibility chart ────────────────────────────────────── */
+(function() {
+  const svgEl = document.getElementById('atac-chart');
+  if (!svgEl || !ATAC_COUNTS.length || typeof d3 === 'undefined') return;
+
+  const COLOR  = '#10b981';
+  const margin = { top: 10, right: 10, bottom: 36, left: 44 };
+  const W      = svgEl.parentElement.clientWidth - 2;
+  const H      = 160;
+  const iW     = W - margin.left - margin.right;
+  const iH     = H - margin.top  - margin.bottom;
+  const tps    = ATAC_COUNTS.map(d => d.timepoint);
+  const x      = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+
+  const tip = d3.select('body').append('div')
+    .style('position','fixed').style('pointer-events','none')
+    .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+    .style('border-radius','6px').style('padding','5px 9px')
+    .style('font-size','11px').style('color','var(--text)')
+    .style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+    .style('display','none').style('z-index','9999').style('white-space','nowrap')
+    .style('line-height','1.5');
+  function showTip(ev, html) { tip.html(html).style('display','block'); moveTip(ev); }
+  function moveTip(ev) { tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'); }
+  function hideTip() { tip.style('display','none'); }
+
+  function render(mode) {
+    hideTip();
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    svgEl.setAttribute('width', W);
+    svgEl.setAttribute('height', H);
+    const svg = d3.select(svgEl).append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const val  = d => mode === 'z' ? (d.mean_z  ?? 0) : (d.mean  ?? 0);
+    const reps = d => mode === 'z' ?  d.z_replicates  :  d.replicates;
+
+    const allReps  = ATAC_COUNTS.flatMap(d => reps(d).filter(v => v != null));
+    const allMeans = ATAC_COUNTS.map(val);
+    const yLo = mode === 'z' ? Math.min(d3.min(allReps) ?? 0, d3.min(allMeans)) : 0;
+    const yHi = Math.max(d3.max(allReps) ?? 0, d3.max(allMeans));
+    const pad = (yHi - yLo) * 0.08 || 0.5;
+    const y   = d3.scaleLinear().domain([yLo - (mode === 'z' ? pad : 0), yHi + pad]).range([iH, 0]).nice();
+
+    svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+    svg.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`)
+      .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+      .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+    svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+    svg.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-40)
+      .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)')
+      .text(mode === 'z' ? 'Z-score' : 'Norm. count');
+
+    if (mode === 'z') {
+      svg.append('line').attr('class','zero-line')
+        .attr('x1',0).attr('x2',iW).attr('y1',y(0)).attr('y2',y(0));
+    } else {
+      svg.append('path').datum(ATAC_COUNTS).attr('class','area-fill').attr('fill',COLOR)
+        .attr('d', d3.area().x(d=>x(d.timepoint)).y0(iH).y1(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    }
+    svg.append('path').datum(ATAC_COUNTS).attr('class','mean-line').attr('stroke',COLOR)
+      .attr('d', d3.line().x(d=>x(d.timepoint)).y(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+
+    ATAC_COUNTS.forEach(d => {
+      const label = d.timepoint.replace('_',' ');
+      const unit  = mode === 'z' ? 'z' : 'count';
+      reps(d).forEach(v => {
+        if (v == null) return;
+        svg.append('circle').attr('class','rep-dot')
+          .attr('cx',x(d.timepoint)).attr('cy',y(v)).attr('r',3.5).attr('fill',COLOR)
+          .style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${label}</strong><br>${v.toFixed(3)} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      });
+      if (val(d) != null) {
+        svg.append('circle').attr('cx',x(d.timepoint)).attr('cy',y(val(d))).attr('r',5)
+          .attr('fill',COLOR).attr('stroke','#fff').attr('stroke-width',1.5)
+          .style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${label}</strong><br>mean ${val(d).toFixed(3)} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      }
+    });
+  }
+
+  render('count');
+
+  document.querySelectorAll('[data-atac-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-atac-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render(btn.dataset.atacMode);
+    });
+  });
+})();
+</script>
+{% endblock %}

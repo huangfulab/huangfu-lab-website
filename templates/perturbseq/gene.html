@@ -1,0 +1,1278 @@
+{% extends "perturbseq/base.html" %}
+{% from "perturbseq/_network_macros.html" import network_legend, landing_split, filter_bar %}
+{% block title %}{{ gene }}{% endblock %}
+
+{% block extra_style %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.css">
+<script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/igv@3.0.2/dist/igv.css">
+<script src="https://cdn.jsdelivr.net/npm/igv@3.0.2/dist/igv.min.js"></script>
+<style>
+/* ── Simple-DataTables: match page data-table style ───────────────────── */
+#tf-el-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; margin-top: 12px;
+}
+#tf-el-wrap .dataTable-wrapper { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+#tf-el-wrap .dataTable-top,
+#tf-el-wrap .dataTable-bottom {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: var(--bg-elevated); gap: 10px; flex-wrap: wrap;
+}
+#tf-el-wrap .dataTable-top   { border-bottom: 1px solid var(--border); }
+#tf-el-wrap .dataTable-bottom { border-top: 1px solid var(--border); }
+#tf-el-wrap .dataTable-search input,
+#tf-el-wrap .dataTable-selector {
+  font-family: inherit; font-size: 12px;
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-card); color: var(--text); outline: none;
+}
+#tf-el-wrap .dataTable-search input { width: 180px; }
+#tf-el-wrap .dataTable-search input:focus,
+#tf-el-wrap .dataTable-selector:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 2px rgba(74,86,176,0.12);
+}
+#tf-el-wrap .dataTable-dropdown label,
+#tf-el-wrap .dataTable-info  { font-size: 11px; color: var(--text-muted); }
+#tf-el-wrap table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 0.82rem; font-family: inherit;
+}
+#tf-el-wrap table thead th {
+  background: var(--bg-elevated); color: var(--text-muted);
+  font-weight: 600; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.6px; border-bottom: 1px solid var(--border);
+  padding: 0.6rem 1rem; text-align: left; cursor: pointer; user-select: none;
+  white-space: nowrap;
+}
+#tf-el-wrap table thead th[data-sort="asc"]::after  { content: ' ↑'; }
+#tf-el-wrap table thead th[data-sort="desc"]::after { content: ' ↓'; }
+#tf-el-wrap table thead th svg { display: none; }
+#tf-el-wrap table tbody td {
+  color: var(--text); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem;
+}
+#tf-el-wrap table tbody tr:last-child td { border-bottom: none; }
+#tf-el-wrap table tbody tr:hover td { background: var(--bg-elevated); }
+#tf-el-wrap .dataTable-pagination ul {
+  display: flex; gap: 4px; list-style: none; margin: 0; padding: 0;
+}
+#tf-el-wrap .dataTable-pagination li a {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 9px; font-size: 12px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-card); color: var(--text);
+  text-decoration: none; cursor: pointer; transition: background 0.12s;
+}
+#tf-el-wrap .dataTable-pagination li a:hover       { background: var(--bg-elevated); }
+#tf-el-wrap .dataTable-pagination li.active a      { background: var(--accent); color: #fff; border-color: var(--accent); }
+#tf-el-wrap .dataTable-pagination li.disabled a    { opacity: 0.4; cursor: default; }
+#tf-el-loading {
+  display: flex; align-items: center; gap: 8px;
+  padding: 20px 0; font-size: 12px; color: var(--text-muted);
+}
+.dt-spinner {
+  width: 14px; height: 14px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: dt-spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes dt-spin { to { transform: rotate(360deg); } }
+
+  /* ── Server-side table controls ──────────────────────────────────────── */
+  .sst-bar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 14px; background:var(--bg-elevated); gap:10px; flex-wrap:wrap;
+    font-size:12px; color:var(--text-muted);
+  }
+  .sst-bar.top    { border-bottom:1px solid var(--border); }
+  .sst-bar.bottom { border-top:1px solid var(--border); }
+  .sst-search {
+    font-family:inherit; font-size:12px; padding:4px 8px;
+    border:1px solid var(--border); border-radius:6px;
+    background:var(--bg-card); color:var(--text); outline:none; width:200px;
+  }
+  .sst-search:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(74,86,176,0.12); }
+  .sst-select {
+    font-family:inherit; font-size:12px; padding:3px 6px;
+    border:1px solid var(--border); border-radius:6px;
+    background:var(--bg-card); color:var(--text); outline:none;
+  }
+  .sst-pages { display:flex; gap:3px; flex-wrap:wrap; }
+  .sst-page-btn {
+    padding:2px 8px; font-size:12px; font-family:inherit;
+    border:1px solid var(--border); border-radius:5px;
+    background:var(--bg-card); color:var(--text);
+    cursor:pointer; transition:background 0.12s; line-height:1.6;
+  }
+  .sst-page-btn:hover:not([disabled]) { background:var(--bg-elevated); }
+  .sst-page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .sst-page-btn[disabled] { opacity:0.4; cursor:default; }
+  table.data-table th.sst-sortable { cursor:pointer; }
+  table.data-table th.sst-sortable::after { content:' ↕'; opacity:0.35; font-weight:400; }
+  table.data-table th.sst-asc::after  { content:' ↑'; opacity:1; }
+  table.data-table th.sst-desc::after { content:' ↓'; opacity:1; }
+
+  /* ── Header ───────────────────────────────────────────────────────────── */
+  .gene-hero { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+  .gene-title { font-size:26px; font-weight:700; color:var(--text); }
+  .tf-badge {
+    font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px;
+    background:var(--accent); color:#fff; letter-spacing:0.4px;
+    position:relative; top:-2px;
+  }
+  .gene-fullname { font-size:13px; color:var(--text-muted); margin-bottom:10px; }
+
+  /* ── Expression chart ─────────────────────────────────────────────────── */
+  .expr-section { margin-bottom:24px; }
+  .expr-section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .expr-section-header h2 { margin:0; }
+  #expr-chart { width:100%; max-width:680px; }
+
+  /* ── TF intro row: description + chart side by side ──────────────────── */
+  .tf-intro-row {
+    display:grid; grid-template-columns:1fr minmax(0,360px);
+    gap:18px; margin-bottom:20px; align-items:start;
+  }
+  @media (max-width:860px) { .tf-intro-row { grid-template-columns:1fr; } }
+  .tf-chart-card {
+    background:var(--bg-card); border:1px solid var(--border);
+    border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow);
+  }
+  .tf-chart-label {
+    font-size:11px; font-weight:600; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+  }
+
+  /* ── Toggle buttons ───────────────────────────────────────────────────── */
+  .mod-btn {
+    padding:5px 14px; border-radius:20px; border:1px solid var(--border);
+    background:var(--bg-elevated); color:var(--text-muted);
+    font-size:12px; font-weight:500; cursor:pointer; transition:all 0.12s; line-height:1.4;
+  }
+  .mod-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .mod-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mod-view { display:none; }
+  .mod-view.active { display:block; }
+
+  /* ── Full-width segmented toggle (TF regulated modules) ──────────────── */
+  .module-toggle-full {
+    display:flex; margin-bottom:0; border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; background:var(--bg-elevated);
+  }
+  .module-toggle-full .mod-btn {
+    flex:1; border:none; border-radius:0; border-right:1px solid var(--border);
+    padding:9px 14px; font-size:13px; text-align:center; justify-content:center;
+  }
+  .module-toggle-full .mod-btn:last-child { border-right:none; }
+  .module-toggle-full .mod-btn.active {
+    background:var(--accent); color:#fff; z-index:1;
+  }
+  .module-toggle-full .mod-btn:hover:not(.active) {
+    background:var(--bg-card); color:var(--accent); border-color:var(--border);
+  }
+
+  /* ── TF regulated-modules table views ────────────────────────────────── */
+  .tf-view {
+    border:1px solid var(--border); border-top:none;
+    border-radius:0 0 var(--radius) var(--radius);
+    background:var(--bg-card);
+  }
+  .tf-view table.data-table { margin-top:0; border:none; border-radius:0; box-shadow:none; }
+  .tf-view table.data-table th { position:sticky; top:0; z-index:1; }
+  .tf-placeholder {
+    padding:48px 24px; text-align:center;
+    color:var(--text-muted); font-size:13px; font-style:italic;
+  }
+
+  .no-data { font-size:13px; color:var(--text-muted); font-style:italic; margin-top:8px; }
+
+  /* ── TF network split layout ──────────────────────────────────────────── */
+  .tf-net-split {
+    display: grid; grid-template-columns: 1fr 1fr;
+  }
+  .tf-net-split .cy-wrap {
+    display: flex; flex-direction: column; min-width: 0;
+    border-right: 1px solid var(--border);
+  }
+  .tf-net-split .side-table-wrap {
+    min-width: 0; max-height: 55vh; overflow-y: auto;
+  }
+  .tf-net-split .side-table-wrap table.data-table { margin-top:0; border:none; border-radius:0; box-shadow:none; }
+  .tf-net-split .side-table-wrap table.data-table th { position:sticky; top:0; z-index:1; }
+  #tf-mod-cy { flex:1; height:0; min-height:52vh; }
+  #tf-dev-cy { flex:1; height:0; min-height:40vh; }
+  @media (max-width:900px) {
+    .tf-net-split { grid-template-columns: 1fr; }
+    .tf-net-split .cy-wrap { border-right:none; border-bottom:1px solid var(--border); }
+    #tf-mod-cy { min-height:45vh; }
+    #tf-dev-cy { min-height:35vh; }
+  }
+/* ── Gene locus IGV browser ─────────────────────────────────────────── */
+.gene-igv-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 28px;
+}
+.gene-igv-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; gap: 10px; flex-wrap: wrap;
+}
+.gene-igv-locus-tag {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-muted); background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: 2px 8px;
+}
+#gene-igv-container { min-height: 380px; }
+#gene-igv-container .igv-root-div { border: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ───────────────────────────────────────────────────────────── -->
+<div class="gene-hero">
+  <span class="gene-title">{{ gene }}</span>
+  {% if is_tf %}<span class="tf-badge">Transcription Factor</span>{% endif %}
+</div>
+{% if tf_desc and tf_desc.name %}
+<div class="gene-fullname">{{ tf_desc.name }}</div>
+{% endif %}
+
+<!-- ── Expression chart (non-TF) / intro row (TF) ───────────────────────── -->
+{% if is_tf %}
+<div class="tf-intro-row">
+  <div class="module-intro" style="margin:0;--accent:{{ card_color }}">
+    {% if tf_desc and tf_desc.summary %}<p>{{ tf_desc.summary }}</p>{% endif %}
+    <div class="intro-highlights" style="margin-top:0.6rem">
+      {% set pert_mods = tf_reg_modules | rejectattr('evidence', 'equalto', 'binding') | list %}
+      {% if pert_mods %}
+      <span><strong>Regulated modules:</strong>
+        {% for m in pert_mods[:5] %}<a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=m.module) }}" style="background:{{ m.color }};color:#fff;">{{ m.module }}</a> {% endfor %}
+      </span>
+      {% endif %}
+      {% if tc_reg_clusters %}
+      <span><strong>Developmental clusters:</strong>
+        {% for c in tc_reg_clusters[:4] %}<a class="intro-tag submodule-tag" href="{{ c.url }}" style="background:{{ c.color }};color:#fff;">{{ c.label }}</a> {% endfor %}
+      </span>
+      {% endif %}
+      {% if membership %}
+      <span><strong>Member of:</strong>
+        {% if membership.submodule %}<a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
+        <a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="tf-chart-card">
+    <div class="tf-chart-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span id="gene-chart-label">Expression (TPM)</span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-gene-mode="tpm">TPM</button>
+        <button class="chart-mode-btn" data-gene-mode="z">Z-score</button>
+      </span>
+    </div>
+    <svg id="expr-chart" style="width:100%;display:block"></svg>
+  </div>
+</div>
+
+{% else %}
+<div class="expr-section">
+  <div class="expr-section-header">
+    <h2>Expression across differentiation</h2>
+    <span class="chart-mode-toggle">
+      <button class="chart-mode-btn active" data-gene-mode="tpm">TPM</button>
+      <button class="chart-mode-btn" data-gene-mode="z">Z-score</button>
+    </span>
+  </div>
+  <svg id="expr-chart"></svg>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- TF-ONLY: Regulated Modules section                                    -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+{% if is_tf %}
+<h2 style="margin-bottom:4px">Regulated Modules</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
+
+<div class="module-toggle-full">
+  <button class="mod-btn active" data-group="tf" data-view="tf-dev">Developmental</button>
+  <button class="mod-btn"        data-group="tf" data-view="tf-super">Supermodule</button>
+  <button class="mod-btn"        data-group="tf" data-view="tf-sub">Submodule</button>
+</div>
+
+<!-- Developmental: gene clusters regulated by this TF -->
+<div id="view-tf-dev" class="mod-view active tf-view">
+  {% if tc_reg_clusters %}
+  {{ filter_bar('tf-dev-filter-bar', dir_label_id='tf-dev-dir-label', count_id='tf-dev-count') }}
+  <div class="tf-net-split">
+    <div class="cy-wrap" style="position:relative">
+      <button id="tf-dev-cy-reset" style="position:absolute;top:6px;right:6px;z-index:10;padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer">Reset view</button>
+      {{ network_legend('full') }}
+      <div id="tf-dev-cy"></div>
+    </div>
+    <div class="side-table-wrap">
+      <table class="data-table" id="tf-dev-table">
+        <thead><tr>
+          <th class="sortable" data-key="label" data-type="string">Cluster</th>
+          <th class="sortable" data-key="direction" data-type="string" title="Effect of TF knockdown on this cluster">Dir</th>
+          <th class="sortable" data-key="nes" data-type="number" title="Normalized Enrichment Score">NES</th>
+          <th class="sortable" data-key="padj" data-type="number">padj</th>
+          <th class="sortable" data-key="binding" data-type="string" title="TF binding confirmed near cluster genes">Bind</th>
+          <th class="sortable" data-key="odds_ratio" data-type="number" title="Binding odds ratio">OR</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><strong>No developmental cluster associations</strong><span>This TF has no significant perturbation or binding associations with developmental gene clusters.</span></div>
+  {% endif %}
+</div>
+
+<!-- Supermodule: perturbation/binding effects per supermodule -->
+<div id="view-tf-super" class="mod-view tf-view">
+  <div class="filter-bar" id="tf-reg-filter-bar">
+    <span class="filter-label">Evidence:</span>
+    <button class="active" data-ev="all">All</button>
+    <button data-ev="both">Perturbation + Binding</button>
+    <button data-ev="perturbation">Perturbation only</button>
+    <button data-ev="binding">Binding only</button>
+    <span class="filter-sep"></span>
+    <span class="filter-label" id="tf-reg-dir-label">Direction:</span>
+    <button class="active" data-dir="all">All</button>
+    <button data-dir="up">↑ Up</button>
+    <button data-dir="down">↓ Down</button>
+    <span class="filter-count" id="tf-reg-count"></span>
+  </div>
+  <div class="landing-split">
+    <div class="cy-wrap" style="position:relative">
+      <button id="tf-mod-cy-reset" style="position:absolute;top:6px;right:6px;z-index:10;padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer">Reset view</button>
+      {{ network_legend('full') }}
+      <div id="tf-mod-cy"></div>
+    </div>
+    <div class="side-table-wrap">
+      <table class="data-table" id="tf-reg-table">
+        <thead><tr>
+          <th class="sortable" data-key="module"     data-type="string">Module</th>
+          <th class="sortable" data-key="direction"  data-type="string" title="Direction: effect of TF knockdown on this module">Dir</th>
+          <th class="sortable" data-key="mean_NES"   data-type="number" title="Normalized Enrichment Score (positive = KD upregulates; negative = KD downregulates)">NES</th>
+          <th class="sortable" data-key="n_sig_gRNA" data-type="number">#gRNA</th>
+          <th class="sortable" data-key="padj"       data-type="number">padj</th>
+          <th class="sortable" data-key="binding"    data-type="string">Bind</th>
+          <th class="sortable" data-key="odds_ratio" data-type="number">OR</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Submodule: perturbation effects per submodule -->
+<div id="view-tf-sub" class="mod-view tf-view">
+  {% if submodules_flat %}
+  <div class="filter-bar" id="tf-sub-filter-bar">
+    <span class="filter-label">Evidence:</span>
+    <button class="active" data-ev="all">All</button>
+    <button data-ev="both">Perturbation + Binding</button>
+    <button data-ev="perturbation">Perturbation only</button>
+    <button data-ev="binding">Binding only</button>
+    <span class="filter-sep"></span>
+    <span class="filter-label" id="tf-sub-dir-label">Direction:</span>
+    <button class="active" data-dir="all">All</button>
+    <button data-dir="up">↑ Up</button>
+    <button data-dir="down">↓ Down</button>
+    <span class="filter-sep"></span>
+    <span class="filter-label" id="sub-limit-label">Max shown:</span>
+    <input type="number" id="sub-max-slider" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 30]|min }}" step="1" style="width:4rem;font-size:0.72rem;padding:0.2rem 0.3rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text)">
+    <div class="bind-range-wrap">
+      <input type="range" id="sub-max-range" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 30]|min }}" step="1">
+    </div>
+    <span class="filter-count" id="tf-sub-count"></span>
+  </div>
+  <div class="landing-split">
+    <div class="cy-wrap" style="position:relative">
+      <button id="tf-sub-cy-reset" style="position:absolute;top:6px;right:6px;z-index:10;padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer">Reset view</button>
+      {{ network_legend('full') }}
+      <div id="tf-sub-cy"></div>
+    </div>
+    <div class="side-table-wrap">
+      <div class="tf-search-wrap" style="padding:8px 12px 0">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input class="tf-search-input" id="sub-search" type="text" placeholder="Search submodule or module…" autocomplete="off" spellcheck="false">
+      </div>
+      <table class="data-table" id="tf-sub-table">
+        <thead><tr>
+          <th class="sortable" data-key="id"           data-type="string">Submodule</th>
+          <th class="sortable" data-key="module"       data-type="string">Module</th>
+          <th class="sortable" data-key="direction"    data-type="string">Dir</th>
+          <th class="sortable" data-key="mean_NES"     data-type="number">NES</th>
+          <th class="sortable" data-key="n_sig_gRNA"   data-type="number">#gRNA</th>
+          <th class="sortable" data-key="binding"      data-type="string">Bind</th>
+          <th class="sortable" data-key="odds_ratio"   data-type="number">OR</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><strong>No submodule associations</strong><span>This TF has no perturbation or binding associations with submodules.</span></div>
+  {% endif %}
+</div>
+
+{% endif %}
+<!-- end TF section -->
+
+<!-- ── Regulatory elements bound by the TF ────────────────────────────── -->
+{% if is_tf %}
+<div style="display:flex;align-items:baseline;gap:14px;margin:24px 0 4px;flex-wrap:wrap">
+  <h2 style="font-size:15px;font-weight:700;margin:0">Regulatory Elements bound by the TF</h2>
+  <span id="tf-el-count" style="font-size:12px;color:var(--text-muted)"></span>
+</div>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Open chromatin elements (ATAC-seq) where <strong>{{ gene }}</strong> has ChIP-seq or motif footprint binding evidence and which are linked to at least one target gene region.</p>
+<div id="tf-el-loading"><div class="dt-spinner"></div>Loading elements…</div>
+<div id="tf-el-wrap" style="display:none">
+  <table id="tf-el-table" class="display" style="width:100%">
+    <thead><tr><th>Element</th><th>Size</th><th>Linked genes</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ── Regulatory elements ─────────────────────────────────────────────── -->
+{% if reg_elements %}
+{% set lt_labels = {
+  'tss_proximal_1kb':       'Proximal 1 kb',
+  'tss_distal_10kb':        'Distal 10 kb',
+  'distal_multiome':        'Distal · Multiome',
+  'distal_multiome_hicar':  'Distal · Multiome · HiCAR',
+} %}
+<h2 style="margin: 24px 0 4px; font-size:15px; font-weight:700;">Regulatory Elements linked to the gene</h2>
+<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site in the dataset — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
+<div style="overflow-x:auto">
+<table class="data-table" id="reg-el-table">
+  <thead><tr>
+    <th class="sortable" style="width:106px;min-width:106px;cursor:pointer" title="Sort by temporal opening (Pearson r with timepoint index)">Accessibility</th>
+    <th class="sortable" data-key="coord"      data-type="string">Element</th>
+    <th class="sortable" data-key="size"       data-type="number">Size</th>
+    <th class="sortable" data-key="link_type"  data-type="string">Link type</th>
+    <th class="sortable" data-key="n_tfs"      data-type="number">TFs</th>
+  </tr></thead>
+  <tbody>
+  {% for el in reg_elements %}
+  <tr>
+    <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
+    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
+           style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"
+           >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
+    <td>{{ "{:,}".format(el.end - el.start) }} bp</td>
+    <td>
+      <span style="
+        display:inline-flex;align-items:center;font-size:10px;font-weight:700;
+        padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;
+        {% if el.link_type == 'tss_proximal_1kb' %}color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)
+        {% elif el.link_type == 'tss_distal_10kb' %}color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)
+        {% elif el.link_type == 'distal_multiome' %}color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)
+        {% elif el.link_type == 'distal_multiome_hicar' %}color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)
+        {% endif %}">{{ lt_labels.get(el.link_type, el.link_type) }}</span>
+    </td>
+    <td>{{ el.n_tfs }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if gene_locus %}
+<!-- ── Gene locus RNA-seq browser ───────────────────────────────────────── -->
+{% set pad = 10000 %}
+<h2 style="margin: 24px 0 4px; font-size:15px; font-weight:700;">Gene locus — Bulk RNA-seq</h2>
+<div class="gene-igv-card">
+  <div class="gene-igv-toolbar">
+    <span class="gene-igv-locus-tag">{{ gene_locus.chr }}:{{ "{:,}".format(gene_locus.locus_start - pad) }} – {{ "{:,}".format(gene_locus.locus_end + pad) }}</span>
+  </div>
+  <div id="gene-igv-container"></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const GENE            = {{ gene | tojson }};
+const EXPR            = {{ expr | tojson }};
+const IS_TF              = {{ is_tf | tojson }};
+const TF_ELEMENT_COUNT   = {{ tf_element_count | tojson }};
+const CARD_COLOR         = {{ card_color | tojson }};
+const TF_REG_MODULES  = {{ tf_reg_modules | tojson }};
+const SUBMODULES_FLAT = {{ submodules_flat | tojson }};
+const TC_REG_CLUSTERS = {{ tc_reg_clusters | tojson }};
+
+// Cytoscape instances keyed by view name — avoids window namespace pollution
+const cyInstances = {};
+
+// ── Expression chart ──────────────────────────────────────────────────────────
+(function() {
+  const svgEl = document.getElementById('expr-chart');
+  if (!svgEl || !EXPR.length) return;
+
+  const margin = { top:14, right:14, bottom:40, left:48 };
+  const W = Math.min(svgEl.parentElement.clientWidth - 2, IS_TF ? 9999 : 680);
+  const H = IS_TF ? 180 : 220;
+  const iW = W - margin.left - margin.right, iH = H - margin.top - margin.bottom;
+  const lineColor = '#4a56b0';
+  const tps = EXPR.map(d => d.timepoint);
+  const x = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+
+  const tpmMeans = EXPR.map(d => d.mean_tpm || 0);
+  const mu    = tpmMeans.reduce((a, b) => a + b, 0) / tpmMeans.length;
+  const sigma = Math.sqrt(tpmMeans.reduce((s, v) => s + (v - mu) ** 2, 0) / Math.max(tpmMeans.length - 1, 1));
+  const toZ = v => sigma > 1e-6 ? (v - mu) / sigma : 0;
+
+  const labelEl = document.getElementById('gene-chart-label');
+
+  // Shared tooltip (created once, reused across mode switches)
+  const tip = d3.select('body').append('div')
+    .style('position','fixed').style('pointer-events','none')
+    .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+    .style('border-radius','6px').style('padding','5px 9px')
+    .style('font-size','11px').style('color','var(--text)')
+    .style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+    .style('display','none').style('z-index','9999').style('white-space','nowrap')
+    .style('line-height','1.5');
+  function showTip(ev, html) { tip.html(html).style('display','block'); moveTip(ev); }
+  function moveTip(ev) { tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'); }
+  function hideTip() { tip.style('display','none'); }
+
+  function render(mode) {
+    hideTip();
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
+    const svg = d3.select(svgEl).append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const val  = d => mode === 'z' ? toZ(d.mean_tpm || 0) : (d.mean_tpm || 0);
+    const repV = v => mode === 'z' ? toZ(v) : v;
+
+    // Exclude exact zeros: they are non-detected samples and clutter the chart at y=0
+    const allReps  = EXPR.flatMap(d => d.replicates.filter(v => v != null && v !== 0).map(repV));
+    const allMeans = EXPR.map(val);
+    const yLo = mode === 'z' ? Math.min(d3.min(allReps), d3.min(allMeans)) : 0;
+    const yHi = Math.max(d3.max(allReps), d3.max(allMeans));
+    const pad = (yHi - yLo) * 0.08 || 0.2;
+    const y = d3.scaleLinear().domain([yLo - (mode === 'z' ? pad : 0), yHi + pad]).range([iH, 0]).nice();
+
+    svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+    svg.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`)
+      .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+      .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+    svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+    svg.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-36)
+      .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)')
+      .text(mode === 'z' ? 'Z-score' : 'TPM');
+
+    if (mode === 'z') {
+      svg.append('line').attr('class','zero-line')
+        .attr('x1',0).attr('x2',iW).attr('y1',y(0)).attr('y2',y(0));
+    } else {
+      svg.append('path').datum(EXPR).attr('class','area-fill').attr('fill',lineColor)
+        .attr('d', d3.area().x(d=>x(d.timepoint)).y0(iH).y1(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+    }
+    svg.append('path').datum(EXPR).attr('class','mean-line').attr('stroke',lineColor)
+      .attr('d', d3.line().x(d=>x(d.timepoint)).y(d=>y(val(d))).curve(d3.curveCatmullRom.alpha(0.5)));
+
+    EXPR.forEach(d => {
+      const tp = d.timepoint.replace('_', ' ');
+      const unit = mode === 'z' ? 'z' : 'TPM';
+      d.replicates.forEach(v => {
+        if (v == null || v === 0) return;
+        const disp = mode === 'z' ? repV(v).toFixed(3) : v.toFixed(2);
+        svg.append('circle').attr('class','rep-dot')
+          .attr('cx',x(d.timepoint)).attr('cy',y(repV(v))).attr('r',3.5).attr('fill',lineColor)
+          .style('cursor','default')
+          .on('mouseover', ev => showTip(ev, `<strong>${tp}</strong><br>${disp} ${unit}`))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      });
+      const meanDisp = mode === 'z' ? val(d).toFixed(3) : (d.mean_tpm||0).toFixed(2);
+      svg.append('circle')
+        .attr('cx',x(d.timepoint)).attr('cy',y(val(d))).attr('r',5)
+        .attr('fill',lineColor).attr('stroke','#fff').attr('stroke-width',1.5)
+        .style('cursor','default')
+        .on('mouseover', ev => showTip(ev, `<strong>${tp}</strong><br>Mean: ${meanDisp} ${unit}`))
+        .on('mousemove', moveTip).on('mouseout', hideTip);
+    });
+
+    if (labelEl) labelEl.textContent = mode === 'z' ? 'Expression (Z-score)' : 'Expression (TPM)';
+  }
+
+  render('tpm');
+
+  document.querySelectorAll('.chart-mode-btn[data-gene-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chart-mode-btn[data-gene-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render(btn.dataset.geneMode);
+    });
+  });
+})();
+
+// ── Filter+sort table helper ──────────────────────────────────────────────────
+// (no longer needed — calling TFNetwork.makeFilterSortTable directly with data-ev/data-dir bars)
+
+// ── TF: supermodule network + table ──────────────────────────────────────────
+(function() {
+  if (!IS_TF || !TF_REG_MODULES.length) return;
+
+  const upMods   = TF_REG_MODULES.filter(r => r.evidence !== 'binding' && r.mean_NES >  0).map(r => r.module);
+  const downMods = TF_REG_MODULES.filter(r => r.evidence !== 'binding' && r.mean_NES <= 0).map(r => r.module);
+  const bindMods = TF_REG_MODULES.filter(r => r.evidence === 'binding').map(r => r.module);
+
+  const positions = Object.assign({ [GENE]: {x:0, y:0} },
+    TFNetwork.placeSector(upMods,   180, 100, 170, 130, 4),
+    TFNetwork.placeSector(downMods,   0, 100, 170, 130, 4),
+    TFNetwork.placeSector(bindMods,  90, 130, 170, 130, 5)
+  );
+
+  const elements = [{ data:{ id:GENE, label:GENE, type:'tf' }, position:{x:0,y:0} }];
+  TF_REG_MODULES.forEach(r => {
+    const dir = r.mean_NES != null ? (r.mean_NES > 0 ? 'up' : 'down') : 'bind';
+    elements.push({ data:{ id:r.module, label:r.module, type:'module', color:r.color }, position:positions[r.module]||{x:0,y:0} });
+    elements.push({ data:{ id:`e_${r.module}`, source:GENE, target:r.module, direction:dir, evidence:r.evidence } });
+  });
+
+  const cy = cytoscape({
+    container: document.getElementById('tf-mod-cy'),
+    elements,
+    minZoom: 0.15, wheelSensitivity: 0.25,
+    style: [
+      { selector:'node[type="tf"]',     style:{ 'background-color':CARD_COLOR, 'label':'data(label)', 'font-size':'12px', 'color':'#1e2448', 'text-valign':'bottom', 'text-margin-y':5, 'width':50, 'height':50, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.15)' }},
+      { selector:'node[type="module"]', style:{ 'background-color':'data(color)', 'label':'data(label)', 'font-size':'10px', 'color':'#fff', 'text-valign':'center', 'text-halign':'center', 'width':46, 'height':46, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.2)' }},
+      { selector:'edge[direction="up"][evidence="both"]',          style:{ 'line-color':'#ec4899', 'width':2.5, 'curve-style':'bezier', 'target-arrow-color':'#ec4899', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="down"][evidence="both"]',        style:{ 'line-color':'#3b82f6', 'width':2.5, 'curve-style':'bezier', 'target-arrow-color':'#3b82f6', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="up"][evidence="perturbation"]',  style:{ 'line-color':'#ec4899', 'width':2, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#ec4899', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="down"][evidence="perturbation"]',style:{ 'line-color':'#3b82f6', 'width':2, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#3b82f6', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[evidence="binding"]',                       style:{ 'line-color':'#9098b8', 'width':1.5, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#9098b8', 'target-arrow-shape':'triangle' }},
+    ],
+    layout: { name:'preset', animate:false }
+  });
+
+  cyInstances['tf-super'] = cy;
+
+  cy.on('tap', 'node[type="module"]', evt => {
+    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+  });
+
+  function applyCyFilter() {
+    if (!regInst) return;
+    const { evFilter, dirFilter } = regInst.getFilterState();
+    cy.elements().show();
+    cy.edges().forEach(e => {
+      const ev = e.data('evidence'), dir = e.data('direction');
+      let hide = false;
+      if      (evFilter === 'perturbation') hide = ev !== 'perturbation' && ev !== 'both';
+      else if (evFilter === 'binding')      hide = ev !== 'binding';
+      else if (evFilter === 'both')         hide = ev !== 'both';
+      if (!hide && dirFilter === 'up')   hide = dir !== 'up';
+      if (!hide && dirFilter === 'down') hide = dir !== 'down';
+      if (hide) e.hide();
+    });
+    cy.nodes('[type="module"]').forEach(n => { if (!n.connectedEdges(':visible').length) n.hide(); });
+    cy.fit(cy.elements(':visible'), 30);
+  }
+
+  let regInst;
+  regInst = TFNetwork.makeFilterSortTable(document.getElementById('tf-reg-table'), TF_REG_MODULES, r => {
+    const dir = r.direction==='Up'   ? '<span class="direction-up">↑ Up</span>'
+              : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
+    const tr = document.createElement('tr');
+    const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
+    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    return tr;
+  }, { barId:'tf-reg-filter-bar', countId:'tf-reg-count', searchKey:'module', onChange: applyCyFilter });
+
+})();
+
+// ── TF: developmental clusters network ───────────────────────────────────────
+(function() {
+  if (!IS_TF || !TC_REG_CLUSTERS.length) return;
+  const container = document.getElementById('tf-dev-cy');
+  if (!container) return;
+
+  const upCl   = TC_REG_CLUSTERS.filter(r => r.direction === 'Up').map(r => r.cluster);
+  const downCl = TC_REG_CLUSTERS.filter(r => r.direction === 'Down').map(r => r.cluster);
+  const bindCl = TC_REG_CLUSTERS.filter(r => r.evidence === 'binding').map(r => r.cluster);
+  const urlMap  = Object.fromEntries(TC_REG_CLUSTERS.map(r => [r.cluster, r.url]));
+
+  function placeFan(ids, centerDeg, spread, r) {
+    const pos = {};
+    ids.forEach((id, i) => {
+      const count = ids.length;
+      const half = count > 1 ? spread / 2 : 0;
+      const step = count > 1 ? spread / (count - 1) : 0;
+      const angle = (centerDeg - half + i * step) * Math.PI / 180;
+      pos[id] = { x: r * Math.cos(angle), y: r * Math.sin(angle) };
+    });
+    return pos;
+  }
+
+  const positions = Object.assign({ [GENE]: {x:0, y:0} },
+    placeFan(upCl,   180, 100, 160),
+    placeFan(downCl,   0, 100, 160),
+    placeFan(bindCl,  90, 100, 160)
+  );
+
+  const elements = [{ data:{ id:GENE, label:GENE, type:'tf' }, position:{x:0,y:0} }];
+  TC_REG_CLUSTERS.forEach(r => {
+    const cyDir = r.evidence === 'binding' ? 'bind' : (r.direction === 'Up' ? 'up' : 'down');
+    elements.push({ data:{ id:r.cluster, label:r.label, type:'cluster', color:r.color }, position:positions[r.cluster]||{x:0,y:0} });
+    elements.push({ data:{ id:`e_${r.cluster}`, source:GENE, target:r.cluster, direction:cyDir, evidence:r.evidence } });
+  });
+
+  const cy = cytoscape({
+    container,
+    elements,
+    minZoom: 0.2, wheelSensitivity: 0.25,
+    style: [
+      { selector:'node[type="tf"]',      style:{ 'background-color':CARD_COLOR, 'label':'data(label)', 'font-size':'12px', 'color':'#1e2448', 'text-valign':'bottom', 'text-margin-y':5, 'width':50, 'height':50, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.15)' }},
+      { selector:'node[type="cluster"]', style:{ 'background-color':'data(color)', 'label':'data(label)', 'font-size':'11px', 'color':'#fff', 'text-valign':'center', 'text-halign':'center', 'width':44, 'height':44, 'shape':'ellipse', 'border-width':1, 'border-color':'rgba(0,0,0,0.2)' }},
+      ...TFNetwork.EDGE_STYLES_FULL,
+    ],
+    layout: { name:'preset', animate:false }
+  });
+
+  cyInstances['tf-dev'] = cy;
+
+  cy.on('tap', 'node[type="cluster"]', evt => {
+    window.location.href = urlMap[evt.target.id()] || '#';
+  });
+
+  function applyDevFilter() {
+    if (!devInst) return;
+    const { evFilter, dirFilter } = devInst.getFilterState();
+    cy.elements().show();
+    cy.edges().forEach(e => {
+      const dir = e.data('direction');  // 'up', 'down', or 'bind'
+      const ev  = e.data('evidence');   // 'perturbation', 'both', or 'binding'
+      let hide = false;
+      if (evFilter === 'both')              hide = ev !== 'both';
+      else if (evFilter === 'perturbation') hide = (ev !== 'perturbation' && ev !== 'both');
+      else if (evFilter === 'binding')      hide = (ev !== 'binding' && ev !== 'both');
+      if (!hide && evFilter !== 'binding') {
+        if (dirFilter === 'up' && dir !== 'up') hide = true;
+        else if (dirFilter === 'down' && dir !== 'down') hide = true;
+      }
+      if (hide) e.hide();
+    });
+    cy.nodes('[type="cluster"]').forEach(n => { if (!n.connectedEdges(':visible').length) n.hide(); });
+    cy.fit(cy.elements(':visible'), 30);
+  }
+
+  let devInst;
+  devInst = TFNetwork.makeFilterSortTable(document.getElementById('tf-dev-table'), TC_REG_CLUSTERS, r => {
+    const hasNES = r.nes != null;
+    const dir = hasNES
+      ? (r.direction === 'Up' ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
+      : '<span style="color:var(--text-muted)">—</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.color};margin-right:6px;vertical-align:middle"></span><a class="node-link" href="${r.url}">${r.label}</a></td><td>${dir}</td><td>${hasNES ? r.nes.toFixed(3) : '—'}</td><td>${r.padj != null ? r.padj.toExponential(2) : '—'}</td><td>${r.binding || ''}</td><td>${r.odds_ratio != null ? r.odds_ratio.toFixed(2) : '—'}</td>`;
+    return tr;
+  }, { barId:'tf-dev-filter-bar', countId:'tf-dev-count', searchKey:'label', onChange: applyDevFilter });
+})();
+
+// ── TF: submodule tab — network + sortable table ──────────────────────────────
+(function() {
+  const table = document.getElementById('tf-sub-table');
+  if (!table || !SUBMODULES_FLAT.length) return;
+  const headers = table.querySelectorAll('th.sortable');
+  let sortKey = null, sortDir = 'asc', q = '';
+  let maxShown = Math.min(SUBMODULES_FLAT.length, 30);
+  let evFilter = 'all', dirFilter = 'all';
+  const maxSlider = document.getElementById('sub-max-slider');
+  const maxRange = document.getElementById('sub-max-range');
+  const countEl = document.getElementById('tf-sub-count');
+
+  function applyFilter(d) {
+    let r = d;
+    if (evFilter === 'perturbation') r = r.filter(x => x.evidence === 'perturbation' || x.evidence === 'both');
+    else if (evFilter === 'both')    r = r.filter(x => x.evidence === 'both');
+    else if (evFilter === 'binding') r = r.filter(x => x.evidence === 'binding');
+    if (dirFilter === 'up')          r = r.filter(x => x.direction === 'Up');
+    else if (dirFilter === 'down')   r = r.filter(x => x.direction === 'Down');
+    return r;
+  }
+
+  function renderRow(r) {
+    const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.supermodule_color};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>`;
+    const dir = r.direction === 'Up' ? '<span class="direction-up">↑ Up</span>'
+              : r.direction === 'Down' ? '<span class="direction-down">↓ Down</span>'
+              : '—';
+    const tr = document.createElement('tr');
+    const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.id)}">${r.id}</a></td><td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    return tr;
+  }
+
+  function refresh() {
+    let d = applyFilter(SUBMODULES_FLAT);
+    if (q) d = d.filter(r => r.id.toLowerCase().includes(q) || r.module.toLowerCase().includes(q));
+    const th = [...headers].find(h => h.dataset.key === sortKey);
+    const type = th ? th.dataset.type : 'string';
+    if (sortKey) {
+      d = [...d].sort((a, b) => {
+        const va = a[sortKey], vb = b[sortKey];
+        if (va == null) return 1; if (vb == null) return -1;
+        if (type === 'number') return sortDir === 'asc' ? va - vb : vb - va;
+        return sortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      });
+    }
+    d = d.slice(0, maxShown);
+    const tb = table.querySelector('tbody');
+    tb.innerHTML = ''; d.forEach(r => tb.appendChild(renderRow(r)));
+    if (countEl) countEl.textContent = `${d.length} of ${SUBMODULES_FLAT.length}`;
+    applyCyFilter();
+  }
+
+  // Filter bar buttons (split: data-ev + data-dir)
+  const bar = document.getElementById('tf-sub-filter-bar');
+  if (bar) {
+    const evBtns = bar.querySelectorAll('button[data-ev]');
+    const dirBtns = bar.querySelectorAll('button[data-dir]');
+    function syncDirDisabled() {
+      const bindingOnly = evFilter === 'binding';
+      dirBtns.forEach(b => { b.disabled = bindingOnly; b.classList.toggle('filter-disabled', bindingOnly); });
+      const dirLabel = document.getElementById('tf-sub-dir-label');
+      if (dirLabel) dirLabel.classList.toggle('filter-disabled', bindingOnly);
+      if (bindingOnly) { dirFilter = 'all'; dirBtns.forEach(b => b.classList.toggle('active', b.dataset.dir === 'all')); }
+    }
+    evBtns.forEach(btn => btn.addEventListener('click', () => {
+      evBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); evFilter = btn.dataset.ev; syncDirDisabled(); refresh();
+    }));
+    dirBtns.forEach(btn => btn.addEventListener('click', () => {
+      if (evFilter === 'binding') return;
+      dirBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); dirFilter = btn.dataset.dir; refresh();
+    }));
+  }
+
+  if (maxSlider) maxSlider.addEventListener('input', () => { maxShown = +maxSlider.value; if (maxRange) maxRange.value = maxShown; refresh(); });
+  if (maxRange) maxRange.addEventListener('input', () => { maxShown = +maxRange.value; if (maxSlider) maxSlider.value = maxShown; refresh(); });
+  headers.forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortKey = key; sortDir = th.dataset.type === 'number' ? 'desc' : 'asc'; }
+    headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+    th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    refresh();
+  }));
+  const searchEl = document.getElementById('sub-search');
+  if (searchEl) searchEl.addEventListener('input', () => { q = searchEl.value.trim().toLowerCase(); refresh(); });
+
+  // ── Cytoscape network for submodules ──
+  const upSubs   = SUBMODULES_FLAT.filter(r => r.evidence !== 'binding' && r.mean_NES >  0).map(r => r.id);
+  const downSubs = SUBMODULES_FLAT.filter(r => r.evidence !== 'binding' && r.mean_NES <= 0).map(r => r.id);
+  const bindSubs = SUBMODULES_FLAT.filter(r => r.evidence === 'binding').map(r => r.id);
+
+  const positions = Object.assign({ [GENE]: {x:0, y:0} },
+    TFNetwork.placeSector(upSubs,   180, 120, 160, 100, 6),
+    TFNetwork.placeSector(downSubs,   0, 120, 160, 100, 6),
+    TFNetwork.placeSector(bindSubs,  90, 140, 160, 100, 6)
+  );
+
+  const elements = [{ data:{ id:GENE, label:GENE, type:'tf' }, position:{x:0,y:0} }];
+  SUBMODULES_FLAT.forEach(r => {
+    const dir = r.mean_NES != null ? (r.mean_NES > 0 ? 'up' : 'down') : 'bind';
+    elements.push({ data:{ id:r.id, label:r.id, type:'submodule', color:r.supermodule_color }, position:positions[r.id]||{x:0,y:0} });
+    elements.push({ data:{ id:`e_${r.id}`, source:GENE, target:r.id, direction:dir, evidence:r.evidence } });
+  });
+
+  const cy = cytoscape({
+    container: document.getElementById('tf-sub-cy'),
+    elements,
+    minZoom: 0.15, wheelSensitivity: 0.25,
+    style: [
+      { selector:'node[type="tf"]',        style:{ 'background-color':CARD_COLOR, 'label':'data(label)', 'font-size':'12px', 'color':'#1e2448', 'text-valign':'bottom', 'text-margin-y':5, 'width':50, 'height':50, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.15)' }},
+      { selector:'node[type="submodule"]', style:{ 'background-color':'data(color)', 'label':'data(label)', 'font-size':'9px', 'color':'#fff', 'text-valign':'center', 'text-halign':'center', 'width':40, 'height':40, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.2)' }},
+      { selector:'edge[direction="up"][evidence="both"]',          style:{ 'line-color':'#ec4899', 'width':2.5, 'curve-style':'bezier', 'target-arrow-color':'#ec4899', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="down"][evidence="both"]',        style:{ 'line-color':'#3b82f6', 'width':2.5, 'curve-style':'bezier', 'target-arrow-color':'#3b82f6', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="up"][evidence="perturbation"]',  style:{ 'line-color':'#ec4899', 'width':2, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#ec4899', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[direction="down"][evidence="perturbation"]',style:{ 'line-color':'#3b82f6', 'width':2, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#3b82f6', 'target-arrow-shape':'triangle' }},
+      { selector:'edge[evidence="binding"]',                       style:{ 'line-color':'#9098b8', 'width':1.5, 'line-style':'dashed', 'curve-style':'bezier', 'target-arrow-color':'#9098b8', 'target-arrow-shape':'triangle' }},
+    ],
+    layout: { name:'preset', animate:false }
+  });
+  cyInstances['tf-sub'] = cy;
+
+  cy.on('tap', 'node[type="submodule"]', evt => {
+    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+  });
+
+  function applyCyFilter() {
+    cy.elements().show();
+    // Apply evidence + direction filter
+    cy.edges().forEach(e => {
+      const ev = e.data('evidence'), dir = e.data('direction');
+      let hide = false;
+      if      (evFilter === 'perturbation') hide = ev !== 'perturbation' && ev !== 'both';
+      else if (evFilter === 'binding')      hide = ev !== 'binding';
+      else if (evFilter === 'both')         hide = ev !== 'both';
+      if (!hide && dirFilter === 'up')   hide = dir !== 'up';
+      if (!hide && dirFilter === 'down') hide = dir !== 'down';
+      if (hide) e.hide();
+    });
+    // Apply max limit — hide nodes beyond maxShown (after filter)
+    const visibleNodes = cy.nodes('[type="submodule"]').filter(n => n.connectedEdges(':visible').length > 0);
+    const sortedVisible = visibleNodes.sort((a, b) => {
+      const ra = SUBMODULES_FLAT.find(x => x.id === a.id());
+      const rb = SUBMODULES_FLAT.find(x => x.id === b.id());
+      return (Math.abs(rb?.mean_NES||0)) - (Math.abs(ra?.mean_NES||0));
+    });
+    sortedVisible.forEach((n, i) => { if (i >= maxShown) { n.hide(); n.connectedEdges().hide(); } });
+    // Hide orphan submodule nodes
+    cy.nodes('[type="submodule"]').forEach(n => { if (!n.connectedEdges(':visible').length) n.hide(); });
+    cy.fit(cy.elements(':visible'), 30);
+  }
+
+  refresh();
+})();
+
+// ── Toggle logic (group-aware) ────────────────────────────────────────────────
+const toggleGroups = {};
+document.querySelectorAll('.mod-btn[data-group]').forEach(btn => {
+  const g = btn.dataset.group;
+  if (!toggleGroups[g]) toggleGroups[g] = [];
+  toggleGroups[g].push(btn);
+  btn.addEventListener('click', () => {
+    toggleGroups[g].forEach(b => {
+      b.classList.remove('active');
+      const v = document.getElementById('view-' + b.dataset.view);
+      if (v) v.classList.remove('active');
+    });
+    btn.classList.add('active');
+    const view = document.getElementById('view-' + btn.dataset.view);
+    if (view) view.classList.add('active');
+    const c = cyInstances[btn.dataset.view];
+    if (c) requestAnimationFrame(() => { c.resize(); c.fit(c.elements(':visible'), 30); });
+  });
+});
+
+// Reset-view buttons
+document.getElementById('tf-dev-cy-reset')?.addEventListener('click', () => {
+  const c = cyInstances['tf-dev'];
+  if (c) c.fit(c.elements(), 40);
+});
+document.getElementById('tf-mod-cy-reset')?.addEventListener('click', () => {
+  const c = cyInstances['tf-super'];
+  if (c) c.fit(c.elements(':visible'), 30);
+});
+document.getElementById('tf-sub-cy-reset')?.addEventListener('click', () => {
+  const c = cyInstances['tf-sub'];
+  if (c) c.fit(c.elements(':visible'), 30);
+});
+
+// Fit the initially-visible dev network once the page is rendered
+requestAnimationFrame(() => {
+  const c = cyInstances['tf-dev'];
+  if (c) { c.resize(); c.fit(c.elements(), 40); }
+});
+
+// ── Regulatory element accessibility sparklines ───────────────────────────────
+(function () {
+  const COLOR  = '#10b981';
+  const W = 100, H = 36;
+  const pad2 = 3;
+
+  // Late/early ratio: avg of last 2 TPs over avg of first 2 TPs (normalized counts)
+  function temporalScore(counts) {
+    if (counts.length < 2) return 1;
+    const vals = counts.map(d => d.mean ?? 0);
+    const earlyAvg = (vals[0] + vals[1]) / 2;
+    const lateAvg  = (vals[vals.length - 2] + vals[vals.length - 1]) / 2;
+    return lateAvg / (earlyAvg + 0.01);
+  }
+
+  function renderSparkline(svgEl, counts) {
+    // Store temporal score on the parent <td>
+    const td = svgEl.parentElement;
+    td.dataset.score = temporalScore(counts || []).toFixed(4);
+
+    if (!counts || !counts.length) {
+      d3.select(svgEl).attr('width', W).attr('height', H)
+        .append('text').attr('x', W / 2).attr('y', H / 2)
+        .attr('text-anchor','middle').attr('dominant-baseline','middle')
+        .attr('font-size', 9).attr('fill','var(--text-muted)').text('–');
+      return;
+    }
+    const tps = counts.map(d => d.timepoint);
+    const x   = d3.scalePoint().domain(tps).range([pad2, W - pad2]).padding(0);
+    const allVals = counts.map(d => d.mean ?? 0);
+    const yHi = Math.max(d3.max(allVals), 0);
+    const yPad = yHi * 0.12 || 0.2;
+    const y   = d3.scaleLinear().domain([0, yHi + yPad]).range([H - pad2, pad2]);
+
+    const svg = d3.select(svgEl).attr('width', W).attr('height', H);
+    svg.append('path').datum(counts)
+      .attr('fill', COLOR).attr('fill-opacity', 0.18)
+      .attr('d', d3.area().x(d => x(d.timepoint)).y0(H - pad2).y1(d => y(d.mean ?? 0))
+        .curve(d3.curveCatmullRom.alpha(0.5)));
+    svg.append('path').datum(counts)
+      .attr('fill','none').attr('stroke', COLOR).attr('stroke-width', 1.5)
+      .attr('d', d3.line().x(d => x(d.timepoint)).y(d => y(d.mean ?? 0))
+        .curve(d3.curveCatmullRom.alpha(0.5)));
+  }
+
+  const sparks = [...document.querySelectorAll('svg.atac-spark[data-peak-id]')];
+  const promises = sparks.map(svgEl => {
+    const peakId = svgEl.dataset.peakId;
+    return fetch(`/perturbseq/api/atac-counts/${peakId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(counts => renderSparkline(svgEl, counts))
+      .catch(() => { svgEl.parentElement.dataset.score = '0'; });
+  });
+
+  // Attach sort to the Accessibility <th> once all scores are ready
+  Promise.all(promises).then(() => {
+    const table = document.getElementById('reg-el-table');
+    if (!table) return;
+    const th = table.querySelector('thead th:first-child');
+    const allThs = table.querySelectorAll('th.sortable');
+    let dir = 'desc';
+
+    function sortByScore() {
+      const tbody = table.querySelector('tbody');
+      const rows = [...tbody.querySelectorAll('tr')];
+      rows.sort((a, b) => {
+        const sa = parseFloat(a.querySelector('td:first-child').dataset.score ?? '0');
+        const sb = parseFloat(b.querySelector('td:first-child').dataset.score ?? '0');
+        return dir === 'desc' ? sb - sa : sa - sb;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      allThs.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(dir === 'desc' ? 'sort-desc' : 'sort-asc');
+      dir = dir === 'desc' ? 'asc' : 'desc';
+    }
+
+    th.addEventListener('click', sortByScore);
+
+    // Auto-sort descending on load
+    sortByScore();
+  });
+})();
+
+
+// ── Regulatory elements bound by TF ─────────────────────────────────────────
+(function() {
+  if (!IS_TF) return;
+
+  const THRESHOLD  = 500;
+  const monoStyle  = "font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none";
+  const geneStyle  = "color:var(--accent);text-decoration:none;font-weight:600";
+  const loadingEl  = document.getElementById('tf-el-loading');
+  const wrapEl     = document.getElementById('tf-el-wrap');
+  const countEl    = document.getElementById('tf-el-count');
+
+  function setCount(n, extra) {
+    if (!countEl) return;
+    if (n < 0) { countEl.textContent = ''; return; }
+    countEl.textContent = `${n.toLocaleString()} element${n !== 1 ? 's' : ''}${extra || ''}`;
+  }
+  function showTable() {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (wrapEl) wrapEl.style.display = '';
+  }
+  function elLink(el) {
+    return `<a href="/perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`;
+  }
+  function geneLinks(genes) {
+    return genes.map(g => `<a href="/perturbseq/gene/${g}" style="${geneStyle}">${g}</a>`).join(', ');
+  }
+
+  // ── Client-side mode (small TFs) ──────────────────────────────────────────
+  function initClientSide() {
+    fetch(`/perturbseq/api/tf-elements/${encodeURIComponent(GENE)}`)
+      .then(r => r.json())
+      .then(data => {
+        setCount(data.length);
+        showTable();
+        new simpleDatatables.DataTable('#tf-el-table', {
+          data: {
+            headings: ['Element', 'Size', 'Linked genes'],
+            data: data.map(el => [
+              `<a href="/perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`,
+              `${(el.end - el.start).toLocaleString()} bp`,
+              geneLinks(el.linked_genes),
+            ]),
+          },
+          perPage: 25, perPageSelect: [10, 25, 50, 100],
+          searchable: true, sortable: true,
+          columns: [{ select: 2, sortable: false }],
+        });
+      })
+      .catch(() => { if (loadingEl) loadingEl.textContent = 'Failed to load elements.'; });
+  }
+
+  // ── Server-side mode (large TFs) ──────────────────────────────────────────
+  function initServerSide() {
+    setCount(TF_ELEMENT_COUNT);
+
+    let page = 1, perPage = 25, search = '', orderCol = 0, orderDir = 'asc';
+    let debounce;
+
+    wrapEl.innerHTML = `
+      <div class="sst-bar top">
+        <label>Show <select class="sst-select" id="sst-per-page">
+          <option>10</option><option selected>25</option><option>50</option><option>100</option>
+        </select> entries</label>
+        <input class="sst-search" id="sst-search" type="text" placeholder="Search element or gene…" autocomplete="off">
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr>
+            <th class="sst-sortable sst-asc" data-col="0">Element</th>
+            <th class="sst-sortable" data-col="1">Size</th>
+            <th>Linked genes</th>
+          </tr></thead>
+          <tbody id="sst-tbody"><tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="sst-bar bottom">
+        <span id="sst-info"></span>
+        <div class="sst-pages" id="sst-pages"></div>
+      </div>`;
+    showTable();
+
+    function fetchPage() {
+      const params = new URLSearchParams({ start: (page - 1) * perPage, length: perPage, q: search, order_col: orderCol, order_dir: orderDir });
+      fetch(`/perturbseq/api/tf-elements/${encodeURIComponent(GENE)}?${params}`)
+        .then(r => r.json())
+        .then(resp => {
+          const tbody = document.getElementById('sst-tbody');
+          tbody.innerHTML = resp.data.length
+            ? resp.data.map(el => `<tr><td>${elLink(el)}</td><td>${(el.end-el.start).toLocaleString()} bp</td><td>${geneLinks(el.linked_genes)}</td></tr>`).join('')
+            : `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+
+          const from = (page - 1) * perPage + 1;
+          const to   = from + resp.data.length - 1;
+          const info = document.getElementById('sst-info');
+          const unknownTotal = resp.filtered < 0 || resp.total < 0;
+          if (info) {
+            if (unknownTotal) {
+              info.textContent = `Showing ${from}–${to}`;
+            } else if (resp.filtered < resp.total) {
+              info.textContent = `Showing ${from}–${to} of ${resp.filtered.toLocaleString()} (filtered from ${resp.total.toLocaleString()})`;
+            } else {
+              info.textContent = `Showing ${from}–${to} of ${resp.total.toLocaleString()} elements`;
+              setCount(resp.total);
+            }
+          }
+
+          renderPages(unknownTotal ? -1 : Math.ceil(resp.filtered / perPage));
+        });
+    }
+
+    function renderPages(totalPages) {
+      const el = document.getElementById('sst-pages');
+      if (!el) return;
+      const btns = [];
+      const add = (label, target, active, disabled) =>
+        btns.push(`<button class="sst-page-btn${active ? ' active' : ''}" ${disabled ? 'disabled' : ''} data-p="${target}">${label}</button>`);
+
+      if (totalPages < 0) {
+        // Unknown total — show prev/next only
+        add('‹', page - 1, false, page === 1);
+        add('›', page + 1, false, false);
+      } else {
+        add('«', 1, false, page === 1);
+        add('‹', page - 1, false, page === 1);
+        const start = Math.max(1, page - 2), end = Math.min(totalPages, page + 2);
+        if (start > 1) { add('1', 1, false, false); if (start > 2) btns.push('<span style="padding:0 4px;color:var(--text-muted)">…</span>'); }
+        for (let p = start; p <= end; p++) add(p, p, p === page, false);
+        if (end < totalPages) { if (end < totalPages - 1) btns.push('<span style="padding:0 4px;color:var(--text-muted)">…</span>'); add(totalPages, totalPages, false, false); }
+        add('›', page + 1, false, page === totalPages);
+        add('»', totalPages, false, page === totalPages);
+      }
+
+      el.innerHTML = btns.join('');
+      el.querySelectorAll('.sst-page-btn:not([disabled])').forEach(btn =>
+        btn.addEventListener('click', () => { page = +btn.dataset.p; fetchPage(); }));
+    }
+
+    wrapEl.addEventListener('change', e => {
+      if (e.target.id === 'sst-per-page') { perPage = +e.target.value; page = 1; fetchPage(); }
+    });
+    wrapEl.addEventListener('input', e => {
+      if (e.target.id === 'sst-search') {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => { search = e.target.value.trim(); page = 1; fetchPage(); }, 300);
+      }
+    });
+    wrapEl.addEventListener('click', e => {
+      const th = e.target.closest('th[data-col]');
+      if (!th) return;
+      const col = +th.dataset.col;
+      if (col === orderCol) orderDir = orderDir === 'asc' ? 'desc' : 'asc';
+      else { orderCol = col; orderDir = 'asc'; }
+      wrapEl.querySelectorAll('th[data-col]').forEach(h => h.className = 'sst-sortable' + (h === th ? ` sst-${orderDir}` : ''));
+      page = 1; fetchPage();
+    });
+
+    fetchPage();
+  }
+
+  // TF_ELEMENT_COUNT is -1 for large TFs (count was capped at 501 during page render)
+  if (TF_ELEMENT_COUNT >= 0 && TF_ELEMENT_COUNT <= THRESHOLD) initClientSide();
+  else initServerSide();
+})();
+
+/* ── Gene locus RNA-seq IGV browser ─────────────────────────────────── */
+{% if gene_locus %}
+(function() {
+  const container = document.getElementById('gene-igv-container');
+  if (!container || typeof igv === 'undefined') return;
+
+  const locus = {{ (gene_locus.chr ~ ':' ~ (gene_locus.locus_start - 10000) ~ '-' ~ (gene_locus.locus_end + 10000)) | tojson }};
+
+  const RNA_TRACKS = [
+    { file: 'ESC.all.bw',   label: 'ES 0h',   color: '#6366f1' },
+    { file: 'DE-12h.all.bw', label: 'DE 12h', color: '#818cf8' },
+    { file: 'DE-24h.all.bw', label: 'DE 24h', color: '#38bdf8' },
+    { file: 'DE-36h.all.bw', label: 'DE 36h', color: '#34d399' },
+    { file: 'DE-48h.all.bw', label: 'DE 48h', color: '#fbbf24' },
+    { file: 'DE-60h.all.bw', label: 'DE 60h', color: '#fb923c' },
+    { file: 'DE-72h.all.bw', label: 'DE 72h', color: '#f87171' },
+  ];
+
+  const tracks = RNA_TRACKS.map(t => ({
+    name:             `${t.label} (RNA)`,
+    type:             'wig',
+    format:           'bigwig',
+    url:              `/perturbseq/bw-rna/${t.file}`,
+    color:            t.color,
+    height:           40,
+    autoscaleGroup:   'rna',
+    visibilityWindow: -1,
+  }));
+  tracks.push({
+    name:             'Ensembl genes (GRCh38.112)',
+    type:             'annotation',
+    format:           'gtf',
+    url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    displayMode:      'COLLAPSED',
+    height:            60,
+    color:             '#6b7280',
+    visibilityWindow:  2000000,
+    nameField:        'gene_name',
+  });
+
+  igv.createBrowser(container, {
+    genome:               'hg38',
+    locus,
+    showChromosomeWidget: false,
+    tracks,
+  }).catch(() => {});
+})();
+{% endif %}
+</script>
+{% endblock %}

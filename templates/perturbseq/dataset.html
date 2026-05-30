@@ -1,0 +1,289 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}{{ ds.dataset }} · {{ ds.tf_gene_name }}{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block extra_style %}
+<style>
+:root {
+  --accent:    #4a56b0;
+  --ds-green:  #059669;
+  --ds-amber:  #b45309;
+  --mono:      'IBM Plex Mono', monospace;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+.ds-hero { margin-bottom: 20px; }
+.ds-title-row {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.ds-tf-link {
+  font-size: clamp(20px, 3vw, 28px); font-weight: 700;
+  color: var(--accent); text-decoration: none;
+}
+.ds-tf-link:hover { text-decoration: underline; }
+.ds-accession {
+  font-family: var(--mono); font-size: clamp(12px, 2vw, 15px);
+  color: var(--text-muted); font-weight: 400;
+}
+.ds-badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.ds-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 10px;
+  border-radius: 20px; border: 1.5px solid; white-space: nowrap;
+}
+.ds-badge.celltype { color: var(--accent); border-color: #a5b0e8; background: rgba(74,86,176,0.08); }
+.ds-badge.source   { color: var(--ds-green); border-color: #6ee7b7; background: rgba(16,185,129,0.07); }
+.ds-badge.source.encode { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.07); }
+.ds-badge.source.tobias { color: var(--text-muted); border-color: var(--border); background: var(--bg-elevated); }
+.ds-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Stat pills ───────────────────────────────────────────────────────── */
+.ds-stat-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.ds-stat-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; padding: 4px 12px;
+  border-radius: 20px; border: 1.5px solid; white-space: nowrap;
+}
+.ds-stat-pill.peaks    { color: var(--accent);    border-color: #a5b0e8; background: rgba(74,86,176,0.07); }
+.ds-stat-pill.elements { color: var(--ds-green);  border-color: #6ee7b7; background: rgba(16,185,129,0.07); }
+.ds-stat-pill.genes    { color: var(--ds-amber);  border-color: #fcd34d; background: rgba(245,158,11,0.07); }
+.ds-stat-num { font-size: 14px; font-weight: 800; }
+
+/* ── Panels ───────────────────────────────────────────────────────────── */
+.ds-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; margin-bottom: 20px;
+}
+.ds-panel-header {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 16px 9px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.ds-panel-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.ds-panel-count { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+/* ── Data tables ──────────────────────────────────────────────────────── */
+.ds-table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; scrollbar-width: thin; }
+.ds-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.ds-table th {
+  position: sticky; top: 0; z-index: 1;
+  padding: 7px 14px; text-align: left;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+  background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ds-table td {
+  padding: 6px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text); vertical-align: middle;
+}
+.ds-table tr:last-child td { border-bottom: none; }
+.ds-table tr:hover td { background: rgba(74,86,176,0.04); }
+.ds-table a { color: var(--accent); text-decoration: none; }
+.ds-table a:hover { text-decoration: underline; }
+.ds-table .mono { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+.ds-table .num  { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* link-type pill (reused from element.html conventions) */
+.lt-pill {
+  display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 10px; border: 1.5px solid; letter-spacing: 0.3px; white-space: nowrap;
+}
+.lt-pill.tss_proximal_1kb      { color: #059669; border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
+.lt-pill.tss_distal_10kb       { color: #2563eb; border-color: #93c5fd; background: rgba(59,130,246,0.08); }
+.lt-pill.distal_multiome       { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
+.lt-pill.distal_multiome_hicar { color: #b45309; border-color: #fcd34d; background: rgba(245,158,11,0.08); }
+
+/* ── Related datasets ─────────────────────────────────────────────────── */
+.related-group-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+  padding: 7px 14px 4px; background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.related-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.related-row:last-child { border-bottom: none; }
+.related-row a { color: var(--accent); font-family: var(--mono); font-size: 11px; text-decoration: none; }
+.related-row a:hover { text-decoration: underline; }
+.related-celltype { font-weight: 600; color: var(--text); font-size: 11.5px; }
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.ds-empty {
+  padding: 28px 16px; text-align: center;
+  color: var(--text-muted); font-size: 12px; font-style: italic;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set lt_labels = {
+  'tss_proximal_1kb':       'Proximal 1 kb',
+  'tss_distal_10kb':        'Distal 10 kb',
+  'distal_multiome':        'Distal + Multiome',
+  'distal_multiome_hicar':  'Distal + Multiome + HiCAR',
+} %}
+
+{% set source_labels = {
+  'huangfu-tf_chipseq': 'ChIP-seq (Huangfu)',
+  'encode_chipseq':     'ChIP-seq (ENCODE)',
+  'tobias':             'Footprint (TOBIAS)',
+} %}
+{% set source_cls = {
+  'huangfu-tf_chipseq': '',
+  'encode_chipseq':     'encode',
+  'tobias':             'tobias',
+} %}
+
+<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
+<div class="ds-hero">
+  <div class="ds-title-row">
+    <a class="ds-tf-link" href="/perturbseq/gene/{{ ds.tf_gene_name }}">{{ ds.tf_gene_name }}</a>
+    <span class="ds-accession">{{ ds.dataset }}</span>
+  </div>
+  <div class="ds-badge-row">
+    {% if ds.cell_type %}<span class="ds-badge celltype">{{ ds.cell_type }}</span>{% endif %}
+    {% if ds.cell_type_group and ds.cell_type_group != ds.cell_type %}
+      <span class="ds-badge celltype" style="opacity:0.7">{{ ds.cell_type_group }}</span>
+    {% endif %}
+    <span class="ds-badge source {{ source_cls.get(ds.source, '') }}">
+      {{ source_labels.get(ds.source, ds.source) }}
+    </span>
+  </div>
+  {% if tf_desc %}
+  <div class="ds-desc">
+    <strong>{{ tf_desc.name }}</strong>{% if tf_desc.summary %} · {{ tf_desc.summary }}{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Stat pills ─────────────────────────────────────────────────────────── -->
+<div class="ds-stat-row">
+  <span class="ds-stat-pill peaks">
+    <span class="ds-stat-num">{{ "{:,}".format(stats.peak_count) }}</span> peaks
+  </span>
+  <span class="ds-stat-pill elements">
+    <span class="ds-stat-num">{{ "{:,}".format(stats.elements_overlapped) }}</span> regulatory elements overlapped
+  </span>
+  <span class="ds-stat-pill genes">
+    <span class="ds-stat-num">{{ "{:,}".format(stats.target_genes) }}</span> target genes reached
+  </span>
+</div>
+
+<!-- ── Target genes ───────────────────────────────────────────────────────── -->
+<div class="ds-panel">
+  <div class="ds-panel-header">
+    <span class="ds-panel-title">Target Genes</span>
+    <span class="ds-panel-count">{{ gene_rows | length }} gene{{ 's' if gene_rows | length != 1 else '' }}</span>
+  </div>
+  {% if gene_rows %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead>
+        <tr>
+          <th>Gene</th>
+          <th>Link type</th>
+          <th class="num">Peaks bound</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in gene_rows %}
+        <tr>
+          <td><a href="/perturbseq/gene/{{ g.gene_name }}">{{ g.gene_name }}</a></td>
+          <td>
+            <span class="lt-pill {{ g.gene_region_subtype }}">
+              {{ lt_labels.get(g.gene_region_subtype, g.gene_region_subtype | replace('_',' ')) }}
+            </span>
+          </td>
+          <td class="num mono">{{ g.peak_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="ds-empty">No target genes found for this dataset.</div>
+  {% endif %}
+</div>
+
+<!-- ── Regulatory elements ───────────────────────────────────────────────── -->
+<div class="ds-panel">
+  <div class="ds-panel-header">
+    <span class="ds-panel-title">Regulatory Elements Overlapped</span>
+    <span class="ds-panel-count">{{ element_rows | length }} element{{ 's' if element_rows | length != 1 else '' }}</span>
+  </div>
+  {% if element_rows %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead>
+        <tr>
+          <th>Element</th>
+          <th class="num">Overlap</th>
+          <th class="num">Linked genes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for el in element_rows %}
+        <tr>
+          <td>
+            <a href="/perturbseq/element/{{ el.atac_peak_id }}">
+              {{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}
+            </a>
+          </td>
+          <td class="num mono">{% if el.overlap_bp %}{{ el.overlap_bp }} bp{% else %}—{% endif %}</td>
+          <td class="num">{{ el.gene_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="ds-empty">No regulatory element overlaps found.</div>
+  {% endif %}
+</div>
+
+<!-- ── Related datasets ───────────────────────────────────────────────────── -->
+{% if related %}
+{% set groups = {} %}
+{% for r in related %}
+  {% set grp = r.cell_type_group or r.cell_type or 'Other' %}
+  {# Jinja doesn't support dict mutation, so we render inline grouped by label #}
+{% endfor %}
+<div class="ds-panel">
+  <div class="ds-panel-header">
+    <span class="ds-panel-title">Related Datasets — {{ ds.tf_gene_name }}</span>
+    <span class="ds-panel-count">{{ related | length }} other dataset{{ 's' if related | length != 1 else '' }}</span>
+  </div>
+  {% set ns = namespace(last_grp=none) %}
+  {% for r in related %}
+    {% set grp = r.cell_type_group or r.cell_type or 'Other' %}
+    {% if grp != ns.last_grp %}
+      {% set ns.last_grp = grp %}
+      <div class="related-group-label">{{ grp }}</div>
+    {% endif %}
+    <div class="related-row">
+      <span class="related-celltype">{{ r.cell_type }}</span>
+      <a href="/perturbseq/dataset/{{ r.dataset_id }}">{{ r.dataset }}</a>
+      <span class="ds-badge source {{ source_cls.get(r.source, '') }}" style="margin-left:auto">
+        {{ source_labels.get(r.source, r.source) }}
+      </span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

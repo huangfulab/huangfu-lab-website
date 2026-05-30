@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module Network Viewer</title>
+<script src="/static/vis-network.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #f4f6fb;
+    color: #1e2448;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── sidebar ── */
+  #sidebar {
+    flex-shrink: 0;
+    width: 230px;
+    background: #ffffff;
+    border-right: 1px solid #dde0ed;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 16px;
+    gap: 22px;
+    box-shadow: 1px 0 4px rgba(0,0,0,0.04);
+    overflow-y: auto;
+  }
+
+  #sidebar .home-link {
+    color: #9098b8;
+    font-size: 13px;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  #sidebar .home-link:hover { color: #4a56b0; }
+
+  #sidebar h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #3a4080;
+    letter-spacing: 0.3px;
+    line-height: 1.35;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9098b8;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+  }
+
+  .sidebar-section { display: flex; flex-direction: column; gap: 6px; }
+
+  /* ── level toggle ── */
+  .toggle-group {
+    display: flex;
+    border: 1px solid #c8cce0;
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .lvl-btn {
+    flex: 1;
+    padding: 6px 0;
+    font-size: 13px;
+    background: transparent;
+    color: #7a80a8;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+    text-align: center;
+  }
+  .lvl-btn + .lvl-btn { border-left: 1px solid #c8cce0; }
+  .lvl-btn.active { background: #e8eaf6; color: #3a4080; font-weight: 500; }
+  .lvl-btn:hover:not(.active) { background: #f0f2fa; }
+
+  /* ── slider ── */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #threshold-slider {
+    flex: 1;
+    min-width: 0;
+    accent-color: #5c68c0;
+    cursor: pointer;
+    height: 4px;
+  }
+  #threshold-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a56b0;
+    min-width: 34px;
+    text-align: right;
+  }
+
+  /* ── buttons ── */
+  #relayout-btn {
+    padding: 7px 0;
+    font-size: 12px;
+    background: #f0f2fa;
+    color: #7a80a8;
+    border: 1px solid #c8cce0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    width: 100%;
+  }
+  #relayout-btn:hover { background: #e8eaf6; color: #3a4080; }
+
+  /* ── stats ── */
+  #stats {
+    font-size: 12px;
+    color: #9098b8;
+    line-height: 1.6;
+  }
+  #stats b { color: #4a56b0; }
+
+  /* ── color legend ── */
+  .legend-bar {
+    height: 12px;
+    border-radius: 3px;
+    background: linear-gradient(to right,
+      rgb(5,48,97),
+      rgb(33,102,172),
+      rgb(67,147,195),
+      rgb(146,197,222),
+      rgb(209,229,240),
+      rgb(247,247,247),
+      rgb(253,219,199),
+      rgb(244,165,130),
+      rgb(214,96,77),
+      rgb(178,24,43),
+      rgb(103,0,31)
+    );
+  }
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #9098b8;
+    margin-top: 3px;
+  }
+  .legend-caption {
+    font-size: 11px;
+    color: #7a82a8;
+    margin-top: 2px;
+  }
+
+  /* ── checkbox toggle ── */
+  .toggle-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: #7a82a8;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle-check input {
+    accent-color: #5c68c0;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
+
+  /* ── network canvas ── */
+  #net-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #network { width: 100%; height: 100%; background: #f4f6fb; }
+
+  /* ── loading overlay ── */
+  #loading {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(244,246,251,0.85);
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #7a80a8;
+    gap: 10px;
+    z-index: 10;
+  }
+  #loading.visible { display: flex; }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid #dde0ed;
+    border-top-color: #5c68c0;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── tooltip override ── */
+  .vis-tooltip {
+    background: #ffffff !important;
+    border: 1px solid #dde0ed !important;
+    color: #1e2448 !important;
+    font-size: 12px !important;
+    padding: 7px 10px !important;
+    border-radius: 6px !important;
+    line-height: 1.6 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <a class="home-link" href="/">← Home</a>
+  <h1>Module Co-expression Network</h1>
+
+  <div class="sidebar-section">
+    <span class="section-label">Level</span>
+    <div class="toggle-group">
+      <button class="lvl-btn active" id="btn-super" onclick="switchLevel('supermodule')">Supermodule</button>
+      <button class="lvl-btn"        id="btn-sub"   onclick="switchLevel('submodule')">Submodule</button>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <span class="section-label">Min |z| threshold</span>
+    <div class="slider-row">
+      <input type="range" id="threshold-slider" min="0" max="30" step="0.5" value="0"
+             oninput="onSliderInput(this.value)">
+      <span id="threshold-val">0.0</span>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <label class="toggle-check">
+      <input type="checkbox" id="hide-unconnected" onchange="applyThreshold(parseFloat(document.getElementById('threshold-slider').value))">
+      <span>Hide unconnected modules</span>
+    </label>
+  </div>
+
+  <div class="sidebar-section">
+    <button id="relayout-btn" onclick="reLayout()">⟳ Re-layout</button>
+  </div>
+
+  <div class="sidebar-section">
+    <span class="section-label">Stats</span>
+    <span id="stats">—</span>
+  </div>
+
+  <div class="sidebar-section" style="margin-top:auto">
+    <span class="section-label">Edge color (mean z)</span>
+    <div class="legend-bar"></div>
+    <div class="legend-labels">
+      <span id="legend-min">−z</span>
+      <span>0</span>
+      <span id="legend-max">+z</span>
+    </div>
+    <span class="legend-caption">Blue = negative &nbsp;·&nbsp; Red = positive</span>
+  </div>
+</div>
+
+<div id="net-wrap">
+  <div id="network"></div>
+  <div id="loading"><div class="spinner"></div><span id="loading-msg">Loading…</span></div>
+</div>
+
+<script>
+// ─── state ────────────────────────────────────────────────────────────────────
+let currentLevel = null;
+const cache = {};           // level → {nodes, edges}
+let visNet   = null;
+let nodesDS  = null;
+let edgesDS  = null;
+let sliderTimer = null;
+
+// ─── colour helpers ───────────────────────────────────────────────────────────
+function hexShade(hex, amount) {
+  // amount negative = darken, positive = lighten
+  hex = hex.replace('#','');
+  if (hex.length === 3) hex = hex.split('').map(c => c+c).join('');
+  let [r,g,b] = [0,2,4].map(i => Math.min(255, Math.max(0,
+    parseInt(hex.slice(i,i+2),16) + amount)));
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+// RdBu colormap (colorbrewer, 11-stop)
+const RDBU = [
+  [-1.0, [5,   48,  97 ]],
+  [-0.8, [33,  102, 172]],
+  [-0.6, [67,  147, 195]],
+  [-0.4, [146, 197, 222]],
+  [-0.2, [209, 229, 240]],
+  [ 0.0, [247, 247, 247]],
+  [ 0.2, [253, 219, 199]],
+  [ 0.4, [244, 165, 130]],
+  [ 0.6, [214, 96,  77 ]],
+  [ 0.8, [178, 24,  43 ]],
+  [ 1.0, [103, 0,   31 ]],
+];
+let levelMaxZ = 1;
+
+function edgeColorRdBu(meanZ) {
+  const t = Math.max(-1, Math.min(1, meanZ / levelMaxZ));
+  for (let i = 0; i < RDBU.length - 1; i++) {
+    const [t0, c0] = RDBU[i], [t1, c1] = RDBU[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      return `rgb(${Math.round(c0[0]+(c1[0]-c0[0])*f)},${Math.round(c0[1]+(c1[1]-c0[1])*f)},${Math.round(c0[2]+(c1[2]-c0[2])*f)})`;
+    }
+  }
+  return '#f7f7f7';
+}
+
+// ─── vis node builder ─────────────────────────────────────────────────────────
+function makeVisNodes(rawNodes, level) {
+  return rawNodes.map(n => {
+    const sz = level === 'supermodule'
+      ? Math.max(16, Math.sqrt(n.n_genes) * 2.2)
+      : Math.max(9,  Math.sqrt(n.n_genes) * 2.8);
+
+    // White/near-white nodes need a visible border
+    const isLight = n.color === '#ffffff' || n.color === '#FFFFFF';
+    const bg     = isLight ? '#d8d8d8' : n.color;
+    const border = isLight ? '#888'    : hexShade(n.color, -40);
+
+    let tip = `<b>${n.id}</b><br>Genes: ${n.n_genes}<br>Cohesion z: ${n.within_mean_z}`;
+    if (n.supermodule) tip += `<br>Supermodule: ${n.supermodule}`;
+
+    return {
+      id:    n.id,
+      label: n.id,
+      size:  sz,
+      color: {
+        background: bg,
+        border:     border,
+        highlight:  { background: hexShade(bg, 30), border: border },
+        hover:      { background: hexShade(bg, 20), border: border },
+      },
+      font: {
+        size:  level === 'supermodule' ? 13 : 8,
+        color: '#1e2448',
+        face:  'Segoe UI, sans-serif',
+        strokeWidth: 2,
+        strokeColor: '#ffffff',
+      },
+      title: tip,
+    };
+  });
+}
+
+// ─── vis edge builder ─────────────────────────────────────────────────────────
+function makeVisEdges(rawEdges, threshold) {
+  return rawEdges
+    .filter(e => e.abs_mean_z >= threshold)
+    .map(e => {
+      const w = Math.max(0.4, Math.min(e.abs_mean_z / 18, 7));
+      return {
+        id:    `${e.source}__${e.target}`,
+        from:  e.source,
+        to:    e.target,
+        value: e.abs_mean_z,
+        width: w,
+        color: {
+          color:   edgeColorRdBu(e.mean_z),
+          opacity: 0.55 + 0.35 * Math.min(e.abs_mean_z / 100, 1),
+          highlight: edgeColorRdBu(e.mean_z),
+        },
+        title: `${e.source} ↔ ${e.target}<br>mean z: ${e.mean_z}`,
+        smooth: { type: 'continuous' },
+        selectionWidth: 2,
+      };
+    });
+}
+
+// ─── default threshold: show ~20 strongest edges ─────────────────────────────
+function autoThreshold(level, edges) {
+  const target = level === 'supermodule' ? 20 : 20;
+  const sorted = [...edges].sort((a, b) => b.abs_mean_z - a.abs_mean_z);
+  return sorted[Math.min(target - 1, sorted.length - 1)]?.abs_mean_z ?? 0;
+}
+
+// ─── draw / redraw ────────────────────────────────────────────────────────────
+function renderNetwork(level, threshold) {
+  const data = cache[level];
+  nodesDS = new vis.DataSet(makeVisNodes(data.nodes, level));
+  edgesDS = new vis.DataSet(makeVisEdges(data.edges, threshold));
+
+  const physicsOpts = {
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: level === 'supermodule' ? -120 : -60,
+      centralGravity:  0.01,
+      springLength:    level === 'supermodule' ? 220 : 120,
+      springConstant:  0.06,
+      damping:         0.5,
+    },
+    stabilization: {
+      enabled: true,
+      iterations: level === 'supermodule' ? 300 : 200,
+      updateInterval: 30,
+      fit: true,
+    },
+  };
+
+  const options = {
+    nodes:   { shape: 'dot', borderWidth: 1.5 },
+    edges:   { smooth: { type: 'continuous' }, arrows: { to: false }, hoverWidth: 1.5 },
+    physics: physicsOpts,
+    interaction: {
+      hover: true,
+      tooltipDelay: 80,
+      zoomView: true,
+      dragView: true,
+      keyboard: false,
+      multiselect: false,
+    },
+  };
+
+  if (visNet) visNet.destroy();
+  visNet = new vis.Network(
+    document.getElementById('network'),
+    { nodes: nodesDS, edges: edgesDS },
+    options
+  );
+
+  visNet.once('stabilizationIterationsDone', () => {
+    visNet.setOptions({ physics: { enabled: false } });
+    hideLoading();
+  });
+
+  visNet.on('click', params => {
+    if (params.nodes.length !== 1) return;
+    const nodeId = params.nodes[0];
+    if (currentLevel === 'submodule') {
+      window.location.href = '/perturbseq/submodule/' + encodeURIComponent(nodeId);
+    } else {
+      window.location.href = '/perturbseq/module/' + encodeURIComponent(nodeId);
+    }
+  });
+
+  visNet.on('hoverNode', () => { document.getElementById('network').style.cursor = 'pointer'; });
+  visNet.on('blurNode',  () => { document.getElementById('network').style.cursor = 'default'; });
+
+  updateStats();
+}
+
+function reLayout() {
+  if (!visNet) return;
+  visNet.setOptions({ physics: { enabled: true, stabilization: { iterations: 200 } } });
+  visNet.once('stabilizationIterationsDone', () => {
+    visNet.setOptions({ physics: { enabled: false } });
+  });
+  visNet.stabilize();
+}
+
+// ─── slider ───────────────────────────────────────────────────────────────────
+function onSliderInput(val) {
+  document.getElementById('threshold-val').textContent = parseFloat(val).toFixed(1);
+  clearTimeout(sliderTimer);
+  sliderTimer = setTimeout(() => applyThreshold(parseFloat(val)), 60);
+}
+
+function applyThreshold(threshold) {
+  if (!edgesDS || !cache[currentLevel]) return;
+  const newEdges = makeVisEdges(cache[currentLevel].edges, threshold);
+  edgesDS.clear();
+  edgesDS.add(newEdges);
+
+  // hide unconnected nodes if toggled
+  const hideOrphans = document.getElementById('hide-unconnected').checked;
+  if (hideOrphans) {
+    const connectedIds = new Set();
+    newEdges.forEach(e => { connectedIds.add(e.from); connectedIds.add(e.to); });
+    const allNodes = makeVisNodes(cache[currentLevel].nodes, currentLevel);
+    nodesDS.clear();
+    nodesDS.add(allNodes.filter(n => connectedIds.has(n.id)));
+  } else {
+    const allNodes = makeVisNodes(cache[currentLevel].nodes, currentLevel);
+    if (nodesDS.length !== allNodes.length) {
+      nodesDS.clear();
+      nodesDS.add(allNodes);
+    }
+  }
+
+  updateStats();
+  reLayout();
+}
+
+function updateStats() {
+  if (!cache[currentLevel]) return;
+  const total  = cache[currentLevel].edges.length;
+  const shown  = edgesDS ? edgesDS.length : 0;
+  const nNodes = nodesDS ? nodesDS.length : cache[currentLevel].nodes.length;
+  document.getElementById('stats').innerHTML =
+    `<b>${nNodes}</b> nodes &nbsp;·&nbsp; <b>${shown}</b><span style="color:#b0b5cc"> / ${total}</span> edges`;
+}
+
+// ─── level switch ─────────────────────────────────────────────────────────────
+async function switchLevel(level) {
+  if (level === currentLevel) return;
+  currentLevel = level;
+
+  document.getElementById('btn-super').classList.toggle('active', level === 'supermodule');
+  document.getElementById('btn-sub').classList.toggle('active',   level === 'submodule');
+
+  showLoading('Loading data…');
+
+  if (!cache[level]) {
+    const res = await fetch(`/api/network/${level}`);
+    cache[level] = await res.json();
+  }
+
+  const data    = cache[level];
+  const thresh  = autoThreshold(level, data.edges);
+  const maxZ    = data.edges.reduce((m, e) => Math.max(m, e.abs_mean_z), 0);
+  levelMaxZ     = maxZ || 1;
+
+  // update legend labels
+  const mzLabel = Math.round(levelMaxZ);
+  document.getElementById('legend-min').textContent = '−' + mzLabel;
+  document.getElementById('legend-max').textContent = '+' + mzLabel;
+
+  const slider  = document.getElementById('threshold-slider');
+  slider.max    = Math.ceil(maxZ);
+  slider.value  = thresh;
+  slider.step   = maxZ > 50 ? 1 : 0.5;
+  document.getElementById('threshold-val').textContent = thresh.toFixed(1);
+
+  setLoadingMsg('Laying out graph…');
+  renderNetwork(level, thresh);
+}
+
+// ─── loading helpers ──────────────────────────────────────────────────────────
+function showLoading(msg) {
+  setLoadingMsg(msg || 'Loading…');
+  document.getElementById('loading').classList.add('visible');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('visible');
+}
+function setLoadingMsg(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+}
+
+// ─── init ─────────────────────────────────────────────────────────────────────
+switchLevel('supermodule');
+</script>
+</body>
+</html>

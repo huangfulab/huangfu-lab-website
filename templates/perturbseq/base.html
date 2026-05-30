@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TF–Module Network{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/perturbseq.css') }}">
+    <script>window.MODULE_COLORS = {{ module_colors | tojson }};</script>
+    <script src="{{ url_for('static', filename='cytoscape.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/tf-network.js') }}"></script>
+    {% block extra_head %}{% endblock %}
+    {% block extra_style %}{% endblock %}
+</head>
+<body>
+<nav>
+    <a href="/">← Home</a>
+    <a class="brand" href="{{ url_for('perturbseq.index') }}">TF–Module Network</a>
+    <span class="nav-search-wrap">
+        <input type="text" id="nav-search" placeholder="Search gene, TF, module or GO term…" autocomplete="off" spellcheck="false">
+        <div class="nav-ac" id="nav-ac"></div>
+        {% block search_hints %}{% endblock %}
+    </span>
+</nav>
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+<script>
+(function () {
+    const input    = document.getElementById('nav-search');
+    const dropdown = document.getElementById('nav-ac');
+    let items = [], activeIdx = -1, timer;
+
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+            const q = input.value.trim();
+            if (!q) { hide(); return; }
+            try {
+                const r = await fetch('/perturbseq/api/search?q=' + encodeURIComponent(q));
+                items = await r.json();
+                render();
+            } catch { hide(); }
+        }, 140);
+    });
+
+    input.addEventListener('keydown', e => {
+        if (!dropdown.classList.contains('open')) {
+            if (e.key === 'Enter' && input.value.trim()) go(input.value.trim());
+            return;
+        }
+        if (e.key === 'ArrowDown')    { activeIdx = Math.min(activeIdx + 1, items.length - 1); render(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { activeIdx = Math.max(activeIdx - 1, 0);                render(); e.preventDefault(); }
+        else if (e.key === 'Enter')   { go(activeIdx >= 0 ? items[activeIdx] : items[0]); }
+        else if (e.key === 'Escape')  { hide(); }
+    });
+
+    document.addEventListener('pointerdown', e => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) hide();
+    });
+
+    function render() {
+        dropdown.innerHTML = '';
+        if (!items.length) { hide(); return; }
+        items.forEach((item, i) => {
+            const d = document.createElement('div');
+            d.className = 'nav-ac-item' + (i === activeIdx ? ' active' : '');
+            d.appendChild(document.createTextNode(item.name));
+            if (item.type !== 'gene') {
+                const badge = document.createElement('span');
+                badge.className = 'nav-ac-badge ' + item.type.replace('_', '-');
+                const t = item.type;
+                badge.textContent = t === 'active_tf' ? 'Active TF' : t === 'tf' ? 'TF' : t === 'submodule' ? 'Sub' : t === 'gc_cluster' ? 'Gene Cluster' : t === 'pc_cluster' ? 'Peak Cluster' : t === 'go_term' ? 'GO' : 'Module';
+                d.appendChild(badge);
+            }
+            d.addEventListener('pointerdown', ev => { ev.preventDefault(); go(item); });
+            dropdown.appendChild(d);
+        });
+        activeIdx = -1;
+        dropdown.classList.add('open');
+    }
+
+    function go(item) {
+        if (!item) return;
+        const name = typeof item === 'object' ? item.name : item;
+        const type = typeof item === 'object' ? item.type : 'gene';
+        input.value = name;
+        hide();
+        if (typeof item === 'object' && item.url) window.location.href = item.url;
+        else if (type === 'module' || type === 'submodule')
+                                 window.location.href = '/perturbseq/module/' + encodeURIComponent(name);
+        else                     window.location.href = '/perturbseq/gene/'   + encodeURIComponent(name);
+    }
+
+    function hide() { dropdown.classList.remove('open'); items = []; activeIdx = -1; }
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
