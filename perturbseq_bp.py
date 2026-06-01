@@ -389,6 +389,170 @@ def index():
     return render_template("perturbseq/index.html", tfs=tfs, modules=modules)
 
 
+@perturbseq_bp.route("/all-modules")
+def all_modules_page():
+    tab = request.args.get("tab", "submodules")
+    db = get_db()
+    tc = get_tc_db()
+    pub_counts = _load_gene_pub_counts()
+    lambert_tfs = _load_lambert_tfs()
+
+    # ── Developmental Gene Clusters ──────────────────────────────────────────
+    gc_sizes = dict(tc.execute(
+        "SELECT cluster, COUNT(*) FROM gene_cluster_members "
+        "WHERE cluster NOT IN ('gene_cluster_7') GROUP BY cluster"
+    ).fetchall())
+
+    gc_genes_raw = tc.execute(
+        "SELECT cluster, gene FROM gene_cluster_members "
+        "WHERE cluster NOT IN ('gene_cluster_7') ORDER BY membership DESC"
+    ).fetchall()
+    gc_genes_by_cluster: dict = defaultdict(list)
+    for cid, gene in gc_genes_raw:
+        gc_genes_by_cluster[cid].append(gene)
+
+    gc_regs_raw = tc.execute(
+        "SELECT gene_cluster, tf, nes FROM perturbation_edges ORDER BY ABS(nes) DESC"
+    ).fetchall()
+    gc_regs_by_cluster: dict = defaultdict(list)
+    for cid, tf, nes in gc_regs_raw:
+        gc_regs_by_cluster[cid].append({'tf': tf, 'nes': round(nes, 2),
+                                         'direction': 'up' if nes > 0 else 'down'})
+
+    clusters = []
+    for cid in sorted(gc_sizes.keys()):
+        genes = gc_genes_by_cluster[cid]
+        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
+                  if g in lambert_tfs][:3]
+        regs = gc_regs_by_cluster.get(cid, [])[:3]
+        clusters.append({
+            'id': cid,
+            'display': _tc_display(cid),
+            'size': gc_sizes[cid],
+            'color': TC_CLUSTER_COLORS.get(cid, '#888'),
+            'famous_tfs': famous,
+            'regulators': regs,
+        })
+
+    # ── Supermodules ──────────────────────────────────────────────────────────
+    sup_rows = db.execute(
+        "SELECT module_name, size FROM module_table "
+        "WHERE source='hotspot_supermodule' AND module_name != 'unassigned' "
+        "ORDER BY module_name"
+    ).fetchall()
+
+    sup_genes_raw = db.execute(
+        "SELECT gm.gene_name, mt.module_name "
+        "FROM gene_module_table gm "
+        "JOIN module_table mt ON gm.module_id = mt.module_id "
+        "WHERE mt.source='hotspot_supermodule' AND mt.module_name != 'unassigned'"
+    ).fetchall()
+    sup_genes_by_mod: dict = defaultdict(list)
+    for gene, mod in sup_genes_raw:
+        if gene:
+            sup_genes_by_mod[mod].append(gene)
+
+    sup_regs_raw = db.execute(
+        "SELECT module, gene_name, mean_NES, direction FROM gsea_tf_table "
+        "WHERE module_collection='hotspot_supermodule' "
+        "AND gene_set_collection='DE-hotspot_modules' "
+        "ORDER BY module, ABS(mean_NES) DESC"
+    ).fetchall()
+    sup_regs_by_mod: dict = defaultdict(list)
+    for mod, tf, nes, direction in sup_regs_raw:
+        sup_regs_by_mod[mod].append({
+            'tf': tf, 'nes': round(nes, 2),
+            'direction': direction or ('up' if nes > 0 else 'down'),
+        })
+
+    supermodules = []
+    for mod_name, size in sup_rows:
+        genes = sup_genes_by_mod.get(mod_name, [])
+        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
+                  if g in lambert_tfs][:3]
+        regs = sup_regs_by_mod.get(mod_name, [])[:3]
+        supermodules.append({
+            'name': mod_name,
+            'size': size,
+            'color': MODULE_COLORS.get(mod_name, '#888'),
+            'famous_tfs': famous,
+            'regulators': regs,
+        })
+
+    # ── Submodules ────────────────────────────────────────────────────────────
+    sub_rows = db.execute(
+        "SELECT module_name, size, "
+        "SUBSTR(module_name, 1, INSTR(module_name,'.')-1) AS supermodule "
+        "FROM module_table WHERE source='hotspot_submodule' "
+        "ORDER BY module_name"
+    ).fetchall()
+
+    sub_genes_raw = db.execute(
+        "SELECT gm.gene_name, mt.module_name "
+        "FROM gene_module_table gm "
+        "JOIN module_table mt ON gm.module_id = mt.module_id "
+        "WHERE mt.source='hotspot_submodule'"
+    ).fetchall()
+    sub_genes_by_mod: dict = defaultdict(list)
+    for gene, mod in sub_genes_raw:
+        if gene:
+            sub_genes_by_mod[mod].append(gene)
+
+    sub_regs_raw = db.execute(
+        "SELECT module, gene_name, mean_NES, direction FROM gsea_tf_table "
+        "WHERE module_collection='hotspot_submodule' "
+        "AND gene_set_collection='DE-hotspot_modules' "
+        "ORDER BY module, ABS(mean_NES) DESC"
+    ).fetchall()
+    sub_regs_by_mod: dict = defaultdict(list)
+    for mod, tf, nes, direction in sub_regs_raw:
+        sub_regs_by_mod[mod].append({
+            'tf': tf, 'nes': round(nes, 2),
+            'direction': direction or ('up' if nes > 0 else 'down'),
+        })
+
+    # ── GO enrichment terms (supermodules + submodules, bulk) ────────────────
+    enr_raw = db.execute(
+        "SELECT mt.module_name, e.term_name "
+        "FROM go_module_enrichment e "
+        "JOIN module_table mt ON e.module_id = mt.module_id "
+        "WHERE mt.source IN ('hotspot_supermodule', 'hotspot_submodule') "
+        "AND mt.module_name != 'unassigned' "
+        "AND e.source IN ('GO:BP', 'GO:CC', 'GO:MF') "
+        "ORDER BY mt.module_name, e.p_value"
+    ).fetchall()
+    enr_by_mod: dict = defaultdict(list)
+    for mod, term in enr_raw:
+        enr_by_mod[mod].append(term)
+
+    submodules = []
+    for mod_name, size, supermodule in sub_rows:
+        genes = sub_genes_by_mod.get(mod_name, [])
+        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
+                  if g in lambert_tfs][:3]
+        regs = sub_regs_by_mod.get(mod_name, [])[:3]
+        submodules.append({
+            'name': mod_name,
+            'supermodule': supermodule,
+            'size': size,
+            'color': MODULE_COLORS.get(supermodule, '#888'),
+            'famous_tfs': famous,
+            'regulators': regs,
+            'terms': enr_by_mod.get(mod_name, [])[:3],
+        })
+
+    for m in supermodules:
+        m['terms'] = enr_by_mod.get(m['name'], [])[:3]
+
+    return render_template(
+        "perturbseq/all_modules.html",
+        tab=tab,
+        clusters=clusters,
+        supermodules=supermodules,
+        submodules=submodules,
+    )
+
+
 @perturbseq_bp.route("/tf/<tf_name>")
 def tf_page(tf_name):
     return redirect(url_for('perturbseq.gene_page', gene_name=tf_name))

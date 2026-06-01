@@ -1,0 +1,380 @@
+{% extends "perturbseq/base.html" %}
+
+{% block title %}Module Overview — ESC→Endoderm Browser{% endblock %}
+
+{% block extra_style %}
+<style>
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 {
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .page-header p { font-size: 13.5px; color: var(--text-muted); }
+
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .tab-btn {
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--accent); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Tab panels ── */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Search ── */
+  .table-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .table-search {
+    padding: 7px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text);
+    width: 220px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .table-search:focus { border-color: var(--accent); }
+  .row-count { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Module name cell ── */
+  .mod-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mod-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .mod-link {
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .mod-link:hover { text-decoration: underline; }
+  .sup-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  /* ── Chips ── */
+  .chip-list { display: flex; flex-wrap: wrap; gap: 4px; }
+  .gene-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--bg-elevated);
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    transition: background 0.12s;
+  }
+  .gene-chip:hover { background: #dde0f0; }
+  .gene-chip .dir {
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .gene-chip .dir.up  { color: #ec4899; }
+  .gene-chip .dir.dn  { color: #3b82f6; }
+
+  .term-chip {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: #eef3ff;
+    color: #3a4fa8;
+    border: 1px solid #ccd4f5;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+    transition: background 0.12s;
+  }
+  .term-chip:hover { background: #dce5ff; }
+
+  /* ── Table tweaks ── */
+  table.data-table td { vertical-align: middle; }
+  table.data-table td:nth-child(2) { font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* ── Empty state ── */
+  .empty-chips { font-size: 12px; color: var(--text-muted); font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Module Overview</h1>
+  <p>All gene modules across three classification systems</p>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn" data-tab="developmental">Developmental Gene Clusters</button>
+  <button class="tab-btn" data-tab="supermodules">Supermodules</button>
+  <button class="tab-btn" data-tab="submodules">Submodules</button>
+</div>
+
+<!-- ── Developmental Gene Clusters ────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-developmental">
+  <div class="table-search-wrap">
+    <input class="table-search" type="text" placeholder="Filter clusters…" data-table="tbl-gc">
+    <span class="row-count" id="count-gc">{{ clusters|length }} clusters</span>
+  </div>
+  <table class="data-table" id="tbl-gc">
+    <thead>
+      <tr>
+        <th>Cluster</th>
+        <th>Genes</th>
+        <th>Top Famous TFs</th>
+        <th>Top TF Regulators</th>
+        <th>Top Enriched Terms</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clusters %}
+      <tr>
+        <td>
+          <div class="mod-name-cell">
+            <span class="mod-dot" style="background:{{ c.color }}"></span>
+            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=c.display) }}">{{ c.display }}</a>
+          </div>
+        </td>
+        <td>{{ c.size }}</td>
+        <td>
+          {% if c.famous_tfs %}
+          <div class="chip-list">
+            {% for tf in c.famous_tfs %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if c.regulators %}
+          <div class="chip-list">
+            {% for r in c.regulators %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=r.tf) }}">
+              <span class="dir {{ 'up' if r.direction == 'up' else 'dn' }}">{{ '↑' if r.direction == 'up' else '↓' }}</span>{{ r.tf }}
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td><span class="empty-chips">—</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Supermodules ────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-supermodules">
+  <div class="table-search-wrap">
+    <input class="table-search" type="text" placeholder="Filter modules…" data-table="tbl-sup">
+    <span class="row-count" id="count-sup">{{ supermodules|length }} modules</span>
+  </div>
+  <table class="data-table" id="tbl-sup">
+    <thead>
+      <tr>
+        <th>Module</th>
+        <th>Genes</th>
+        <th>Top Famous TFs</th>
+        <th>Top TF Regulators</th>
+        <th>Top Enriched Terms</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in supermodules %}
+      <tr>
+        <td>
+          <div class="mod-name-cell">
+            <span class="mod-dot" style="background:{{ m.color }}"></span>
+            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
+          </div>
+        </td>
+        <td>{{ m.size }}</td>
+        <td>
+          {% if m.famous_tfs %}
+          <div class="chip-list">
+            {% for tf in m.famous_tfs %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.regulators %}
+          <div class="chip-list">
+            {% for r in m.regulators %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=r.tf) }}">
+              <span class="dir {{ 'up' if r.direction == 'up' else 'dn' }}">{{ '↑' if r.direction == 'up' else '↓' }}</span>{{ r.tf }}
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.terms %}
+          <div class="chip-list">
+            {% for t in m.terms %}
+            <a class="term-chip" href="{{ url_for('perturbseq.go_page', term_name=t) }}" title="{{ t }}">{{ t }}</a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Submodules ──────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-submodules">
+  <div class="table-search-wrap">
+    <input class="table-search" type="text" placeholder="Filter submodules…" data-table="tbl-sub">
+    <span class="row-count" id="count-sub">{{ submodules|length }} submodules</span>
+  </div>
+  <table class="data-table" id="tbl-sub">
+    <thead>
+      <tr>
+        <th>Submodule</th>
+        <th>Genes</th>
+        <th>Top Famous TFs</th>
+        <th>Top TF Regulators</th>
+        <th>Top Enriched Terms</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in submodules %}
+      <tr>
+        <td>
+          <div class="mod-name-cell">
+            <span class="mod-dot" style="background:{{ m.color }}"></span>
+            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
+            <span class="sup-badge">{{ m.supermodule }}</span>
+          </div>
+        </td>
+        <td>{{ m.size }}</td>
+        <td>
+          {% if m.famous_tfs %}
+          <div class="chip-list">
+            {% for tf in m.famous_tfs %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.regulators %}
+          <div class="chip-list">
+            {% for r in m.regulators %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=r.tf) }}">
+              <span class="dir {{ 'up' if r.direction == 'up' else 'dn' }}">{{ '↑' if r.direction == 'up' else '↓' }}</span>{{ r.tf }}
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.terms %}
+          <div class="chip-list">
+            {% for t in m.terms %}
+            <a class="term-chip" href="{{ url_for('perturbseq.go_page', term_name=t) }}" title="{{ t }}">{{ t }}</a>
+            {% endfor %}
+          </div>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const TABS = ['developmental', 'supermodules', 'submodules'];
+
+  function activate(tab) {
+    if (!TABS.includes(tab)) tab = 'submodules';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  activate(params.get('tab') || 'submodules');
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activate(btn.dataset.tab);
+      const url = new URL(window.location);
+      url.searchParams.set('tab', btn.dataset.tab);
+      history.replaceState(null, '', url);
+    });
+  });
+
+  // per-table search
+  document.querySelectorAll('.table-search').forEach(input => {
+    const tblId = input.dataset.table;
+    const tbl = document.getElementById(tblId);
+    const countEl = document.getElementById('count-' + tblId.replace('tbl-', ''));
+    const allRows = Array.from(tbl.querySelectorAll('tbody tr'));
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      let visible = 0;
+      allRows.forEach(row => {
+        const match = !q || row.textContent.toLowerCase().includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      if (countEl) {
+        const total = allRows.length;
+        const noun = tblId === 'tbl-gc' ? 'cluster' : tblId === 'tbl-sup' ? 'module' : 'submodule';
+        countEl.textContent = q ? `${visible} / ${total} ${noun}s` : `${total} ${noun}s`;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
