@@ -179,11 +179,28 @@
 }
 .expr-card-title { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .expr-card-name  { font-size: 14px; font-weight: 700; color: var(--text); }
+.expr-gene-link  { color: inherit; text-decoration: none; }
+.expr-gene-link:hover { text-decoration: underline; }
 .expr-svg { width: 100%; display: block; }
 
 .stat-na { color: var(--text-muted); font-style: italic; font-size: 11px; }
 
-.section-h2 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--text); }
+.section-h2 {
+  margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 9px;
+}
+.section-h2::before {
+  content: ''; display: inline-block; width: 3px; height: 1em;
+  border-radius: 2px; background: var(--accent); flex-shrink: 0;
+}
+.section-desc {
+  font-size: 12.5px; color: var(--text-muted);
+  margin: 0 0 14px; line-height: 1.6; max-width: none;
+}
+.section-divider {
+  border: none; border-top: 1px solid var(--border);
+  margin: 30px 0 22px;
+}
 
 /* ── Combined filter bar above evidence flow ───────────────────────── */
 .ev-filter-bar {
@@ -279,9 +296,23 @@
 .igv-track-swatch-dot {
   width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
 }
-#igv-container { min-height: 420px; }
+#igv-container { min-height: 940px; }
 /* tighten igv default padding inside the card */
 #igv-container .igv-root-div { border: none !important; }
+
+/* ── Coefficient density plots ─────────────────────────────────────── */
+#coef-grid-de { display:grid; gap:12px; margin-bottom:28px; }
+.coef-mini-card { background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:var(--radius); padding:10px 12px; box-shadow:var(--shadow); }
+.coef-card-title { font-size:10px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+.coef-card-name  { font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.coef-svg { width:100%; display:block; overflow:visible; }
+.coef-loading { font-size:11px; color:var(--text-muted); font-style:italic; padding:12px 0; }
+.coef-empty { font-size:11px; color:var(--text-muted); font-style:italic; padding:12px 0; }
+.coef-axis path,.coef-axis line { stroke:var(--border); }
+.coef-axis text { fill:var(--text-muted); font-size:9px; }
+.coef-grid-lines line { stroke:var(--border); stroke-opacity:0.35; }
+.coef-grid-lines path { stroke:none; }
 
 </style>
 {% endblock %}
@@ -334,12 +365,14 @@
 </div>
 
 <!-- ── Expression charts ──────────────────────────────────────────────── -->
+<h2 class="section-h2">Expression</h2>
+<p class="section-desc">RNA-seq expression profiles of {{ tf }} and {{ gene }} across the ESC → Definitive Endoderm time course, showing whether the TF and its putative target are co-expressed.</p>
 <div class="expr-pair">
   <div class="expr-card">
     <div class="expr-card-header">
       <div>
         <div class="expr-card-title">Transcription Factor</div>
-        <div class="expr-card-name">{{ tf }}</div>
+        <div class="expr-card-name"><a href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}" class="expr-gene-link">{{ tf }}</a></div>
       </div>
     </div>
     <svg class="expr-svg" id="tf-expr-chart"></svg>
@@ -348,12 +381,24 @@
     <div class="expr-card-header">
       <div>
         <div class="expr-card-title">Target Gene</div>
-        <div class="expr-card-name">{{ gene }}</div>
+        <div class="expr-card-name"><a href="{{ url_for('perturbseq.gene_page', gene_name=gene) }}" class="expr-gene-link">{{ gene }}</a></div>
       </div>
     </div>
     <svg class="expr-svg" id="gene-expr-chart"></svg>
   </div>
 </div>
+
+<!-- ── Regression coefficient density plots (DE only) ────────────────── -->
+<hr class="section-divider">
+<h2 class="section-h2">Perturbation Regression Coefficients — Definitive Endoderm</h2>
+<p class="section-desc">Distribution of per-gene regression coefficients for each {{ tf }} guide RNA in the Perturb-seq DE screen. The marker shows where {{ gene }} falls in each distribution, indicating the direction and magnitude of its response to {{ tf }} knockdown.</p>
+<div class="coef-loading" id="coef-loading-de">Loading…</div>
+<div id="coef-grid-de"></div>
+
+<!-- ── TF Binding Evidence ─────────────────────────────────────────────── -->
+<hr class="section-divider">
+<h2 class="section-h2">TF Binding Evidence</h2>
+<p class="section-desc">Regulatory elements (ATAC-seq peaks) linking {{ tf }} to {{ gene }}, supported by TOBIAS motif footprints and/or ChIP-seq peak overlap. The diagram connects each binding source through intermediate elements to the target gene — click any pill to filter the view.</p>
 
 <!-- ── Filter bar above evidence flow ────────────────────────────────── -->
 <div class="ev-filter-bar" id="ev-filter-bar">
@@ -480,7 +525,9 @@
 </div>
 
 <!-- ── Genome browser ─────────────────────────────────────────────────── -->
+<hr class="section-divider">
 <h2 class="section-h2">Genome Browser</h2>
+<p class="section-desc">Genomic view centered on regulatory elements linking {{ tf }} to {{ gene }}. Tracks include TF binding peaks (motif footprints and ChIP-seq), ATAC-seq accessibility, RNA-seq expression, and arc-loop connections from each element to the {{ gene }} TSS — all across the ESC → DE time course.</p>
 {% if elements %}
 <div class="igv-card">
   <div class="igv-toolbar">
@@ -490,18 +537,19 @@
     <span class="igv-locus-tag">{{ first_el.chr }}:{{ "{:,}".format(browser_start) }} – {{ "{:,}".format(browser_end) }}</span>
 
     <div class="igv-track-legend">
-      <span class="igv-track-swatch">
-        <span class="igv-track-swatch-dot" style="background:#059669"></span>Regulatory elements
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#059669"></span>Proximal 1 kb</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#2563eb"></span>Distal 10 kb</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#7c3aed"></span>Multiome</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#b45309"></span>HiCAR</span>
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
+        ATAC-seq
       </span>
-      <span class="igv-track-swatch" style="color:var(--text-muted);font-style:italic">
-        ChIP-Seq tracks: add real BigWig URLs to enable
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
+        RNA-seq
       </span>
     </div>
-
-    <span class="igv-placeholder-note">
-      <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      ChIP-Seq tracks use placeholder URLs — replace with real BigWig paths
-    </span>
   </div>
   <div id="igv-container"></div>
 </div>
@@ -513,15 +561,179 @@
 
 {% block scripts %}
 <script>
-const TF_EXPR         = {{ tf_expr       | tojson }};
-const GENE_EXPR       = {{ gene_expr     | tojson }};
-const IGV_ELEMENTS    = {{ elements      | tojson }};
+const TF_EXPR          = {{ tf_expr       | tojson }};
+const GENE_EXPR        = {{ gene_expr     | tojson }};
+const IGV_ELEMENTS     = {{ elements      | tojson }};
 const TF_BINDING_PEAKS = {{ tf_peaks_data | tojson }};
-const TF_NAME         = {{ tf           | tojson }};
+const TF_NAME          = {{ tf           | tojson }};
+const GENE_TSS         = {{ gene_tss     | tojson }};
 
 /* drawExprChart is loaded from static/js/expr-chart.js */
 drawExprChart('tf-expr-chart',   TF_EXPR,   '#4a56b0');
 drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
+
+/* ── Regression coefficient density plots (DE, one panel per gRNA) ── */
+(function() {
+  const GENE_NAME = {{ gene | tojson }};
+  const COL = '#4a56b0';  /* single colour: all plots belong to the same TF */
+
+  function drawOneGrnaChart(svgEl, xs, grna, geneName, grnaIdx) {
+    const NUDGE   = 44;   /* px: label floats this far above the curve point */
+    const margin  = {top: 58, right: 14, bottom: 36, left: 10};
+    const W  = svgEl.parentElement.clientWidth - 2;
+    const H  = 200;
+    const iW = W - margin.left - margin.right;
+    const iH = H - margin.top  - margin.bottom;
+
+    svgEl.setAttribute('width',  W);
+    svgEl.setAttribute('height', H);
+
+    const xDom = [xs[0], xs[xs.length - 1]];
+    const x = d3.scaleLinear().domain(xDom).range([0, iW]);
+    const y = d3.scaleLinear().domain([0, d3.max(grna.y) * 1.1]).range([iH, 0]);
+
+    const svg = d3.select(svgEl).append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    /* directional labels — sit in the top margin, left and right corners */
+    const dirLabelY = -(margin.top - 12);
+    svg.append('text')
+      .attr('x', 0).attr('y', dirLabelY)
+      .attr('text-anchor', 'start').attr('font-size', 8).attr('fill', 'var(--text-muted)')
+      .text(`← genes downreg. by ${grna.grna}`);
+    svg.append('text')
+      .attr('x', iW).attr('y', dirLabelY)
+      .attr('text-anchor', 'end').attr('font-size', 8).attr('fill', 'var(--text-muted)')
+      .text(`genes upreg. by ${grna.grna} →`);
+
+    /* arrowhead marker — unique per panel */
+    const markerId = `coef-arrow-${grnaIdx}`;
+    svg.append('defs').append('marker')
+      .attr('id', markerId)
+      .attr('viewBox', '0 -4 8 8')
+      .attr('refX', 7).attr('refY', 0)
+      .attr('markerWidth', 5).attr('markerHeight', 5)
+      .attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-4L8,0L0,4Z').attr('fill', COL);
+
+    /* light grid */
+    svg.append('g').attr('class','coef-grid-lines')
+      .call(d3.axisLeft(y).tickSize(-iW).tickFormat('').ticks(3));
+
+    /* zero reference */
+    if (xDom[0] <= 0 && xDom[1] >= 0) {
+      svg.append('line')
+        .attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', iH)
+        .attr('stroke','var(--text-muted)').attr('stroke-width', 0.8)
+        .attr('stroke-dasharray','3,2').attr('opacity', 0.5);
+    }
+
+    /* x-axis only (no y-axis label — saves space in small panels) */
+    svg.append('g').attr('class','coef-axis')
+      .attr('transform', `translate(0,${iH})`)
+      .call(d3.axisBottom(x).ticks(4));
+    svg.append('text')
+      .attr('x', iW / 2).attr('y', iH + 28)
+      .attr('text-anchor', 'middle').attr('font-size', 8.5).attr('fill', 'var(--text-muted)')
+      .text('Regression coefficient');
+
+    /* density area + line */
+    const areaGen = d3.area().x((_,i) => x(xs[i])).y0(iH).y1(d => y(d)).curve(d3.curveMonotoneX);
+    const lineGen = d3.line().x((_,i) => x(xs[i])).y(d => y(d)).curve(d3.curveMonotoneX);
+    svg.append('path').datum(grna.y).attr('fill', COL).attr('fill-opacity', 0.1).attr('d', areaGen);
+    svg.append('path').datum(grna.y).attr('fill','none').attr('stroke', COL)
+      .attr('stroke-width', 1.8).attr('d', lineGen);
+
+    /* target gene annotation — arrow + floating label */
+    if (grna.target_coef != null) {
+      const xRange  = xDom[1] - xDom[0];
+      const frac    = xRange > 0 ? (grna.target_coef - xDom[0]) / xRange : 0.5;
+      const rawIdx  = frac * (grna.y.length - 1);
+      const idx0    = Math.max(0, Math.min(grna.y.length - 2, Math.floor(rawIdx)));
+      const idx1    = idx0 + 1;
+      const t       = rawIdx - idx0;
+      const density = grna.y[idx0] * (1 - t) + grna.y[idx1] * t;
+      const tx      = x(grna.target_coef);
+      const ty      = y(density);   /* interpolated y on the density curve */
+
+      /* label box geometry */
+      const labelText = geneName;
+      const lPadX = 5, lPadY = 3, lFont = 9.5;
+      const lHalfW = (labelText.length * 5.6) / 2 + lPadX;
+      const lHalfH = lFont / 2 + lPadY;
+
+      /* nudge label upward; clamp so it stays inside the top margin area */
+      const labelCY = Math.max(-margin.top + lHalfH + 4, ty - NUDGE);
+      /* keep label box within horizontal plot bounds */
+      const labelCX = Math.max(lHalfW, Math.min(iW - lHalfW, tx));
+
+      /* arrow line: from bottom edge of label to just above the curve point */
+      const arrowY1 = labelCY + lHalfH + 1;
+      const arrowY2 = ty - 3;
+
+      if (arrowY2 > arrowY1 + 4) {  /* only draw arrow when there is room */
+        svg.append('line')
+          .attr('x1', labelCX).attr('y1', arrowY1)
+          .attr('x2', tx).attr('y2', arrowY2)
+          .attr('stroke', COL).attr('stroke-width', 1.1)
+          .attr('marker-end', `url(#${markerId})`);
+      }
+
+      /* label box */
+      svg.append('rect')
+        .attr('x', labelCX - lHalfW).attr('y', labelCY - lHalfH)
+        .attr('width', lHalfW * 2).attr('height', lHalfH * 2)
+        .attr('rx', 3).attr('fill', 'var(--bg-card)')
+        .attr('stroke', COL).attr('stroke-width', 1.2);
+      svg.append('text')
+        .attr('x', labelCX).attr('y', labelCY + lFont / 2 - 1)
+        .attr('text-anchor', 'middle').attr('font-size', lFont)
+        .attr('font-weight', 700).attr('fill', COL)
+        .text(labelText);
+
+      /* small dot on the curve */
+      svg.append('circle').attr('cx', tx).attr('cy', ty).attr('r', 3.5)
+        .attr('fill', COL).attr('stroke', 'var(--bg-card)').attr('stroke-width', 1.5);
+    }
+  }
+
+  function renderDESection(gridId, loadingId, condData, geneName) {
+    const loadingEl = document.getElementById(loadingId);
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    const grid = document.getElementById(gridId);
+    if (!condData || !condData.gRNAs || condData.gRNAs.length === 0) {
+      grid.innerHTML = `<p class="coef-empty">No gRNAs found for ${TF_NAME} in DE.</p>`;
+      return;
+    }
+
+    const n     = condData.gRNAs.length;
+    const nCols = Math.ceil(n / 2);
+    grid.style.gridTemplateColumns = `repeat(${nCols}, 1fr)`;
+
+    condData.gRNAs.forEach((grna, i) => {
+      const card = document.createElement('div');
+      card.className = 'coef-mini-card';
+      const svgId = `_coef-svg-${i}`;
+      card.innerHTML =
+        `<div class="coef-card-name">${grna.grna}</div>` +
+        `<svg class="coef-svg" id="${svgId}"></svg>`;
+      grid.appendChild(card);
+      /* defer so the card is in the DOM and has a width */
+      requestAnimationFrame(() =>
+        drawOneGrnaChart(document.getElementById(svgId), condData.x, grna, geneName, i)
+      );
+    });
+  }
+
+  fetch(`/perturbseq/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => renderDESection('coef-grid-de', 'coef-loading-de', d.de, GENE_NAME))
+    .catch(() => {
+      const el = document.getElementById('coef-loading-de');
+      if (el) el.textContent = 'Coefficient data unavailable.';
+    });
+})();
 
 /* ── Evidence flow: arrows + interactive filter ────────────────────── */
 (function() {
@@ -750,63 +962,112 @@ let _igvBrowser = null;
   const allPeaks = [...IGV_ELEMENTS, ...TF_BINDING_PEAKS];
   if (!allPeaks.length) return;
 
-  /* Regulatory element features (ATAC peaks) */
+  const _LINK_COLORS = {
+    tss_proximal_1kb:      '#059669',
+    tss_distal_10kb:       '#2563eb',
+    distal_multiome:       '#7c3aed',
+    distal_multiome_hicar: '#b45309',
+  };
+
+  /* Loop arcs: one arc per element × link-type, from peak midpoint to gene TSS */
+  const refChr = (IGV_ELEMENTS[0] || TF_BINDING_PEAKS[0]).chr;
+  const interactFeatures = (GENE_TSS && GENE_TSS.chr === refChr)
+    ? IGV_ELEMENTS.flatMap(el => {
+        const peakMid = Math.round((el.start + el.end) / 2);
+        return el.e2g_links.map(lnk => ({
+          chr: refChr,
+          start: Math.min(peakMid, GENE_TSS.tss),
+          end:   Math.max(peakMid, GENE_TSS.tss),
+          chr1: refChr, start1: peakMid,      end1: peakMid,
+          chr2: refChr, start2: GENE_TSS.tss, end2: GENE_TSS.tss,
+          name:  el.element_id,
+          color: _LINK_COLORS[lnk.link_type] || '#9ca3af',
+        }));
+      })
+    : [];
+
+  /* Regulatory element annotation features */
   const elementFeatures = IGV_ELEMENTS.map((el, i) => ({
-    chr:   el.chr,
-    start: el.start,
-    end:   el.end,
-    name:  `El.${i + 1}`,
-    score: 1000,
+    chr: el.chr, start: el.start, end: el.end,
+    name: `El.${i + 1}`, score: 1000,
   }));
 
   /* TF binding features split by source */
   const motifFeatures = TF_BINDING_PEAKS
     .filter(p => p.source === 'tobias')
     .map(p => ({ chr: p.chr, start: p.start, end: p.end, name: p.name }));
-
   const chipFeatures = TF_BINDING_PEAKS
     .filter(p => p.source !== 'tobias')
     .map(p => ({ chr: p.chr, start: p.start, end: p.end, name: `${p.cell_type} · ${p.dataset}` }));
 
-  /* Compute locus spanning all peaks with 15 kb flanking */
+  /* Locus: span all peaks + TSS if on same chr, with 15 kb flanking */
   const allStarts = allPeaks.map(e => e.start);
   const allEnds   = allPeaks.map(e => e.end);
-  const refChr    = (IGV_ELEMENTS[0] || TF_BINDING_PEAKS[0]).chr;
-  const locus     = `${refChr}:${Math.min(...allStarts) - 15000}-${Math.max(...allEnds) + 15000}`;
+  if (GENE_TSS && GENE_TSS.chr === refChr) {
+    allStarts.push(GENE_TSS.tss);
+    allEnds.push(GENE_TSS.tss);
+  }
+  const locus = `${refChr}:${Math.min(...allStarts) - 15000}-${Math.max(...allEnds) + 15000}`;
+
+  const _ATAC_TRACKS = [
+    { tp: 'ES_0h',  label: 'ES 0h',  color: '#6366f1' },
+    { tp: 'DE_12h', label: 'DE 12h', color: '#818cf8' },
+    { tp: 'DE_24h', label: 'DE 24h', color: '#38bdf8' },
+    { tp: 'DE_36h', label: 'DE 36h', color: '#34d399' },
+    { tp: 'DE_48h', label: 'DE 48h', color: '#fbbf24' },
+    { tp: 'DE_60h', label: 'DE 60h', color: '#fb923c' },
+    { tp: 'DE_72h', label: 'DE 72h', color: '#f87171' },
+  ];
+  const _RNA_TRACKS = [
+    { file: 'ESC.all.bw',    label: 'ES 0h',  color: '#6366f1' },
+    { file: 'DE-12h.all.bw', label: 'DE 12h', color: '#818cf8' },
+    { file: 'DE-24h.all.bw', label: 'DE 24h', color: '#38bdf8' },
+    { file: 'DE-36h.all.bw', label: 'DE 36h', color: '#34d399' },
+    { file: 'DE-48h.all.bw', label: 'DE 48h', color: '#fbbf24' },
+    { file: 'DE-60h.all.bw', label: 'DE 60h', color: '#fb923c' },
+    { file: 'DE-72h.all.bw', label: 'DE 72h', color: '#f87171' },
+  ];
 
   const tracks = [];
+  if (interactFeatures.length) tracks.push({
+    name:             'Linked peaks → TSS',
+    type:             'interact',
+    arcType:          'nested',
+    showBlocks:       true,
+    height:           80,
+    visibilityWindow: -1,
+    features:         interactFeatures,
+  });
   if (motifFeatures.length) tracks.push({
-    name:        `${TF_NAME} Motif footprints`,
-    type:        'annotation',
-    displayMode: 'SQUISHED',
-    height:       40,
-    color:        '#059669',
-    features:     motifFeatures,
+    name: `${TF_NAME} Motif footprints`, type: 'annotation',
+    displayMode: 'SQUISHED', height: 40, color: '#059669', features: motifFeatures,
   });
   if (chipFeatures.length) tracks.push({
-    name:        `${TF_NAME} ChIP-seq peaks`,
-    type:        'annotation',
-    displayMode: 'SQUISHED',
-    height:       40,
-    color:        '#4a56b0',
-    features:     chipFeatures,
+    name: `${TF_NAME} ChIP-seq peaks`, type: 'annotation',
+    displayMode: 'SQUISHED', height: 40, color: '#4a56b0', features: chipFeatures,
   });
   if (elementFeatures.length) tracks.push({
-    name:        'Regulatory elements',
-    type:        'annotation',
-    displayMode: 'EXPANDED',
-    height:       50,
-    color:        '#10b981',
-    features:     elementFeatures,
+    name: 'Regulatory elements', type: 'annotation',
+    displayMode: 'EXPANDED', height: 50, color: '#10b981', features: elementFeatures,
   });
+  _ATAC_TRACKS.forEach(bw => tracks.push({
+    name: `${bw.label} (ATAC)`, type: 'wig', format: 'bigwig',
+    url:  `/perturbseq/bw/${bw.tp}/${bw.tp}-merged.bw`,
+    color: bw.color, height: 40, autoscaleGroup: 'atac',
+  }));
+  _RNA_TRACKS.forEach(t => tracks.push({
+    name: `${t.label} (RNA)`, type: 'wig', format: 'bigwig',
+    url:  `/perturbseq/bw-rna/${t.file}`,
+    color: t.color, height: 40, autoscaleGroup: 'rna', visibilityWindow: -1,
+  }));
   tracks.push({
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
     format:           'gtf',
     url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
     indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
-    displayMode:      'COLLAPSED',
-    height:            60,
+    displayMode:      'EXPANDED',
+    height:            140,
     color:             '#6b7280',
     visibilityWindow:  2000000,
     nameField:        'gene_name',
@@ -819,6 +1080,9 @@ let _igvBrowser = null;
     tracks,
   }).then(browser => {
     _igvBrowser = browser;
+    browser.trackViews
+      .filter(tv => tv.track.name && /refseq/i.test(tv.track.name))
+      .forEach(tv => browser.removeTrack(tv.track));
   }).catch(() => {});
 })();
 
@@ -857,13 +1121,20 @@ let _igvBrowser = null;
         dropdown.innerHTML = '<div class="hero-sel-empty">No match</div>';
         return;
       }
-      opts.forEach((o, i) => {
+      const MAX = 200;
+      opts.slice(0, MAX).forEach(o => {
         const d = document.createElement('div');
         d.className = 'hero-sel-option' + (o === current ? ' current' : '');
         d.textContent = o;
         d.addEventListener('mousedown', e => { e.preventDefault(); onSelect(o); });
         dropdown.appendChild(d);
       });
+      if (opts.length > MAX) {
+        const hint = document.createElement('div');
+        hint.className = 'hero-sel-empty';
+        hint.textContent = `${opts.length - MAX} more — type to narrow`;
+        dropdown.appendChild(hint);
+      }
     }
 
     function setFocus(idx) {

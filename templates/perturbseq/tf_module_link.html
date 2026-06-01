@@ -1,0 +1,626 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}{{ tf }} → {{ module }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="{{ url_for('static', filename='js/expr-chart.js') }}"></script>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+.link-hero { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:6px; }
+.link-arrow { font-size:22px; color:var(--text-muted); flex-shrink:0; }
+.hero-sel-wrap { position:relative; display:inline-flex; align-items:center; }
+.hero-sel-input {
+  font-size:24px; font-weight:700; color:var(--accent);
+  background:rgba(74,86,176,0.07); border:1.5px solid rgba(74,86,176,0.25);
+  border-radius:10px; outline:none; cursor:pointer;
+  padding:4px 32px 4px 12px; min-width:80px; width:auto;
+  transition:background 0.15s,border-color 0.15s,box-shadow 0.15s; font-family:inherit;
+}
+.hero-sel-input:hover { background:rgba(74,86,176,0.12); border-color:rgba(74,86,176,0.45); }
+.hero-sel-input:focus { background:rgba(74,86,176,0.10); border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(74,86,176,0.15); cursor:text; }
+.hero-sel-caret { position:absolute; right:9px; top:50%; transform:translateY(-50%);
+  color:var(--accent); pointer-events:none; opacity:0.7; }
+.hero-sel-dropdown { display:none; position:absolute; top:calc(100% + 6px); left:0;
+  min-width:200px; max-height:260px; overflow-y:auto;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,0.13); z-index:300; scrollbar-width:thin; }
+.hero-sel-dropdown.open { display:block; }
+.hero-sel-option { padding:7px 14px; font-size:13px; color:var(--text); cursor:pointer; transition:background 0.1s; }
+.hero-sel-option:hover,.hero-sel-option.focused { background:rgba(74,86,176,0.08); color:var(--accent); }
+.hero-sel-option.current { font-weight:700; color:var(--accent); }
+.hero-sel-empty { padding:8px 14px; font-size:12px; color:var(--text-muted); font-style:italic; }
+
+/* Module badge in hero */
+.module-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:24px; font-weight:700; color:#fff;
+  padding:5px 16px; border-radius:10px; white-space:nowrap;
+}
+.module-badge-size { font-size:12px; font-weight:500; opacity:0.75; }
+
+/* ── Evidence type badge ────────────────────────────────────────────────── */
+.ev-type-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:12px; font-weight:600; padding:4px 13px; border-radius:20px;
+  border:1.5px solid; white-space:nowrap;
+}
+.ev-type-both        { background:rgba(236,72,153,0.10);  color:#be185d; border-color:#f9a8d4; }
+.ev-type-perturbation{ background:rgba(74,86,176,0.10);   color:var(--accent); border-color:#a5b0e8; }
+.ev-type-binding     { background:rgba(16,185,129,0.10);  color:#059669; border-color:#6ee7b7; }
+
+/* ── Key stats row ──────────────────────────────────────────────────────── */
+.stat-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
+.stat-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:12px 18px; min-width:110px; flex:1;
+}
+.stat-label { font-size:10px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.5px; color:var(--text-muted); margin-bottom:4px; }
+.stat-value { font-size:22px; font-weight:700; color:var(--text); line-height:1.1; }
+.stat-value.up   { color:#be185d; }
+.stat-value.down { color:#2563eb; }
+.stat-sub { font-size:11px; color:var(--text-muted); margin-top:2px; }
+
+/* ── Expression section ─────────────────────────────────────────────────── */
+.expr-pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px; }
+@media (max-width:720px) { .expr-pair { grid-template-columns:1fr; } }
+.expr-card { background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow); }
+.expr-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.expr-card-title { font-size:12px; font-weight:600; color:var(--text-muted); }
+.expr-card-name  { font-size:14px; font-weight:700; color:var(--text); }
+.expr-name-link  { color:inherit; text-decoration:none; }
+.expr-name-link:hover { text-decoration:underline; }
+.expr-svg { width:100%; display:block; }
+
+/* ── Section header ─────────────────────────────────────────────────────── */
+.section-h2 {
+  margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 9px;
+}
+.section-h2::before {
+  content: ''; display: inline-block; width: 3px; height: 1em;
+  border-radius: 2px; background: var(--accent); flex-shrink: 0;
+}
+.card-h2 { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: var(--text); }
+.section-desc {
+  font-size: 12.5px; color: var(--text-muted);
+  margin: 0 0 14px; line-height: 1.6; max-width: none;
+}
+.section-divider {
+  border: none; border-top: 1px solid var(--border);
+  margin: 30px 0 22px;
+}
+.section-card { background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:18px 20px; margin-bottom:28px; }
+
+/* ── Per-gRNA bar chart ─────────────────────────────────────────────────── */
+#grna-chart-wrap { width:100%; overflow-x:auto; }
+#grna-chart svg  { display:block; }
+.grna-axis path,.grna-axis line { stroke:var(--border); }
+.grna-axis text { fill:var(--text-muted); font-size:10px; }
+.grna-grid line { stroke:var(--border); stroke-opacity:0.4; }
+.grna-grid path { stroke:none; }
+
+/* ── Binding dataset table ──────────────────────────────────────────────── */
+.bind-table { width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+.bind-table th { background:var(--bg-elevated); color:var(--text-muted); font-weight:600;
+  font-size:10px; text-transform:uppercase; letter-spacing:0.5px;
+  padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); }
+.bind-table td { padding:8px 12px; border-bottom:1px solid var(--border); color:var(--text); }
+.bind-table tr:last-child td { border-bottom:none; }
+.bind-table tr:hover td { background:var(--bg-elevated); }
+.src-badge { display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:50%; color:#fff;
+  font-size:9px; font-weight:700; flex-shrink:0; }
+
+/* ── Submodule grid ─────────────────────────────────────────────────────── */
+.sub-grid { display:flex; flex-wrap:wrap; gap:10px; }
+.sub-card {
+  display:flex; flex-direction:column; gap:4px;
+  padding:10px 14px; border-radius:8px; border:2px solid;
+  text-decoration:none; min-width:110px; flex:0 0 auto;
+  transition:filter 0.12s, transform 0.12s;
+}
+.sub-card:hover { filter:brightness(0.88); transform:translateY(-1px); }
+.sub-card-name  { font-size:12px; font-weight:700; color:inherit; }
+.sub-card-nes   { font-size:18px; font-weight:700; }
+.sub-card-meta  { font-size:10px; opacity:0.75; }
+
+/* ── GO terms ───────────────────────────────────────────────────────────── */
+.go-pills { display:flex; flex-wrap:wrap; gap:8px; }
+.go-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11px; padding:4px 11px; border-radius:14px;
+  border:1px solid var(--border); background:var(--bg-elevated);
+  color:var(--text); white-space:nowrap;
+}
+.go-pill .go-src { font-size:9px; font-weight:700; opacity:0.6; }
+.go-pill .go-p   { font-size:9px; color:var(--text-muted); }
+
+/* ── Gene pills ─────────────────────────────────────────────────────────── */
+.gene-pills { display:flex; flex-wrap:wrap; gap:6px; }
+.gene-pill {
+  font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px;
+  background:rgba(74,86,176,0.08); color:var(--accent);
+  border:1px solid rgba(74,86,176,0.2);
+  text-decoration:none; transition:background 0.12s;
+}
+.gene-pill:hover { background:rgba(74,86,176,0.18); }
+
+/* ── Two-column info grid ───────────────────────────────────────────────── */
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px; }
+@media (max-width:720px) { .info-grid { grid-template-columns:1fr; } }
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+.empty-note { font-size:13px; color:var(--text-muted); font-style:italic; padding:8px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set nes_dir  = pert.direction if pert else '' %}
+{% set nes_cls  = 'up' if nes_dir == 'up' else ('down' if nes_dir == 'down' else '') %}
+{% set src_colors = {
+  'huangfu-tf_chipseq': '#6366f1',
+  'encode_chipseq':     '#10b981',
+  'remap_chipseq':      '#f59e0b',
+  'tobias':             '#ec4899',
+} %}
+{% set src_short = {
+  'huangfu-tf_chipseq': 'H',
+  'encode_chipseq':     'E',
+  'remap_chipseq':      'R',
+  'tobias':             'T',
+} %}
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+<div class="link-hero">
+  <div class="hero-sel-wrap" id="tf-sel-wrap">
+    <input class="hero-sel-input" id="tf-sel-input" autocomplete="off" spellcheck="false" value="{{ tf }}">
+    <svg class="hero-sel-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+    <div class="hero-sel-dropdown" id="tf-sel-dropdown"></div>
+  </div>
+  <span class="link-arrow">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+    </svg>
+  </span>
+  <div class="hero-sel-wrap" id="mod-sel-wrap">
+    <input class="hero-sel-input" id="mod-sel-input" autocomplete="off" spellcheck="false"
+           value="{{ module }}"
+           style="color:#fff;background:{{ module_color }};border-color:{{ module_color }};padding-right:32px">
+    <svg class="hero-sel-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" style="opacity:0.85"><polyline points="6 9 12 15 18 9"/></svg>
+    <div class="hero-sel-dropdown" id="mod-sel-dropdown"></div>
+  </div>
+  <span style="font-size:12px;color:var(--text-muted);align-self:flex-end;padding-bottom:8px">{{ module_size | default(0) | int }} genes</span>
+  <span class="ev-type-badge ev-type-{{ evidence }}" style="align-self:flex-end;padding-bottom:5px">
+    {% if evidence == 'both' %}Perturbation + Binding
+    {% elif evidence == 'perturbation' %}Perturbation only
+    {% else %}Binding only{% endif %}
+  </span>
+</div>
+
+<!-- ── Key stats ─────────────────────────────────────────────────────────── -->
+<div class="stat-row">
+  {% if pert %}
+  <div class="stat-card">
+    <div class="stat-label">Mean NES</div>
+    <div class="stat-value {{ nes_cls }}">{{ "%.2f"|format(pert.mean_NES) }}</div>
+    <div class="stat-sub">{{ 'upregulated' if nes_dir == 'up' else 'downregulated' }} on KD</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Significant gRNAs</div>
+    <div class="stat-value">{{ pert.n_sig_gRNA }}</div>
+    <div class="stat-sub">of {{ grna_nes | length }} tested</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Min padj</div>
+    <div class="stat-value" style="font-size:16px">{{ "%.1e"|format(pert.padj) }}</div>
+    <div class="stat-sub">across gRNAs</div>
+  </div>
+  {% endif %}
+  {% if best_binding %}
+  <div class="stat-card">
+    <div class="stat-label">Binding OR</div>
+    <div class="stat-value" style="color:#059669">{{ "%.2f"|format(best_binding.odds_ratio) }}</div>
+    <div class="stat-sub">{{ best_binding.n_overlap }} peaks / {{ best_binding.n_tf_targets }} TF targets</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Binding padj</div>
+    <div class="stat-value" style="font-size:16px;color:#059669">{{ "%.1e"|format(best_binding.padj_fisher) }}</div>
+    <div class="stat-sub">{{ best_binding.source.replace('_chipseq','').replace('_',' ') }} · {{ best_binding.cell_type }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Expression charts ─────────────────────────────────────────────────── -->
+<h2 class="section-h2">Expression</h2>
+<p class="section-desc">Expression of {{ tf }} and mean ± SD of {{ module }} genes across the ESC → Definitive Endoderm time course.</p>
+<div class="expr-pair">
+  <div class="expr-card">
+    <div class="expr-card-header">
+      <div>
+        <div class="expr-card-title">Transcription Factor</div>
+        <div class="expr-card-name">
+          <a href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}" class="expr-name-link">{{ tf }}</a>
+        </div>
+      </div>
+    </div>
+    <svg class="expr-svg" id="tf-expr-chart"></svg>
+  </div>
+  <div class="expr-card">
+    <div class="expr-card-header">
+      <div>
+        <div class="expr-card-title">Module Expression (mean ± SD)</div>
+        <div class="expr-card-name">
+          <a href="{{ url_for('perturbseq.module_page', name=module) }}" class="expr-name-link">{{ module }}</a>
+        </div>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff;background:{{ module_color }}">{{ module_size }} genes</span>
+    </div>
+    <svg class="expr-svg" id="module-expr-chart"></svg>
+  </div>
+</div>
+
+<!-- ── Perturbation evidence ─────────────────────────────────────────────── -->
+{% if pert %}
+<hr class="section-divider">
+<h2 class="section-h2">Perturbation Evidence</h2>
+<p class="section-desc">Normalized Enrichment Score (NES) per {{ tf }} guide RNA for the <strong style="color:var(--text)">{{ module }}</strong> gene set. Positive NES indicates the module is <strong style="color:#be185d">upregulated</strong> when {{ tf }} is knocked down; negative NES indicates <strong style="color:#2563eb">downregulation</strong>.</p>
+<div class="section-card" style="margin-bottom:28px">
+  <div id="grna-chart-wrap"><svg id="grna-chart"></svg></div>
+</div>
+{% endif %}
+
+<!-- ── Binding evidence ───────────────────────────────────────────────────── -->
+{% if binding_datasets %}
+<hr class="section-divider">
+<h2 class="section-h2">TF Binding Evidence</h2>
+<p class="section-desc">ChIP-seq and motif-footprint datasets showing enrichment of {{ tf }} binding sites in ATAC peaks associated with {{ module }} target genes. Higher odds ratio and lower padj indicate stronger co-localization of TF binding with module-associated open chromatin.</p>
+<div class="section-card" style="padding:0;margin-bottom:28px;overflow:hidden">
+  <table class="bind-table">
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Cell type</th>
+        <th>Odds ratio</th>
+        <th>padj</th>
+        <th>Peaks in module</th>
+        <th>TF target genes</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for ds in binding_datasets %}
+    <tr>
+      <td>
+        <span class="src-badge" style="background:{{ src_colors.get(ds.source,'#9098b8') }};margin-right:6px">{{ src_short.get(ds.source, ds.source[0].upper()) }}</span>
+        {{ ds.source.replace('_chipseq','').replace('_',' ') | title }}
+      </td>
+      <td>{{ ds.cell_type }}</td>
+      <td><strong>{{ "%.2f"|format(ds.odds_ratio) }}</strong></td>
+      <td>{{ "%.1e"|format(ds.padj_fisher) }}</td>
+      <td>{{ ds.n_overlap }}</td>
+      <td>{{ ds.n_tf_targets }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ── Submodule breakdown ───────────────────────────────────────────────── -->
+{% if sub_pert %}
+<hr class="section-divider">
+<h2 class="section-h2">Regulated Submodules of {{ module }}</h2>
+<p class="section-desc">Finer-grained co-expression clusters within <strong style="color:var(--text)">{{ module }}</strong> that are significantly enriched upon {{ tf }} knockdown, shown with mean NES and direction.</p>
+<div style="margin-bottom:28px">
+  <div class="sub-grid">
+  {% for s in sub_pert %}
+  <a class="sub-card"
+     href="{{ url_for('perturbseq.module_page', name=s.submodule) }}"
+     style="background:{{ module_color }}18;border-color:{{ module_color }}55;color:{{ module_color }}">
+    <div class="sub-card-name">{{ s.submodule }}</div>
+    <div class="sub-card-nes {{ 'up' if s.direction == 'up' else 'down' }}"
+         style="color:{{ '#be185d' if s.direction == 'up' else '#2563eb' }}">
+      {{ "%.2f"|format(s.mean_NES) }}
+    </div>
+    <div class="sub-card-meta" style="color:var(--text-muted)">
+      {{ s.n_sig_gRNA }} gRNA{{ 's' if s.n_sig_gRNA != 1 }} · {{ 'up' if s.direction == 'up' else 'down' }}
+    </div>
+  </a>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── GO terms + Module genes ───────────────────────────────────────────── -->
+<hr class="section-divider">
+<h2 class="section-h2">Module Context</h2>
+<p class="section-desc">Gene Ontology enrichment and member genes for <strong style="color:var(--text)">{{ module }}</strong>.</p>
+<div class="info-grid">
+  <div class="section-card" style="margin-bottom:0">
+    <h2 class="card-h2">Module GO enrichment</h2>
+    {% if go_terms %}
+    <div class="go-pills">
+      {% for t in go_terms %}
+      <span class="go-pill">
+        <span class="go-src">{{ t.source.replace('GO:','') }}</span>
+        {{ t.term_name }}
+        <span class="go-p">{{ "%.0e"|format(t.p_value) }}</span>
+      </span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-note">No GO enrichment data available.</p>
+    {% endif %}
+  </div>
+
+  <div class="section-card" style="margin-bottom:0">
+    <h2 class="card-h2">Module genes</h2>
+    {% if top_genes %}
+    <div class="gene-pills">
+      {% for g in top_genes %}
+      <a class="gene-pill" href="{{ url_for('perturbseq.gene_page', gene_name=g) }}">{{ g }}</a>
+      {% endfor %}
+    </div>
+    {% if module_size > top_genes | length %}
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">
+      Showing {{ top_genes | length }} of {{ module_size }} genes.
+      <a href="{{ url_for('perturbseq.module_page', name=module) }}" style="color:var(--accent)">See all →</a>
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="empty-note">No gene data available.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TF_NAME     = {{ tf     | tojson }};
+const MODULE_NAME = {{ module | tojson }};
+const TF_EXPR     = {{ tf_expr     | tojson }};
+const MODULE_EXPR = {{ module_expr | tojson }};
+const GRNA_NES    = {{ grna_nes   | tojson }};
+const MOD_COLOR   = {{ module_color | tojson }};
+
+/* ── TF expression chart ─────────────────────────────────────────────── */
+drawExprChart('tf-expr-chart', TF_EXPR, '#4a56b0');
+
+/* ── Module expression chart (mean ± SD band) ────────────────────────── */
+(function() {
+  const svgEl = document.getElementById('module-expr-chart');
+  if (!svgEl || !MODULE_EXPR.length) return;
+
+  const margin = { top: 12, right: 10, bottom: 38, left: 44 };
+  const W  = svgEl.parentElement.clientWidth - 2;
+  const H  = 160;
+  const iW = W - margin.left - margin.right;
+  const iH = H - margin.top  - margin.bottom;
+
+  svgEl.setAttribute('width', W);
+  svgEl.setAttribute('height', H);
+
+  const tps  = MODULE_EXPR.map(d => d.timepoint);
+  const vals = MODULE_EXPR.map(d => d.mean_tpm);
+  const uppers = MODULE_EXPR.map(d => d.mean_tpm + (d.sd_tpm || 0));
+  const yMax = Math.max(...uppers) * 1.05 || 1;
+
+  const x = d3.scalePoint().domain(tps).range([0, iW]).padding(0.3);
+  const y = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
+
+  const svg = d3.select(svgEl).append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  svg.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-iW).tickFormat(''));
+  svg.append('g').attr('class','axis').attr('transform', `translate(0,${iH})`)
+    .call(d3.axisBottom(x).tickFormat(t => t.replace('_',' ')))
+    .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+  svg.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(4));
+  svg.append('text').attr('transform','rotate(-90)').attr('x', -iH/2).attr('y', -32)
+    .attr('text-anchor','middle').attr('font-size',9).attr('fill','var(--text-muted)').text('TPM');
+
+  /* SD band */
+  const area = d3.area()
+    .x(d => x(d.timepoint))
+    .y0(d => y(Math.max(0, d.mean_tpm - (d.sd_tpm || 0))))
+    .y1(d => y(d.mean_tpm + (d.sd_tpm || 0)))
+    .curve(d3.curveCatmullRom.alpha(0.5));
+  svg.append('path').datum(MODULE_EXPR).attr('fill', MOD_COLOR).attr('fill-opacity', 0.15).attr('d', area);
+
+  /* Mean line */
+  const line = d3.line().x(d => x(d.timepoint)).y(d => y(d.mean_tpm))
+    .curve(d3.curveCatmullRom.alpha(0.5));
+  svg.append('path').datum(MODULE_EXPR).attr('fill','none').attr('stroke', MOD_COLOR)
+    .attr('stroke-width', 2).attr('d', line);
+
+  /* Points */
+  let tip = d3.select('#_expr-chart-tip');
+  if (tip.empty()) {
+    tip = d3.select('body').append('div').attr('id','_expr-chart-tip')
+      .style('position','fixed').style('pointer-events','none')
+      .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+      .style('border-radius','6px').style('padding','5px 9px')
+      .style('font-size','11px').style('color','var(--text)')
+      .style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+      .style('display','none').style('z-index','9999').style('white-space','nowrap');
+  }
+  MODULE_EXPR.forEach(d => {
+    svg.append('circle').attr('cx', x(d.timepoint)).attr('cy', y(d.mean_tpm)).attr('r', 4.5)
+      .attr('fill', MOD_COLOR).attr('stroke','#fff').attr('stroke-width',1.5)
+      .on('mouseover', () => tip.html(`<strong>${d.timepoint.replace('_',' ')}</strong><br>${d.mean_tpm.toFixed(2)} TPM ± ${(d.sd_tpm||0).toFixed(2)}<br>${d.n_genes} genes`).style('display','block'))
+      .on('mousemove', ev => tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'))
+      .on('mouseout', () => tip.style('display','none'));
+  });
+})();
+
+/* ── Per-gRNA NES bar chart ──────────────────────────────────────────── */
+(function() {
+  if (!GRNA_NES || !GRNA_NES.length) return;
+  const wrap = document.getElementById('grna-chart-wrap');
+  const svgEl = document.getElementById('grna-chart');
+  if (!wrap || !svgEl) return;
+
+  const COLOR_UP   = '#be185d';
+  const COLOR_DOWN = '#2563eb';
+  const ZERO_LINE  = '#9098b8';
+
+  const barH   = 22;
+  const gap    = 4;
+  const labelW = 90;
+  const margin = { top: 20, right: 16, bottom: 30, left: labelW };
+  const iH     = GRNA_NES.length * (barH + gap) - gap;
+  const W      = Math.max(wrap.clientWidth - 4, 360);
+  const H      = iH + margin.top + margin.bottom;
+  const iW     = W - margin.left - margin.right;
+
+  svgEl.setAttribute('width', W);
+  svgEl.setAttribute('height', H);
+
+  const allNES = GRNA_NES.map(d => d.NES);
+  const xExt   = Math.max(Math.abs(d3.min(allNES)), Math.abs(d3.max(allNES))) * 1.15 || 1;
+  const x      = d3.scaleLinear().domain([-xExt, xExt]).range([0, iW]);
+  const svg    = d3.select(svgEl).append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  /* grid + axis */
+  svg.append('g').attr('class','grna-grid')
+    .attr('transform', `translate(0,${iH})`)
+    .call(d3.axisBottom(x).ticks(5).tickSize(-iH).tickFormat(''));
+  svg.append('g').attr('class','grna-axis')
+    .attr('transform', `translate(0,${iH})`)
+    .call(d3.axisBottom(x).ticks(5));
+  svg.append('text').attr('x', iW/2).attr('y', iH + 28)
+    .attr('text-anchor','middle').attr('font-size',10).attr('fill','var(--text-muted)')
+    .text('Normalized Enrichment Score (NES)');
+
+  /* zero line */
+  const x0 = x(0);
+  svg.append('line').attr('x1',x0).attr('x2',x0).attr('y1',0).attr('y2',iH)
+    .attr('stroke', ZERO_LINE).attr('stroke-width',1.2).attr('stroke-dasharray','4,2');
+
+  /* tooltip */
+  let tip = d3.select('#_expr-chart-tip');
+  if (tip.empty()) {
+    tip = d3.select('body').append('div').attr('id','_expr-chart-tip')
+      .style('position','fixed').style('pointer-events','none')
+      .style('background','var(--bg-elevated)').style('border','1px solid var(--border)')
+      .style('border-radius','6px').style('padding','5px 9px')
+      .style('font-size','11px').style('color','var(--text)')
+      .style('box-shadow','0 2px 8px rgba(0,0,0,0.15)')
+      .style('display','none').style('z-index','9999').style('white-space','nowrap');
+  }
+
+  GRNA_NES.forEach((d, i) => {
+    const yPos = i * (barH + gap);
+    const col  = d.NES >= 0 ? COLOR_UP : COLOR_DOWN;
+    const barX = d.NES >= 0 ? x0 : x(d.NES);
+    const barW = Math.abs(x(d.NES) - x0);
+
+    /* label */
+    svg.append('text').attr('x', -6).attr('y', yPos + barH/2 + 4)
+      .attr('text-anchor','end').attr('font-size',10).attr('fill','var(--text-muted)')
+      .text(d.grna_id);
+
+    /* bar */
+    svg.append('rect')
+      .attr('x', barX).attr('y', yPos)
+      .attr('width', Math.max(barW, 2)).attr('height', barH)
+      .attr('rx', 3).attr('fill', col).attr('fill-opacity', 0.8)
+      .style('cursor','default')
+      .on('mouseover', () => tip.html(
+        `<strong>${d.grna_id}</strong><br>NES: ${d.NES.toFixed(3)}<br>padj: ${d.padj.toExponential(2)}`
+      ).style('display','block'))
+      .on('mousemove', ev => tip.style('left',(ev.clientX+14)+'px').style('top',(ev.clientY-44)+'px'))
+      .on('mouseout', () => tip.style('display','none'));
+
+    /* NES value label on bar */
+    if (barW > 28) {
+      const textX = d.NES >= 0 ? barX + barW - 4 : barX + 4;
+      const anchor = d.NES >= 0 ? 'end' : 'start';
+      svg.append('text').attr('x', textX).attr('y', yPos + barH/2 + 4)
+        .attr('text-anchor', anchor).attr('font-size', 9).attr('fill','#fff').attr('font-weight',600)
+        .text(d.NES.toFixed(2));
+    }
+  });
+})();
+
+/* ── Hero searchable selectors ───────────────────────────────────────── */
+(function() {
+  let allTFs = [], allModules = [];
+  Promise.all([
+    fetch('/perturbseq/api/link-tfs').then(r => r.json()),
+    fetch('/perturbseq/api/link-modules').then(r => r.json()),
+  ]).then(([tfs, mods]) => { allTFs = tfs; allModules = mods; });
+
+  function makeSelector({ inputId, dropdownId, current, getOptions, onSelect }) {
+    const input    = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    let focusedIdx = -1;
+
+    const _canvas = document.createElement('canvas');
+    const _ctx = _canvas.getContext('2d');
+    function sizeInput() {
+      const cs = getComputedStyle(input);
+      _ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const tw = _ctx.measureText(input.value || ' ').width;
+      input.style.width = Math.ceil(tw + 48) + 'px';
+    }
+    sizeInput();
+
+    function renderDropdown(q) {
+      const lq = q.toLowerCase();
+      const opts = getOptions().filter(o => o.toLowerCase().includes(lq));
+      dropdown.innerHTML = '';
+      focusedIdx = -1;
+      if (!opts.length) { dropdown.innerHTML = '<div class="hero-sel-empty">No match</div>'; return; }
+      opts.slice(0, 200).forEach(o => {
+        const d = document.createElement('div');
+        d.className = 'hero-sel-option' + (o === current ? ' current' : '');
+        d.textContent = o;
+        d.addEventListener('mousedown', e => { e.preventDefault(); onSelect(o); });
+        dropdown.appendChild(d);
+      });
+      if (opts.length > 200) {
+        const h = document.createElement('div'); h.className = 'hero-sel-empty';
+        h.textContent = `${opts.length - 200} more — type to narrow`; dropdown.appendChild(h);
+      }
+    }
+
+    function setFocus(idx) {
+      const opts = dropdown.querySelectorAll('.hero-sel-option');
+      opts.forEach((o, i) => o.classList.toggle('focused', i === idx));
+      focusedIdx = idx;
+    }
+
+    input.addEventListener('focus', () => { input.select(); renderDropdown(''); dropdown.classList.add('open'); });
+    input.addEventListener('input', () => { sizeInput(); renderDropdown(input.value); dropdown.classList.add('open'); });
+    input.addEventListener('blur', () => { setTimeout(() => { dropdown.classList.remove('open'); input.value = current; sizeInput(); }, 160); });
+    input.addEventListener('keydown', e => {
+      const opts = [...dropdown.querySelectorAll('.hero-sel-option')];
+      if (e.key==='ArrowDown') { setFocus(Math.min(focusedIdx+1, opts.length-1)); e.preventDefault(); }
+      else if (e.key==='ArrowUp') { setFocus(Math.max(focusedIdx-1, 0)); e.preventDefault(); }
+      else if (e.key==='Enter') { if (focusedIdx >= 0) onSelect(opts[focusedIdx].textContent); }
+      else if (e.key==='Escape') { input.blur(); }
+    });
+  }
+
+  makeSelector({
+    inputId: 'tf-sel-input', dropdownId: 'tf-sel-dropdown', current: TF_NAME,
+    getOptions: () => allTFs,
+    onSelect: tf => { window.location.href = `/perturbseq/tf-module/${encodeURIComponent(tf)}/${encodeURIComponent(MODULE_NAME)}`; },
+  });
+  makeSelector({
+    inputId: 'mod-sel-input', dropdownId: 'mod-sel-dropdown', current: MODULE_NAME,
+    getOptions: () => allModules,
+    onSelect: mod => { window.location.href = `/perturbseq/tf-module/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(mod)}`; },
+  });
+})();
+</script>
+{% endblock scripts %}

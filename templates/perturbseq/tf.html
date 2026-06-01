@@ -111,9 +111,10 @@
 {% endif %}
 
 <!-- ── Regulated modules ─────────────────────────────────────────────────── -->
+<hr class="section-divider">
 <div class="modules-header">
-  <h2>Regulated Modules</h2>
-  <p style="font-size:12px;color:var(--text-muted);margin:2px 0 10px">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
+  <h2 class="section-h2">Regulated Modules</h2>
+  <p class="section-desc">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
 </div>
 
 {{ network_legend('full') }}
@@ -143,11 +144,10 @@
 </div>
 
 {% if submodules_by_mod %}
-<div style="margin-top:28px">
-  <h2>Regulated Submodules</h2>
-  <p style="font-size:13px;color:var(--text-muted);margin:4px 0 12px">
-    Click a supermodule to expand its submodules.
-  </p>
+<hr class="section-divider">
+<div>
+  <h2 class="section-h2">Regulated Submodules</h2>
+  <p class="section-desc">Finer-grained co-expression clusters significantly enriched upon <strong>{{ name }}</strong> knockdown. Click a supermodule to expand its submodules.</p>
   {% for mod, subs in submodules_by_mod.items() %}
   <details class="submod-accordion">
     <summary>
@@ -181,10 +181,9 @@
 </div>
 {% endif %}
 
-<h2 style="margin-top:28px">Module Details</h2>
-<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
-  Click a module to expand enrichment and gene list.
-</p>
+<hr class="section-divider">
+<h2 class="section-h2">Module Details</h2>
+<p class="section-desc">Per-gRNA NES scores, GO enrichment, and gene membership for each regulated module. Click a module to expand.</p>
 <div id="module-details"></div>
 
 {% endblock %}

@@ -122,6 +122,8 @@
     position:relative; top:-2px;
   }
   .gene-fullname { font-size:13px; color:var(--text-muted); margin-bottom:10px; }
+  .gene-aliases  { opacity:0.65; }
+  .gene-aliases-sep { opacity:0.4; }
 
   /* ── Expression chart ─────────────────────────────────────────────────── */
   .expr-section { margin-bottom:24px; }
@@ -224,20 +226,158 @@
   border: 1px solid var(--border); border-radius: 5px;
   padding: 2px 8px;
 }
-#gene-igv-container { min-height: 380px; }
+.igv-track-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+.igv-track-swatch {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--text-muted);
+}
+.igv-track-swatch-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+#gene-igv-container { min-height: 700px; }
 #gene-igv-container .igv-root-div { border: none !important; }
+
+/* ── GO terms collapsible ────────────────────────────────────────────── */
+.go-details { margin-top: 10px; }
+.go-summary {
+  cursor: pointer; user-select: none; list-style: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted);
+}
+.go-summary::-webkit-details-marker { display: none; }
+.go-summary::before {
+  content: '▶'; font-size: 8px; transition: transform 0.15s;
+}
+details[open] .go-summary::before { transform: rotate(90deg); }
+.go-count {
+  font-size: 10px; font-weight: 600; color: var(--text-muted);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0px 6px;
+}
+.go-body { padding-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.go-pill {
+  font-size: 10.5px; padding: 1px 8px; border-radius: 8px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-muted); white-space: nowrap;
+  text-decoration: none; transition: border-color 0.12s, color 0.12s;
+}
+.go-pill:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Role-banner dividers ─────────────────────────────────────────────── */
+.role-banner {
+  display: flex; align-items: center; gap: 12px;
+  margin: 32px 0 20px;
+}
+.role-banner::before, .role-banner::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.role-banner span {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 4px 14px; border-radius: 12px;
+  border: 1px solid; white-space: nowrap;
+}
+.role-banner--regulator span {
+  color: #4a56b0; border-color: rgba(74,86,176,0.3);
+  background: rgba(74,86,176,0.08);
+}
+.role-banner--target span {
+  color: #059669; border-color: rgba(5,150,105,0.3);
+  background: rgba(5,150,105,0.08);
+}
+
+/* ── Sidebar layout ──────────────────────────────────────────── */
+.gene-page-wrap {
+  display: grid;
+  grid-template-columns: 178px 1fr;
+  gap: 0 32px;
+  align-items: start;
+}
+.gene-page-main { min-width: 0; }
+.page-sidebar {
+  position: sticky;
+  top: 68px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-top: 4px;
+}
+.sidebar-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-muted);
+  padding: 0 10px 10px;
+}
+.sidebar-role {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; padding: 8px 10px 2px;
+  display: block;
+}
+.sidebar-role--regulator { color: #4a56b0; }
+.sidebar-role--target    { color: #059669; }
+.sidebar-link.indented   { padding-left: 18px; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 1px; }
+.sidebar-link {
+  display: block; padding: 5px 10px;
+  font-size: 12.5px; color: var(--text-muted);
+  text-decoration: none; border-radius: 6px;
+  border-left: 2px solid transparent;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  line-height: 1.4;
+}
+.sidebar-link:hover { color: var(--text); background: var(--bg-elevated); }
+.sidebar-link.active {
+  color: var(--accent); border-left-color: var(--accent);
+  background: rgba(74,86,176,0.08); font-weight: 600;
+}
+[id^="sec-"] { scroll-margin-top: 72px; }
+@media (max-width: 960px) {
+  .gene-page-wrap { grid-template-columns: 1fr; }
+  .page-sidebar { display: none; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="gene-page-wrap">
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<aside class="page-sidebar">
+  <div class="sidebar-label">On this page</div>
+  <nav class="sidebar-nav">
+    <a href="#sec-overview" class="sidebar-link">Overview</a>
+    {% if is_tf %}
+    <span class="sidebar-role sidebar-role--regulator">As a Regulator</span>
+    <a href="#sec-regulated-modules" class="sidebar-link indented">Regulated Modules</a>
+    <a href="#sec-linked-genes" class="sidebar-link indented">Target Genes</a>
+    <a href="#sec-tf-elements" class="sidebar-link indented">Bound Elements</a>
+    {% if reg_elements or reg_tfs %}
+    <span class="sidebar-role sidebar-role--target">As a Regulated Gene</span>
+    {% endif %}
+    {% endif %}
+    {% if reg_elements %}
+    <a href="#sec-reg-elements" class="sidebar-link{% if is_tf %} indented{% endif %}">Linked Elements</a>
+    {% endif %}
+    {% if reg_tfs %}
+    <a href="#sec-reg-tfs" class="sidebar-link{% if is_tf %} indented{% endif %}">Upstream TFs</a>
+    {% endif %}
+    {% if gene_locus %}
+    <a href="#sec-genome-browser" class="sidebar-link">Genome Browser</a>
+    {% endif %}
+  </nav>
+</aside>
+
+<!-- ── Main content ─────────────────────────────────────────────────────── -->
+<div class="gene-page-main">
 
 <!-- ── Header ───────────────────────────────────────────────────────────── -->
-<div class="gene-hero">
+<div class="gene-hero" id="sec-overview">
   <span class="gene-title">{{ gene }}</span>
   {% if is_tf %}<span class="tf-badge">Transcription Factor</span>{% endif %}
 </div>
-{% if tf_desc and tf_desc.name %}
-<div class="gene-fullname">{{ tf_desc.name }}</div>
+{% if gene_description or gene_aliases %}
+<div class="gene-fullname">
+  {%- if gene_description %}{{ gene_description }}{% endif %}
+  {%- if gene_description and gene_aliases %}<span class="gene-aliases-sep"> | </span>{% endif %}
+  {%- if gene_aliases %}<span class="gene-aliases">{{ gene_aliases | join(', ') }}</span>{% endif %}
+</div>
 {% endif %}
 
 <!-- ── Expression chart (non-TF) / intro row (TF) ───────────────────────── -->
@@ -249,7 +389,7 @@
       {% set pert_mods = tf_reg_modules | rejectattr('evidence', 'equalto', 'binding') | list %}
       {% if pert_mods %}
       <span><strong>Regulated modules:</strong>
-        {% for m in pert_mods[:5] %}<a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=m.module) }}" style="background:{{ m.color }};color:#fff;">{{ m.module }}</a> {% endfor %}
+        {% for m in pert_mods[:5] %}<a class="intro-tag submodule-tag" data-mod-tip="{{ m.module }}" data-mod-color="{{ m.color }}" href="{{ url_for('perturbseq.module_page', name=m.module) }}" style="background:{{ m.color }};color:#fff;">{{ m.module }}</a> {% endfor %}
       </span>
       {% endif %}
       {% if tc_reg_clusters %}
@@ -259,11 +399,22 @@
       {% endif %}
       {% if membership %}
       <span><strong>Member of:</strong>
-        {% if membership.submodule %}<a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
-        <a class="intro-tag submodule-tag" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>
+        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
+        <a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>
       </span>
       {% endif %}
     </div>
+    {% if go_terms %}
+    <details class="go-details">
+      <summary class="go-summary">
+        Biological processes
+        <span class="go-count">{{ go_terms | length }} term{{ 's' if go_terms | length != 1 else '' }}</span>
+      </summary>
+      <div class="go-body">
+        {% for term in go_terms %}{% set go_id = term.split('(')[-1].rstrip(')') %}<a class="go-pill" href="{{ url_for('perturbseq.go_page', term_name=go_id) }}">{{ term }}</a>{% endfor %}
+      </div>
+    </details>
+    {% endif %}
   </div>
   <div class="tf-chart-card">
     <div class="tf-chart-label" style="display:flex;justify-content:space-between;align-items:center">
@@ -278,15 +429,46 @@
 </div>
 
 {% else %}
-<div class="expr-section">
-  <div class="expr-section-header">
-    <h2>Expression across differentiation</h2>
-    <span class="chart-mode-toggle">
-      <button class="chart-mode-btn active" data-gene-mode="tpm">TPM</button>
-      <button class="chart-mode-btn" data-gene-mode="z">Z-score</button>
-    </span>
+<div class="tf-intro-row">
+  <div class="module-intro" style="margin:0;--accent:{{ card_color }}">
+    {% if gene_summary %}<p>{{ gene_summary }}</p>{% endif %}
+    {% if membership or tc_clusters %}
+    <div class="intro-highlights" style="margin-top:0.6rem">
+      {% if membership %}
+      <span><strong>Member of:</strong>
+        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
+        {% if membership.supermodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>{% endif %}
+      </span>
+      {% endif %}
+      {% if tc_clusters %}
+      <span><strong>Developmental clusters:</strong>
+        {% for c in tc_clusters[:4] %}<a class="intro-tag submodule-tag" href="{{ c.url }}" style="background:{{ c.color }};color:#fff;">{{ c.label }}</a> {% endfor %}
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if go_terms %}
+    <details class="go-details">
+      <summary class="go-summary">
+        Biological processes
+        <span class="go-count">{{ go_terms | length }} term{{ 's' if go_terms | length != 1 else '' }}</span>
+      </summary>
+      <div class="go-body">
+        {% for term in go_terms %}{% set go_id = term.split('(')[-1].rstrip(')') %}<a class="go-pill" href="{{ url_for('perturbseq.go_page', term_name=go_id) }}">{{ term }}</a>{% endfor %}
+      </div>
+    </details>
+    {% endif %}
   </div>
-  <svg id="expr-chart"></svg>
+  <div class="tf-chart-card">
+    <div class="tf-chart-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span id="gene-chart-label">Expression (TPM)</span>
+      <span class="chart-mode-toggle">
+        <button class="chart-mode-btn active" data-gene-mode="tpm">TPM</button>
+        <button class="chart-mode-btn" data-gene-mode="z">Z-score</button>
+      </span>
+    </div>
+    <svg id="expr-chart" style="width:100%;display:block"></svg>
+  </div>
 </div>
 {% endif %}
 
@@ -294,8 +476,11 @@
 <!-- TF-ONLY: Regulated Modules section                                    -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 {% if is_tf %}
-<h2 style="margin-bottom:4px">Regulated Modules</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
+<div class="role-banner role-banner--regulator">
+  <span>{{ gene }} — as a Regulator</span>
+</div>
+<h2 class="section-h2" id="sec-regulated-modules">Regulated Modules</h2>
+<p class="section-desc">Modules significantly affected by <strong>{{ name }}</strong> knockdown. ↑&nbsp;Up = module upregulated upon KD; ↓&nbsp;Down = module downregulated upon KD.</p>
 
 <div class="module-toggle-full">
   <button class="mod-btn active" data-group="tf" data-view="tf-dev">Developmental</button>
@@ -425,13 +610,20 @@
 {% endif %}
 <!-- end TF section -->
 
+<!-- ── Linked genes (TF binding targets) ─────────────────────────────── -->
+{% if is_tf %}
+<hr class="section-divider">
+<h2 class="section-h2" id="sec-linked-genes">Candidate Target Genes <span class="section-count" id="tf-lg-count"></span></h2>
+<p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> — open chromatin regions overlapping its ChIP-seq or motif footprint binding peaks.</p>
+<div id="tf-lg-loading"><div class="dt-spinner"></div>Loading linked genes…</div>
+<div id="tf-lg-wrap" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:4px"></div>
+{% endif %}
+
 <!-- ── Regulatory elements bound by the TF ────────────────────────────── -->
 {% if is_tf %}
-<div style="display:flex;align-items:baseline;gap:14px;margin:24px 0 4px;flex-wrap:wrap">
-  <h2 style="font-size:15px;font-weight:700;margin:0">Regulatory Elements bound by the TF</h2>
-  <span id="tf-el-count" style="font-size:12px;color:var(--text-muted)"></span>
-</div>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Open chromatin elements (ATAC-seq) where <strong>{{ gene }}</strong> has ChIP-seq or motif footprint binding evidence and which are linked to at least one target gene region.</p>
+<hr class="section-divider">
+<h2 class="section-h2" id="sec-tf-elements">Regulatory Elements bound by the TF <span class="section-count" id="tf-el-count"></span></h2>
+<p class="section-desc">Open chromatin elements (ATAC-seq) where <strong>{{ gene }}</strong> has ChIP-seq or motif footprint binding evidence and which are linked to at least one target gene region.</p>
 <div id="tf-el-loading"><div class="dt-spinner"></div>Loading elements…</div>
 <div id="tf-el-wrap" style="display:none">
   <table id="tf-el-table" class="display" style="width:100%">
@@ -441,44 +633,56 @@
 </div>
 {% endif %}
 
+<!-- ── Regulated-gene role banner (TF pages only) ─────────────────────── -->
+{% if is_tf and (reg_elements or reg_tfs) %}
+<div class="role-banner role-banner--target">
+  <span>{{ gene }} — as a Regulated Gene</span>
+</div>
+{% endif %}
+
 <!-- ── Regulatory elements ─────────────────────────────────────────────── -->
 {% if reg_elements %}
-{% set lt_labels = {
-  'tss_proximal_1kb':       'Proximal 1 kb',
-  'tss_distal_10kb':        'Distal 10 kb',
-  'distal_multiome':        'Distal · Multiome',
-  'distal_multiome_hicar':  'Distal · Multiome · HiCAR',
-} %}
-<h2 style="margin: 24px 0 4px; font-size:15px; font-weight:700;">Regulatory Elements linked to the gene</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;max-width:none">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site in the dataset — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
+{% if not is_tf %}<hr class="section-divider">{% endif %}
+<h2 class="section-h2" id="sec-reg-elements">Regulatory Elements linked to the gene</h2>
+<p class="section-desc">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
 <div style="overflow-x:auto">
 <table class="data-table" id="reg-el-table">
   <thead><tr>
     <th class="sortable" style="width:106px;min-width:106px;cursor:pointer" title="Sort by temporal opening (Pearson r with timepoint index)">Accessibility</th>
     <th class="sortable" data-key="coord"      data-type="string">Element</th>
-    <th class="sortable" data-key="size"       data-type="number">Size</th>
+    <th class="sortable" data-key="tss_dist"   data-type="number" title="Distance from element to nearest TSS">Dist. to TSS</th>
     <th class="sortable" data-key="link_type"  data-type="string">Link type</th>
     <th class="sortable" data-key="n_tfs"      data-type="number">TFs</th>
   </tr></thead>
   <tbody>
   {% for el in reg_elements %}
-  <tr>
+  <tr data-tss_dist="{{ el.tss_dist if el.tss_dist is not none else 9999999 }}"
+      data-coord="{{ el.chr }}:{{ el.start }}-{{ el.end }}"
+      data-size="{{ el.end - el.start }}"
+      data-link_type="{{ el.link_type }}"
+      data-n_tfs="{{ el.n_tfs }}">
     <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
     <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
            style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"
            >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
-    <td>{{ "{:,}".format(el.end - el.start) }} bp</td>
-    <td>
-      <span style="
-        display:inline-flex;align-items:center;font-size:10px;font-weight:700;
-        padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;
-        {% if el.link_type == 'tss_proximal_1kb' %}color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)
-        {% elif el.link_type == 'tss_distal_10kb' %}color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)
-        {% elif el.link_type == 'distal_multiome' %}color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)
-        {% elif el.link_type == 'distal_multiome_hicar' %}color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)
-        {% endif %}">{{ lt_labels.get(el.link_type, el.link_type) }}</span>
+    <td>{{ el.tss_dist_label if el.tss_dist_label else '—' }}</td>
+    <td style="white-space:nowrap">
+      {% if el.tss_dist is not none and el.tss_dist == 0 %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)">At TSS</span>
+      {% elif (el.tss_dist is not none and el.tss_dist <= 10000) or el.link_type in ['tss_proximal_1kb', 'tss_distal_10kb'] %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)">Proximal (&lt;10kb)</span>
+      {% else %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#6b7280;border-color:#d1d5db;background:rgba(107,114,128,0.06)">Distal (&gt;10kb)</span>
+      {% endif %}
+      {% if el.link_type in ['distal_multiome', 'distal_multiome_hicar'] %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)">Multiome</span>
+      {% endif %}
+      {% if el.link_type == 'distal_multiome_hicar' %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)">HiCAR</span>
+      {% endif %}
     </td>
-    <td>{{ el.n_tfs }}</td>
+    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}#tf-binding-panel"
+           style="font-weight:600;color:var(--accent);text-decoration:none">{{ el.n_tfs }}</a></td>
   </tr>
   {% endfor %}
   </tbody>
@@ -486,17 +690,148 @@
 </div>
 {% endif %}
 
+<!-- ── TFs bound to regulatory elements ──────────────────────────────────── -->
+{% if reg_tfs %}
+{% set lt_styles = {
+  'tss_proximal_1kb':      'color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)',
+  'tss_distal_10kb':       'color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)',
+  'distal_multiome':       'color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)',
+  'distal_multiome_hicar': 'color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)',
+} %}
+{% set lt_short = {
+  'tss_proximal_1kb':      'Proximal',
+  'tss_distal_10kb':       'Distal',
+  'distal_multiome':       'Multiome',
+  'distal_multiome_hicar': 'HiCAR',
+} %}
+<hr class="section-divider">
+<h2 class="section-h2" id="sec-reg-tfs">Candidate Upstream Regulators <span class="section-count" id="reg-tf-count">{{ reg_tfs | length }} TF{{ 's' if reg_tfs | length != 1 else '' }}{% if reg_tfs | length == 200 %} (top 200){% endif %}</span></h2>
+<p class="section-desc">Transcription factors with ChIP-seq or motif footprint binding peaks overlapping open chromatin elements linked to <strong>{{ gene }}</strong>. <em>Elements</em> = how many of this gene's linked elements the TF binds.</p>
+<div id="reg-tf-wrap">
+<div class="filter-bar" id="reg-tf-filter-bar" style="border-radius:var(--radius) var(--radius) 0 0;border-bottom:1px solid var(--border)">
+  <input id="reg-tf-search" type="text" placeholder="Search TF…" autocomplete="off"
+         style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;
+                background:var(--bg-card);color:var(--text);outline:none;width:160px">
+  <span class="filter-sep"></span>
+  <span class="filter-label">Evidence:</span>
+  <button class="filter-pill" data-filter="ev" data-val="chip">ChIP</button>
+  <button class="filter-pill" data-filter="ev" data-val="motif">Motif</button>
+  <span class="filter-sep"></span>
+  <span class="filter-label">Link type:</span>
+  <button class="filter-pill" data-filter="lt" data-val="tss_proximal_1kb">Proximal</button>
+  <button class="filter-pill" data-filter="lt" data-val="tss_distal_10kb">Distal</button>
+  <button class="filter-pill" data-filter="lt" data-val="distal_multiome">Multiome</button>
+  <button class="filter-pill" data-filter="lt" data-val="distal_multiome_hicar">HiCAR</button>
+  <span class="filter-sep"></span>
+  <span class="filter-label">Min elements:</span>
+  <button class="filter-pill active" data-filter="min" data-val="1">Any</button>
+  <button class="filter-pill" data-filter="min" data-val="2">≥2</button>
+  <button class="filter-pill" data-filter="min" data-val="3">≥3</button>
+  <button class="filter-pill" data-filter="min" data-val="5">≥5</button>
+  <span class="filter-sep"></span>
+  <span class="filter-label">Element:</span>
+  <select id="reg-tf-element-sel" class="sst-select" style="font-size:11px;padding:2px 5px">
+    <option value="">All</option>
+    {% for el in reg_elements %}
+    <option value="{{ el.atac_peak_id }}">{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}{% if el.tss_dist_label %} ({{ el.tss_dist_label }}){% endif %}</option>
+    {% endfor %}
+  </select>
+</div>
+<div style="overflow-x:auto">
+<table class="data-table" id="reg-tf-table">
+  <thead>
+  <tr>
+    <th class="sortable" data-key="name"     data-type="string">TF</th>
+    <th>Evidence</th>
+    <th>Link types</th>
+    <th class="sortable" data-key="elements" data-type="number">Elements</th>
+    <th class="sortable" data-key="datasets" data-type="number">Datasets</th>
+    <th>TF→Gene link</th>
+  </tr></thead>
+  <tbody>
+  {% for tf in reg_tfs %}
+  <tr data-name="{{ tf.tf_gene_name }}"
+      data-elements="{{ tf.n_elements }}"
+      data-datasets="{{ tf.n_datasets }}"
+      data-has-chip="{{ '1' if tf.has_chip else '0' }}"
+      data-has-motif="{{ '1' if tf.has_motif else '0' }}"
+      data-link-types="{{ tf.link_types | join(',') }}"
+      data-peak-ids="{{ tf.peak_ids | join(',') }}">
+    <td><a href="/perturbseq/gene/{{ tf.tf_gene_name }}"
+           style="font-weight:600;color:var(--accent);text-decoration:none">{{ tf.tf_gene_name }}</a></td>
+    <td style="white-space:nowrap">
+      {% if tf.has_chip %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0;margin-right:3px">ChIP</span>{% endif %}
+      {% if tf.has_motif %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(16,185,129,0.12);color:#059669">Motif</span>{% endif %}
+    </td>
+    <td>
+      {% for lt in tf.link_types %}<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin:1px 2px 1px 0;{{ lt_styles.get(lt, '') }}">{{ lt_short.get(lt, lt) }}</span>{% endfor %}
+    </td>
+    <td>{{ tf.n_elements }}</td>
+    <td>{{ tf.n_datasets }}</td>
+    <td><a href="/perturbseq/link/{{ tf.tf_gene_name }}/{{ gene }}"
+           style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;
+                  font-size:11px;font-weight:600;white-space:nowrap;
+                  padding:2px 8px;border-radius:10px;
+                  background:rgba(74,86,176,0.10);color:#4a56b0;
+                  border:1.5px solid rgba(74,86,176,0.25);
+                  transition:background 0.12s"
+           onmouseover="this.style.background='rgba(74,86,176,0.2)'"
+           onmouseout="this.style.background='rgba(74,86,176,0.10)'"
+           >{{ tf.tf_gene_name }} → {{ gene }}</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="sst-bar bottom" style="border-top:1px solid var(--border);border-radius:0 0 8px 8px">
+  <span id="reg-tf-info" style="font-size:12px;color:var(--text-muted)"></span>
+  <div style="display:flex;align-items:center;gap:8px">
+    <label style="font-size:12px;color:var(--text-muted)">Rows:
+      <select class="sst-select" id="reg-tf-per-page">
+        <option value="15" selected>15</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </label>
+    <div class="sst-pages" id="reg-tf-pages"></div>
+  </div>
+</div>
+</div>
+{% endif %}
+
 {% if gene_locus %}
 <!-- ── Gene locus RNA-seq browser ───────────────────────────────────────── -->
 {% set pad = 10000 %}
-<h2 style="margin: 24px 0 4px; font-size:15px; font-weight:700;">Gene locus — Bulk RNA-seq</h2>
+<hr class="section-divider">
+<h2 class="section-h2" id="sec-genome-browser">Gene locus — Genome Browser</h2>
+<p class="section-desc">Genomic view of the <strong>{{ gene }}</strong> locus showing ATAC-seq accessibility and RNA-seq expression across the ESC → DE time course, together with TF binding peaks and element-to-TSS loop connections.</p>
 <div class="gene-igv-card">
   <div class="gene-igv-toolbar">
     <span class="gene-igv-locus-tag">{{ gene_locus.chr }}:{{ "{:,}".format(gene_locus.locus_start - pad) }} – {{ "{:,}".format(gene_locus.locus_end + pad) }}</span>
+    <div class="igv-track-legend">
+      {% if reg_elements %}
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#059669"></span>Proximal 1 kb</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#2563eb"></span>Distal 10 kb</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#7c3aed"></span>Multiome</span>
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#b45309"></span>HiCAR</span>
+      {% endif %}
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
+        ATAC-seq
+      </span>
+      <span class="igv-track-swatch" style="gap:2px">
+        <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
+        RNA-seq
+      </span>
+    </div>
   </div>
   <div id="gene-igv-container"></div>
 </div>
 {% endif %}
+
+</div><!-- end gene-page-main -->
+</div><!-- end gene-page-wrap -->
 {% endblock %}
 
 {% block scripts %}
@@ -519,8 +854,8 @@ const cyInstances = {};
   if (!svgEl || !EXPR.length) return;
 
   const margin = { top:14, right:14, bottom:40, left:48 };
-  const W = Math.min(svgEl.parentElement.clientWidth - 2, IS_TF ? 9999 : 680);
-  const H = IS_TF ? 180 : 220;
+  const W = svgEl.parentElement.clientWidth - 2;
+  const H = 180;
   const iW = W - margin.left - margin.right, iH = H - margin.top - margin.bottom;
   const lineColor = '#4a56b0';
   const tps = EXPR.map(d => d.timepoint);
@@ -558,8 +893,10 @@ const cyInstances = {};
     // Exclude exact zeros: they are non-detected samples and clutter the chart at y=0
     const allReps  = EXPR.flatMap(d => d.replicates.filter(v => v != null && v !== 0).map(repV));
     const allMeans = EXPR.map(val);
-    const yLo = mode === 'z' ? Math.min(d3.min(allReps), d3.min(allMeans)) : 0;
-    const yHi = Math.max(d3.max(allReps), d3.max(allMeans));
+    const yLo = mode === 'z'
+      ? Math.min(allReps.length ? d3.min(allReps) : 0, d3.min(allMeans) || 0)
+      : 0;
+    const yHi = Math.max(allReps.length ? d3.max(allReps) : 0, d3.max(allMeans) || 0);
     const pad = (yHi - yLo) * 0.08 || 0.2;
     const y = d3.scaleLinear().domain([yLo - (mode === 'z' ? pad : 0), yHi + pad]).range([iH, 0]).nice();
 
@@ -1054,12 +1391,337 @@ requestAnimationFrame(() => {
     }
 
     th.addEventListener('click', sortByScore);
-
-    // Auto-sort descending on load
-    sortByScore();
   });
 })();
 
+
+// ── Reg-element table: data-key column sort ──────────────────────────────────
+(function() {
+  const table = document.getElementById('reg-el-table');
+  if (!table) return;
+  const dataKeyThs = [...table.querySelectorAll('th.sortable[data-key]')];
+  const allThs     = table.querySelectorAll('th.sortable');
+  let sortKey = null, sortDir = 'asc';
+
+  function sortByKey(key, dir) {
+    sortKey = key; sortDir = dir;
+    const th    = dataKeyThs.find(h => h.dataset.key === key);
+    const isNum = th && th.dataset.type === 'number';
+    const tbody = table.querySelector('tbody');
+    const rows  = [...tbody.querySelectorAll('tr')];
+    rows.sort((a, b) => {
+      const va = a.dataset[key] ?? '';
+      const vb = b.dataset[key] ?? '';
+      if (isNum) {
+        const na = va === '' ? (dir === 'asc' ? Infinity : -Infinity) : +va;
+        const nb = vb === '' ? (dir === 'asc' ? Infinity : -Infinity) : +vb;
+        return dir === 'asc' ? na - nb : nb - na;
+      }
+      return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    allThs.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+    if (th) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+  }
+
+  dataKeyThs.forEach(th => {
+    th.addEventListener('click', () => {
+      const newDir = sortKey === th.dataset.key
+        ? (sortDir === 'asc' ? 'desc' : 'asc')
+        : (th.dataset.type === 'number' ? 'desc' : 'asc');
+      sortByKey(th.dataset.key, newDir);
+    });
+  });
+
+  // Default: closest to TSS first
+  sortByKey('tss_dist', 'asc');
+})();
+
+
+// ── Reg-TF table sort + search ───────────────────────────────────────────────
+(function() {
+  const table = document.getElementById('reg-tf-table');
+  if (!table) return;
+  const headers    = table.querySelectorAll('th.sortable');
+  const searchEl   = document.getElementById('reg-tf-search');
+  const countEl    = document.getElementById('reg-tf-count');
+  const infoEl     = document.getElementById('reg-tf-info');
+  const perPageEl  = document.getElementById('reg-tf-per-page');
+  const pagesEl    = document.getElementById('reg-tf-pages');
+  const elementSel = document.getElementById('reg-tf-element-sel');
+
+  let sortKey = 'elements', sortDir = 'desc', q = '';
+  let page = 1, perPage = 15;
+  // multi-select sets for evidence and link-type; single value for min-elements
+  let evFilter  = new Set();   // 'chip', 'motif' — empty = no restriction
+  let ltFilter  = new Set();   // link type keys — empty = no restriction
+  let minEl     = 1;
+  let elFilter  = '';          // atac_peak_id as string, '' = all
+
+  // Wire filter pills
+  document.querySelectorAll('#reg-tf-filter-bar .filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter, v = btn.dataset.val;
+      if (f === 'min') {
+        document.querySelectorAll('#reg-tf-filter-bar .filter-pill[data-filter="min"]')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        minEl = +v;
+      } else {
+        btn.classList.toggle('active');
+        const set = f === 'ev' ? evFilter : ltFilter;
+        set.has(v) ? set.delete(v) : set.add(v);
+      }
+      page = 1; refresh();
+    });
+  });
+
+  if (elementSel) elementSel.addEventListener('change', () => { elFilter = elementSel.value; page = 1; refresh(); });
+
+  function renderPages(totalPages) {
+    pagesEl.innerHTML = '';
+    function mkBtn(label, p, disabled, active) {
+      const btn = document.createElement('button');
+      btn.className = 'sst-page-btn' + (active ? ' active' : '');
+      btn.textContent = label;
+      if (disabled) { btn.disabled = true; }
+      else btn.addEventListener('click', () => { page = p; refresh(); });
+      pagesEl.appendChild(btn);
+    }
+    mkBtn('‹', page - 1, page <= 1, false);
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) mkBtn(i, i, false, i === page);
+    } else {
+      const show = new Set([1, totalPages, page, page - 1, page + 1].filter(p => p >= 1 && p <= totalPages));
+      let prev = 0;
+      [...show].sort((a, b) => a - b).forEach(p => {
+        if (p - prev > 1) { const sp = document.createElement('span'); sp.textContent = '…'; sp.style.cssText = 'padding:2px 4px;font-size:12px;color:var(--text-muted)'; pagesEl.appendChild(sp); }
+        mkBtn(p, p, false, p === page);
+        prev = p;
+      });
+    }
+    mkBtn('›', page + 1, page >= totalPages, false);
+  }
+
+  function refresh() {
+    const tbody = table.querySelector('tbody');
+    const allRows = [...tbody.querySelectorAll('tr[data-name]')];
+
+    const filtered = allRows.filter(r => {
+      if (q && !r.dataset.name.toLowerCase().includes(q)) return false;
+      if (evFilter.size) {
+        const ok = (evFilter.has('chip')  && r.dataset.hasChip  === '1') ||
+                   (evFilter.has('motif') && r.dataset.hasMotif === '1');
+        if (!ok) return false;
+      }
+      if (ltFilter.size) {
+        const rowLts = (r.dataset.linkTypes || '').split(',').filter(Boolean);
+        if (!rowLts.some(lt => ltFilter.has(lt))) return false;
+      }
+      if (+r.dataset.elements < minEl) return false;
+      if (elFilter) {
+        const ids = (r.dataset.peakIds || '').split(',');
+        if (!ids.includes(elFilter)) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    const th   = [...headers].find(h => h.dataset.key === sortKey);
+    const type = th ? th.dataset.type : 'string';
+    filtered.sort((a, b) => {
+      const va = a.dataset[sortKey] ?? '';
+      const vb = b.dataset[sortKey] ?? '';
+      if (type === 'number') return sortDir === 'asc' ? +va - +vb : +vb - +va;
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+    if (page > totalPages) page = totalPages;
+
+    const start = (page - 1) * perPage;
+    allRows.forEach(r => { r.hidden = true; });
+    filtered.slice(start, start + perPage).forEach(r => { r.hidden = false; tbody.appendChild(r); });
+
+    headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+    if (th) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+    if (countEl) {
+      const total = allRows.length;
+      const suffix = total === 200 ? ' (top 200)' : '';
+      countEl.textContent = filtered.length === total
+        ? `${total} TF${total !== 1 ? 's' : ''}${suffix}`
+        : `${filtered.length} of ${total} TF${total !== 1 ? 's' : ''}${suffix}`;
+    }
+    if (infoEl) {
+      const end = Math.min(start + perPage, filtered.length);
+      infoEl.textContent = filtered.length
+        ? `${start + 1}–${end} of ${filtered.length}`
+        : 'No results';
+    }
+    if (pagesEl) renderPages(totalPages);
+  }
+
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      if (sortKey === th.dataset.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = th.dataset.key; sortDir = th.dataset.type === 'number' ? 'desc' : 'asc'; }
+      page = 1;
+      refresh();
+    });
+  });
+
+  if (searchEl) searchEl.addEventListener('input', () => { q = searchEl.value.trim().toLowerCase(); page = 1; refresh(); });
+  if (perPageEl) perPageEl.addEventListener('change', () => { perPage = +perPageEl.value; page = 1; refresh(); });
+
+  refresh();
+})();
+
+
+// ── Linked genes (TF binding targets) ────────────────────────────────────────
+(function() {
+  if (!IS_TF) return;
+  const loadingEl = document.getElementById('tf-lg-loading');
+  const wrapEl    = document.getElementById('tf-lg-wrap');
+  const countEl   = document.getElementById('tf-lg-count');
+  if (!wrapEl) return;
+
+  const SOURCE_META = {
+    'huangfu-tf_chipseq': { short: 'H', label: 'Huangfu ChIP-seq', color: '#6366f1' },
+    'encode_chipseq':     { short: 'E', label: 'ENCODE ChIP-seq',  color: '#10b981' },
+    'remap_chipseq':      { short: 'R', label: 'ReMap ChIP-seq',   color: '#f59e0b' },
+    'tobias':             { short: 'T', label: 'TOBIAS footprint',  color: '#ec4899' },
+  };
+
+  function srcBadge(src) {
+    const m = SOURCE_META[src] || { short: (src[0] || '?').toUpperCase(), label: src, color: '#9098b8' };
+    return `<span title="${m.label}" style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:${m.color};color:#fff;font-size:9px;font-weight:700;margin-right:2px;flex-shrink:0">${m.short}</span>`;
+  }
+
+  let page = 1, perPage = 25, search = '', orderCol = 2, orderDir = 'desc';
+  let debounce;
+
+  wrapEl.innerHTML = `
+    <div class="sst-bar top">
+      <label>Show <select class="sst-select" id="lg-per-page">
+        <option>10</option><option selected>25</option><option>50</option><option>100</option>
+      </select> entries</label>
+      <input class="sst-search" id="lg-search" type="text" placeholder="Search gene or module…" autocomplete="off">
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr>
+          <th class="sst-sortable" data-col="0">Gene</th>
+          <th class="sst-sortable" data-col="1">Module</th>
+          <th class="sst-sortable" data-col="4" title="Perturb-seq differential expression percentile (KD effect on this gene vs all tested genes)">DE Rank</th>
+          <th class="sst-sortable sst-desc" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene"># Datasets</th>
+          <th class="sst-sortable" data-col="3" title="Number of distinct cell-type groups with binding evidence"># Cell types</th>
+          <th title="Data sources: H=Huangfu ChIP, E=ENCODE, R=ReMap, T=TOBIAS">Sources</th>
+        </tr></thead>
+        <tbody id="lg-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="sst-bar bottom">
+      <span id="lg-info"></span>
+      <div class="sst-pages" id="lg-pages"></div>
+    </div>`;
+  if (loadingEl) loadingEl.style.display = 'none';
+  wrapEl.style.display = '';
+
+  function fetchPage() {
+    const params = new URLSearchParams({ start: (page - 1) * perPage, length: perPage, q: search, order_col: orderCol, order_dir: orderDir });
+    fetch(`/perturbseq/api/tf-linked-genes/${encodeURIComponent(GENE)}?${params}`)
+      .then(r => r.json())
+      .then(resp => {
+        const tbody = document.getElementById('lg-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = resp.data && resp.data.length
+          ? resp.data.map(r => {
+              const gLink = `<a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
+              const modLink = r.submodule
+                ? `<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
+                : '<span style="color:var(--text-muted)">—</span>';
+              const srcs = (r.sources || []).map(srcBadge).join('');
+              let deCell;
+              if (r.de_pct_rank == null) {
+                deCell = '<td style="color:var(--text-muted);font-size:12px">—</td>';
+              } else {
+                const pct = Math.round(r.de_pct_rank * 100);
+                const isUp = r.mean_coef > 0;
+                const barColor = isUp ? '#ec4899' : '#3b82f6';
+                const dir = isUp ? '▲' : '▼';
+                deCell = `<td><div style="display:flex;align-items:center;gap:6px" title="${dir} mean coef ${r.mean_coef.toFixed(3)} · ${pct}th percentile">` +
+                  `<div style="width:52px;height:7px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">` +
+                  `<div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px"></div></div>` +
+                  `<span style="font-size:11px;color:var(--text-muted);min-width:28px">${pct}th</span>` +
+                  `</div></td>`;
+              }
+              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}<td>${r.n_datasets}</td><td>${r.n_ctg}</td><td style="white-space:nowrap">${srcs}</td></tr>`;
+            }).join('')
+          : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+
+        const total    = resp.total    || 0;
+        const filtered = resp.filtered || 0;
+        if (countEl && total > 0) countEl.textContent = `${total.toLocaleString()} genes`;
+
+        const from = (page - 1) * perPage + 1;
+        const to   = Math.min(from + (resp.data ? resp.data.length : 0) - 1, filtered);
+        const info = document.getElementById('lg-info');
+        if (info) {
+          if (filtered < total) {
+            info.textContent = `Showing ${from}–${to} of ${filtered.toLocaleString()} (filtered from ${total.toLocaleString()})`;
+          } else {
+            info.textContent = `Showing ${from}–${to} of ${total.toLocaleString()} genes`;
+          }
+        }
+        renderPages(Math.ceil(filtered / perPage));
+      })
+      .catch(() => {
+        const tbody = document.getElementById('lg-tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
+      });
+  }
+
+  function renderPages(totalPages) {
+    const el = document.getElementById('lg-pages');
+    if (!el) return;
+    const btns = [];
+    const add = (label, target, active, disabled) =>
+      btns.push(`<button class="sst-page-btn${active ? ' active' : ''}" ${disabled ? 'disabled' : ''} data-p="${target}">${label}</button>`);
+    add('«', 1, false, page === 1);
+    add('‹', page - 1, false, page === 1);
+    const s = Math.max(1, page - 2), e = Math.min(totalPages, page + 2);
+    if (s > 1) { add('1', 1, false, false); if (s > 2) btns.push('<span style="padding:0 4px;color:var(--text-muted)">…</span>'); }
+    for (let p = s; p <= e; p++) add(p, p, p === page, false);
+    if (e < totalPages) { if (e < totalPages - 1) btns.push('<span style="padding:0 4px;color:var(--text-muted)">…</span>'); add(totalPages, totalPages, false, false); }
+    add('›', page + 1, false, page === totalPages);
+    add('»', totalPages, false, page === totalPages);
+    el.innerHTML = btns.join('');
+    el.querySelectorAll('.sst-page-btn:not([disabled])').forEach(btn =>
+      btn.addEventListener('click', () => { page = +btn.dataset.p; fetchPage(); }));
+  }
+
+  wrapEl.addEventListener('change', e => {
+    if (e.target.id === 'lg-per-page') { perPage = +e.target.value; page = 1; fetchPage(); }
+  });
+  wrapEl.addEventListener('input', e => {
+    if (e.target.id === 'lg-search') {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => { search = e.target.value.trim(); page = 1; fetchPage(); }, 300);
+    }
+  });
+  wrapEl.addEventListener('click', e => {
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    const col = +th.dataset.col;
+    if (col === orderCol) orderDir = orderDir === 'asc' ? 'desc' : 'asc';
+    else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4) ? 'desc' : 'asc'; }
+    wrapEl.querySelectorAll('th[data-col]').forEach(h => h.className = 'sst-sortable' + (h === th ? ` sst-${orderDir}` : ''));
+    page = 1; fetchPage();
+  });
+
+  fetchPage();
+})();
 
 // ── Regulatory elements bound by TF ─────────────────────────────────────────
 (function() {
@@ -1231,7 +1893,40 @@ requestAnimationFrame(() => {
   const container = document.getElementById('gene-igv-container');
   if (!container || typeof igv === 'undefined') return;
 
-  const locus = {{ (gene_locus.chr ~ ':' ~ (gene_locus.locus_start - 10000) ~ '-' ~ (gene_locus.locus_end + 10000)) | tojson }};
+  const _LINK_COLORS = {
+    tss_proximal_1kb:      '#059669',
+    tss_distal_10kb:       '#2563eb',
+    distal_multiome:       '#7c3aed',
+    distal_multiome_hicar: '#b45309',
+  };
+  const geneChr = {{ gene_locus.chr | tojson }};
+  const geneTss = {{ gene_locus.tss | tojson }};
+  const GENE_IGV_ELEMENTS = {{ (reg_elements or []) | tojson }};
+
+  const interactFeatures = (geneTss != null)
+    ? GENE_IGV_ELEMENTS
+        .filter(el => el.chr === geneChr)
+        .map(el => {
+          const peakMid = Math.round((el.start + el.end) / 2);
+          return {
+            chr: geneChr, start: Math.min(peakMid, geneTss), end: Math.max(peakMid, geneTss),
+            chr1: geneChr, start1: peakMid, end1: peakMid,
+            chr2: geneChr, start2: geneTss,  end2: geneTss,
+            name: `${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}`,
+            color: _LINK_COLORS[el.link_type] || '#9ca3af',
+          };
+        })
+    : [];
+
+  // Expand locus to include all linked peaks
+  let _lo = {{ gene_locus.locus_start }} - 10000;
+  let _hi = {{ gene_locus.locus_end }} + 10000;
+  if (interactFeatures.length) {
+    interactFeatures.forEach(f => { _lo = Math.min(_lo, f.start); _hi = Math.max(_hi, f.end); });
+    const _extra = Math.round((_hi - _lo) * 0.05);
+    _lo -= _extra; _hi += _extra;
+  }
+  const locus = `${geneChr}:${Math.max(0, _lo)}-${_hi}`;
 
   const RNA_TRACKS = [
     { file: 'ESC.all.bw',   label: 'ES 0h',   color: '#6366f1' },
@@ -1243,7 +1938,55 @@ requestAnimationFrame(() => {
     { file: 'DE-72h.all.bw', label: 'DE 72h', color: '#f87171' },
   ];
 
-  const tracks = RNA_TRACKS.map(t => ({
+  // Peak annotation features — colored by link type
+  const peakAnnotations = GENE_IGV_ELEMENTS
+    .filter(el => el.chr === geneChr)
+    .map(el => ({
+      chr:   el.chr,
+      start: el.start,
+      end:   el.end,
+      name:  `${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}`,
+      color: _LINK_COLORS[el.link_type] || '#9ca3af',
+    }));
+
+  const _ATAC_TRACKS = [
+    { tp: 'ES_0h',  label: 'ES 0h',  color: '#6366f1' },
+    { tp: 'DE_12h', label: 'DE 12h', color: '#818cf8' },
+    { tp: 'DE_24h', label: 'DE 24h', color: '#38bdf8' },
+    { tp: 'DE_36h', label: 'DE 36h', color: '#34d399' },
+    { tp: 'DE_48h', label: 'DE 48h', color: '#fbbf24' },
+    { tp: 'DE_60h', label: 'DE 60h', color: '#fb923c' },
+    { tp: 'DE_72h', label: 'DE 72h', color: '#f87171' },
+  ];
+
+  const tracks = [];
+  if (interactFeatures.length) tracks.push({
+    name:             'Linked peaks → TSS',
+    type:             'interact',
+    arcType:          'nested',
+    showBlocks:       true,
+    height:           80,
+    visibilityWindow: -1,
+    features:         interactFeatures,
+  });
+  if (peakAnnotations.length) tracks.push({
+    name:        'Linked peaks',
+    type:        'annotation',
+    displayMode: 'SQUISHED',
+    height:       30,
+    visibilityWindow: -1,
+    features:    peakAnnotations,
+  });
+  _ATAC_TRACKS.forEach(bw => tracks.push({
+    name:           `${bw.label} (ATAC)`,
+    type:           'wig',
+    format:         'bigwig',
+    url:            `/perturbseq/bw/${bw.tp}/${bw.tp}-merged.bw`,
+    color:          bw.color,
+    height:         40,
+    autoscaleGroup: 'atac',
+  }));
+  RNA_TRACKS.forEach(t => tracks.push({
     name:             `${t.label} (RNA)`,
     type:             'wig',
     format:           'bigwig',
@@ -1259,8 +2002,8 @@ requestAnimationFrame(() => {
     format:           'gtf',
     url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
     indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
-    displayMode:      'COLLAPSED',
-    height:            60,
+    displayMode:      'EXPANDED',
+    height:            140,
     color:             '#6b7280',
     visibilityWindow:  2000000,
     nameField:        'gene_name',
@@ -1271,8 +2014,189 @@ requestAnimationFrame(() => {
     locus,
     showChromosomeWidget: false,
     tracks,
+  }).then(function(browser) {
+    browser.trackViews
+      .filter(tv => tv.track.name && /refseq/i.test(tv.track.name))
+      .forEach(tv => browser.removeTrack(tv.track));
   }).catch(() => {});
 })();
 {% endif %}
+
+/* ── Sidebar scroll-spy ──────────────────────────────────────── */
+(function() {
+  const links = [...document.querySelectorAll('.sidebar-link[href^="#"]')];
+  const sections = links.map(l => document.getElementById(l.getAttribute('href').slice(1))).filter(Boolean);
+  if (!links.length || !sections.length) return;
+
+  function update() {
+    const scrollY = window.scrollY + 90;
+    let active = sections[0];
+    for (const sec of sections) {
+      if (sec.offsetTop <= scrollY) active = sec;
+    }
+    links.forEach(l => l.classList.remove('active'));
+    const link = document.querySelector(`.sidebar-link[href="#${active.id}"]`);
+    if (link) link.classList.add('active');
+  }
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+
+<!-- ── Module pill tooltips ─────────────────────────────────────────────── -->
+<div id="mod-tip" role="tooltip" aria-hidden="true">
+  <div id="mod-tip-header">
+    <span id="mod-tip-swatch"></span>
+    <span id="mod-tip-name"></span>
+  </div>
+  <div id="mod-tip-body"></div>
+</div>
+<style>
+#mod-tip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  width: 272px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  font-family: inherit;
+}
+#mod-tip-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px 7px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+#mod-tip-swatch {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+#mod-tip-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.1px;
+}
+#mod-tip-body {
+  padding: 8px 11px 9px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+#mod-tip .tip-row { margin-top: 5px; }
+#mod-tip .tip-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+#mod-tip .tip-chips { margin-top: 2px; }
+#mod-tip .tip-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 2px 2px 0 0;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: background 0.1s, border-color 0.1s;
+}
+a#mod-tip .tip-chip,
+#mod-tip a.tip-chip:hover {
+  background: var(--border);
+  border-color: #c0c8e0;
+  color: var(--accent);
+}
+</style>
+<script>
+(function () {
+  const MODULE_TOOLTIPS = {{ module_tooltips | tojson }};
+  const tip   = document.getElementById('mod-tip');
+  const tipSw = document.getElementById('mod-tip-swatch');
+  const tipN  = document.getElementById('mod-tip-name');
+  const tipB  = document.getElementById('mod-tip-body');
+  if (!tip) return;
+
+  function buildContent(mod, data, color) {
+    if (!data) return false;
+    // Header
+    tipSw.style.background = color || '#4a56b0';
+    if (data.desc) {
+      // Submodule: compact narrative
+      tipN.textContent = mod;
+      tipB.innerHTML = '<div style="color:var(--text-muted)">' + data.desc + '</div>';
+    } else {
+      // Supermodule: title + gene/term chips
+      tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
+      let html = '';
+      if (data.genes && data.genes.length) {
+        html += '<div class="tip-row"><span class="tip-label">Genes</span>'
+              + '<div class="tip-chips">'
+              + data.genes.map(g => '<a class="tip-chip" href="/perturbseq/gene/' + encodeURIComponent(g) + '">' + g + '</a>').join('')
+              + '</div></div>';
+      }
+      if (data.terms && data.terms.length) {
+        html += '<div class="tip-row"><span class="tip-label">Terms</span>'
+              + '<div class="tip-chips">'
+              + data.terms.map(t => '<a class="tip-chip" href="/perturbseq/go/' + encodeURIComponent(t) + '">' + t + '</a>').join('')
+              + '</div></div>';
+      }
+      tipB.innerHTML = html;
+    }
+    return true;
+  }
+
+  let hideTimer = null;
+
+  function positionNear(el) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const rect = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = rect.left;
+    let y = rect.bottom + 6;
+    if (y + th > H - pad) y = rect.top - th - 6;
+    if (x + tw > W - pad) x = rect.right - tw;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function scheduleHide() {
+    hideTimer = setTimeout(() => {
+      tip.style.display = 'none';
+      tip.style.borderTopWidth = '1px';
+    }, 150);
+  }
+
+  document.querySelectorAll('[data-mod-tip]').forEach(el => {
+    const mod   = el.dataset.modTip;
+    const color = el.dataset.modColor || '';
+    if (!MODULE_TOOLTIPS[mod]) return;
+    el.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimer);
+      if (buildContent(mod, MODULE_TOOLTIPS[mod], color)) {
+        tip.style.borderTopColor = color || 'var(--border)';
+        tip.style.borderTopWidth = '3px';
+        tip.style.display = 'block';
+        positionNear(el);
+      }
+    });
+    el.addEventListener('mouseleave', scheduleHide);
+  });
+
+  tip.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  tip.addEventListener('mouseleave', scheduleHide);
+})();
 </script>
 {% endblock %}

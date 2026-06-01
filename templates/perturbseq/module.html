@@ -308,8 +308,9 @@
 {# ════════════════════════════════════════════════════════════════ #}
 {% if module_type == 'super' %}
 
-<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this module (↑ = KD upregulates; ↓ = KD downregulates).</p>
+<hr class="section-divider">
+<h2 class="section-h2">TF Regulatory Network</h2>
+<p class="section-desc">Direction indicates the effect of TF knockdown on this module (↑ = KD upregulates; ↓ = KD downregulates).</p>
 
 {{ filter_bar('filter-bar', dir_label_id='dir-label', bind_label_id='bind-label', bind_slider_id='bind-slider', bind_range_id='bind-range') }}
 
@@ -318,7 +319,9 @@
 <div class="bottom-split" style="margin-top:28px">
   {% if submodules %}
   <div>
-    <h2>Submodules <span class="gene-count">({{ submodules|length }})</span></h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Submodules <span class="section-count">({{ submodules|length }})</span></h2>
+    <p class="section-desc">Finer-grained co-expression clusters within this supermodule, each with a distinct functional signature.</p>
     <div class="tf-search-wrap">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input class="tf-search-input" id="submod-search" type="text" placeholder="Search submodule…" autocomplete="off" spellcheck="false">
@@ -346,7 +349,9 @@
   </div>
   {% endif %}
   <div>
-    <h2>Module Genes <span class="gene-count" id="gene-count"></span></h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Module Genes <span class="section-count" id="gene-count"></span></h2>
+    <p class="section-desc">All genes assigned to this co-expression supermodule.</p>
     <div class="tf-search-wrap">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input class="tf-search-input" id="gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
@@ -364,8 +369,10 @@
   </div>
 </div>
 
-<div style="margin-top:28px">
-  <h2>Enriched Terms</h2>
+<hr class="section-divider">
+<h2 class="section-h2">Enriched Terms</h2>
+<p class="section-desc">GO terms and pathway annotations enriched in this gene set (g:Profiler).</p>
+<div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
     <div class="tf-search-wrap" style="margin-bottom:0">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -389,8 +396,9 @@
 {# ════════════════════════════════════════════════════════════════ #}
 {% if module_type == 'sub' %}
 
-<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this submodule (↑ = KD upregulates; ↓ = KD downregulates).</p>
+<hr class="section-divider">
+<h2 class="section-h2">TF Regulatory Network</h2>
+<p class="section-desc">Direction indicates the effect of TF knockdown on this submodule (↑ = KD upregulates; ↓ = KD downregulates).</p>
 
 <div id="tf-empty-state" class="empty-state" style="display:none">
   <strong>No TF regulatory links found</strong>
@@ -403,7 +411,9 @@
 
 <div class="bottom-split" style="margin-top:28px">
   <div>
-    <h2>Enriched Terms</h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Enriched Terms</h2>
+    <p class="section-desc">GO terms and pathway annotations enriched in this gene set (g:Profiler).</p>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       <div class="tf-search-wrap" style="margin-bottom:0">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -425,7 +435,9 @@
     <p id="enrich-empty" style="display:none">No significant enrichment terms.</p>
   </div>
   <div>
-    <h2>Module Genes <span class="gene-count" id="sub-gene-count">({{ genes|length }})</span></h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Module Genes <span class="section-count" id="sub-gene-count">({{ genes|length }})</span></h2>
+    <p class="section-desc">All genes assigned to this co-expression submodule.</p>
     <div class="tf-search-wrap">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input class="tf-search-input" id="sub-gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
@@ -442,9 +454,11 @@
   </div>
 </div>
 
+<hr class="section-divider">
+<p class="section-desc">Local co-expression graph for member genes built from Hotspot z-scores. Adjust the z-score threshold and repulsion sliders to explore the neighbourhood.</p>
 <div class="gene-net-section">
   <div class="gene-net-header">
-    <h2>Gene Co-expression Network</h2>
+    <h2 class="section-h2">Gene Co-expression Network</h2>
     <div class="net-controls">
       <label>Min z: <strong id="slider-val">—</strong>
         <input type="range" id="z-slider" step="1"></label>
@@ -471,15 +485,18 @@
 {% if module_type in ('gc', 'pc') %}
 
 {% if module_type == 'gc' %}
-<h2 style="margin-top:4px;margin-bottom:4px">TF Regulatory Network</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Direction indicates the effect of TF knockdown on this gene cluster (↑ = KD upregulates; ↓ = KD downregulates).</p>
+<hr class="section-divider">
+<h2 class="section-h2">TF Regulatory Network</h2>
+<p class="section-desc">Direction indicates the effect of TF knockdown on this gene cluster (↑ = KD upregulates; ↓ = KD downregulates).</p>
 
 {{ filter_bar('gc-filter-bar', dir_label_id='gc-dir-label', bind_label_id='gc-bind-label', bind_slider_id='gc-bind-slider', bind_range_id='gc-bind-range', count_id='gc-filter-count') }}
 
 {{ landing_split('gc-cy', 'gc-tf-table', cols_gc, variant='full', search_id='gc-tf-search') }}
 
-<div style="margin-top:28px">
-  <h2>Module Genes <span class="gene-count" id="gc-gene-count"></span></h2>
+<hr class="section-divider">
+<div>
+  <h2 class="section-h2">Module Genes <span class="section-count" id="gc-gene-count"></span></h2>
+  <p class="section-desc">Genes assigned to this temporal expression cluster (mfuzz).</p>
   <div class="tf-search-wrap">
     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
     <input class="tf-search-input" id="gc-gene-search" type="text" placeholder="Search gene…" autocomplete="off" spellcheck="false">
@@ -499,7 +516,9 @@
 
 <div class="bottom-split">
   <div>
-    <h2>TF Binders</h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">TF Binders</h2>
+    <p class="section-desc">Transcription factors whose ChIP-seq peaks or TOBIAS motif footprints are enriched in this ATAC peak cluster.</p>
     <div class="tf-search-wrap">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input class="tf-search-input" id="tf-search" type="text" placeholder="Search TF…" autocomplete="off" spellcheck="false">
@@ -526,7 +545,9 @@
     </table>
   </div>
   <div>
-    <h2>Associated {{ assoc_label }}</h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Associated {{ assoc_label }}</h2>
+    <p class="section-desc">Gene or peak clusters significantly co-associated with this peak cluster, based on Fisher enrichment of shared peaks.</p>
     <table class="data-table">
       <thead><tr>
         <th>Cluster</th><th>Odds ratio</th><th>FDR</th>
@@ -546,8 +567,10 @@
   </div>
 </div>
 
+<hr class="section-divider">
 <div class="mod-members">
-  <h2>Members <span class="gene-count">({{ genes|length }})</span></h2>
+  <h2 class="section-h2">Members <span class="section-count">({{ genes|length }})</span></h2>
+  <p class="section-desc">Open chromatin peaks assigned to this cluster.</p>
   <div class="gene-list">
     {% for g in genes %}
     <span class="gene-chip">{{ g }}</span>

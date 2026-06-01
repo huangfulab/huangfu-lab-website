@@ -84,6 +84,27 @@ p {
     max-width: 72ch;
 }
 
+/* ── Section headers (shared across all landing pages) ── */
+.section-h2 {
+  margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 9px;
+}
+.section-h2::before {
+  content: ''; display: inline-block; width: 3px; height: 1em;
+  border-radius: 2px; background: var(--accent); flex-shrink: 0;
+}
+.section-count {
+  font-size: 12px; font-weight: 400; color: var(--text-muted);
+}
+.section-desc {
+  font-size: 12.5px; color: var(--text-muted);
+  margin: 0 0 14px; line-height: 1.6; max-width: none;
+}
+.section-divider {
+  border: none; border-top: 1px solid var(--border);
+  margin: 30px 0 22px;
+}
+
 /* Network canvas */
 #cy {
     width: 100%;

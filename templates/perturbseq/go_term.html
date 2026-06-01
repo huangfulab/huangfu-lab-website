@@ -56,8 +56,9 @@
 {% endif %}
 
 {# ── Enriched Modules ─────────────────────────────────────────────── #}
+<h2 class="section-h2">Enriched Modules <span class="section-count">{{ enriched_modules|length }}</span></h2>
+<p class="section-desc">Co-expression modules (supermodules and submodules) significantly enriched for this GO term.</p>
 <div class="go-table-card" style="margin-bottom:28px">
-  <h3>Enriched Modules <span class="count-badge">{{ enriched_modules|length }}</span></h3>
   {% if enriched_modules %}
   <div class="tf-search-wrap" style="padding:0 0 8px">
     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -81,14 +82,9 @@
 </div>
 
 {# ── TF Regulatory Network ─────────────────────────────────────────── #}
-<h2 style="margin-top:4px;margin-bottom:4px">
-  TF Regulation
-  <span class="gene-count" id="go-tf-heading-count">{% if tf_rows %}({{ tf_rows|length }}){% endif %}</span>
-</h2>
-<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">
-  TFs whose knockdown significantly affects genes in this pathway.
-  ↑ Up = upregulated upon KD; ↓ Down = downregulated upon KD.
-</p>
+<hr class="section-divider">
+<h2 class="section-h2">TF Regulation <span class="section-count" id="go-tf-heading-count">{% if tf_rows %}({{ tf_rows|length }}){% endif %}</span></h2>
+<p class="section-desc">TFs whose knockdown significantly affects genes in this pathway. ↑ Up = upregulated upon KD; ↓ Down = downregulated upon KD.</p>
 
 {% if tf_rows %}
 {{ filter_bar('go-tf-filter-bar', dir_label_id='go-dir-label', bind_label_id='go-bind-label', bind_slider_id='go-bind-slider', bind_range_id='go-bind-range', count_id='go-tf-count') }}
@@ -102,8 +98,10 @@
 {% endif %}
 
 {# ── Gene Members ──────────────────────────────────────────────────── #}
-<div style="margin-top:28px">
-  <h2 style="margin-top:4px;margin-bottom:10px">Gene Members</h2>
+<hr class="section-divider">
+<h2 class="section-h2">Gene Members</h2>
+<p class="section-desc">Genes annotated with this GO term that are present in the Perturb-seq dataset.</p>
+<div>
   <div class="go-table-card">
     <div class="tf-search-wrap" style="padding:0 0 8px">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -113,7 +111,6 @@
       <table class="data-table" id="gene-table">
         <thead><tr>
           <th class="sortable" data-key="gene"      data-type="string">Gene</th>
-          <th class="sortable" data-key="tf_status" data-type="string">TF Status</th>
           <th class="sortable" data-key="pub_count" data-type="number">Publications</th>
         </tr></thead>
         <tbody></tbody>
@@ -160,7 +157,7 @@ makeFilterSortTable(
       : r.tf_status === 'TF'
       ? '<span class="intro-tag term-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">TF</span>' : '';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.tf_status||'—'}</td><td>${r.pub_count}</td>`;
+    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.pub_count}</td>`;
     return tr;
   },
   { searchId: 'gene-search', searchKey: 'gene' }

@@ -140,9 +140,11 @@
   </datalist>
 </div>
 
+<hr class="section-divider">
 <div class="bottom-split">
   <div>
-    <h2>Connected Submodules <span class="gene-count">(top {{ neighbors|length }})</span></h2>
+    <h2 class="section-h2">Connected Submodules <span class="section-count">(top {{ neighbors|length }})</span></h2>
+    <p class="section-desc">Top co-expressed neighbouring submodules, ranked by mean Hotspot z-score between member gene sets.</p>
     <table class="data-table neighbor-table" id="neighbor-table">
       <thead><tr>
         <th class="sortable" data-key="other" data-type="string">Submodule</th>
@@ -171,7 +173,9 @@
   </div>
 
   <div>
-    <h2>Member Genes <span class="gene-count">({{ genes|length }})</span></h2>
+    <hr class="section-divider">
+    <h2 class="section-h2">Member Genes <span class="section-count">({{ genes|length }})</span></h2>
+    <p class="section-desc">All genes assigned to this submodule.</p>
     <div class="gene-list" id="gene-list">
       {% for g in genes %}
       <a class="gene-chip" href="/perturbseq/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a>
@@ -179,9 +183,11 @@
     </div>
   </div>
 </div>
+<hr class="section-divider">
+<p class="section-desc">Local co-expression network for {{ submodule }} member genes built from Hotspot z-scores. Adjust the z-score threshold and repulsion sliders to explore the neighbourhood.</p>
 <div class="gene-net-section">
   <div class="gene-net-header">
-    <h2>Gene Co-expression Network</h2>
+    <h2 class="section-h2">Gene Co-expression Network</h2>
     <div class="net-controls">
       <label>
         Min z: <strong id="slider-val">—</strong>
