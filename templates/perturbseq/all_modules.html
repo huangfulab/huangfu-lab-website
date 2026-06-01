@@ -138,6 +138,25 @@
 
   /* ── Empty state ── */
   .empty-chips { font-size: 12px; color: var(--text-muted); font-style: italic; }
+
+  /* ── Sparkline ── */
+  .expr-spark { display: block; }
+  .spark-line { fill: none; stroke-width: 1.8px; stroke-linecap: round; stroke-linejoin: round; }
+  .spark-area { stroke: none; opacity: 0.12; }
+
+  /* ── Sortable expression column ── */
+  th.sort-expr {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th.sort-expr::after {
+    content: ' ▲';
+    font-size: 10px;
+    opacity: 0.5;
+  }
+  th.sort-expr.desc::after { content: ' ▼'; opacity: 1; }
+  th.sort-expr.asc::after  { content: ' ▲'; opacity: 1; }
 </style>
 {% endblock %}
 
@@ -164,14 +183,15 @@
       <tr>
         <th>Cluster</th>
         <th>Genes</th>
-        <th>Top Famous TFs</th>
+        <th class="sort-expr asc">Dev. Expression</th>
+        <th>Notable Genes</th>
         <th>Top TF Regulators</th>
         <th>Top Enriched Terms</th>
       </tr>
     </thead>
     <tbody>
       {% for c in clusters %}
-      <tr>
+      <tr data-peak="{{ c.peak_idx }}">
         <td>
           <div class="mod-name-cell">
             <span class="mod-dot" style="background:{{ c.color }}"></span>
@@ -180,10 +200,18 @@
         </td>
         <td>{{ c.size }}</td>
         <td>
-          {% if c.famous_tfs %}
+          {% if c.spark_line %}
+          <svg viewBox="0 0 120 36" width="120" height="36" class="expr-spark">
+            <path class="spark-area" d="{{ c.spark_area }}" fill="{{ c.color }}"/>
+            <path class="spark-line" d="{{ c.spark_line }}" stroke="{{ c.color }}"/>
+          </svg>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if c.notable_genes %}
           <div class="chip-list">
-            {% for tf in c.famous_tfs %}
-            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% for g in c.notable_genes %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=g) }}">{{ g }}</a>
             {% endfor %}
           </div>
           {% else %}<span class="empty-chips">—</span>{% endif %}
@@ -217,14 +245,15 @@
       <tr>
         <th>Module</th>
         <th>Genes</th>
-        <th>Top Famous TFs</th>
+        <th class="sort-expr">Dev. Expression</th>
+        <th>Notable Genes</th>
         <th>Top TF Regulators</th>
         <th>Top Enriched Terms</th>
       </tr>
     </thead>
     <tbody>
       {% for m in supermodules %}
-      <tr>
+      <tr data-peak="{{ m.peak_idx }}">
         <td>
           <div class="mod-name-cell">
             <span class="mod-dot" style="background:{{ m.color }}"></span>
@@ -233,10 +262,18 @@
         </td>
         <td>{{ m.size }}</td>
         <td>
-          {% if m.famous_tfs %}
+          {% if m.spark_line %}
+          <svg viewBox="0 0 120 36" width="120" height="36" class="expr-spark">
+            <path class="spark-area" d="{{ m.spark_area }}" fill="{{ m.color }}"/>
+            <path class="spark-line" d="{{ m.spark_line }}" stroke="{{ m.color }}"/>
+          </svg>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.notable_genes %}
           <div class="chip-list">
-            {% for tf in m.famous_tfs %}
-            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% for g in m.notable_genes %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=g) }}">{{ g }}</a>
             {% endfor %}
           </div>
           {% else %}<span class="empty-chips">—</span>{% endif %}
@@ -278,14 +315,15 @@
       <tr>
         <th>Submodule</th>
         <th>Genes</th>
-        <th>Top Famous TFs</th>
+        <th class="sort-expr">Dev. Expression</th>
+        <th>Notable Genes</th>
         <th>Top TF Regulators</th>
         <th>Top Enriched Terms</th>
       </tr>
     </thead>
     <tbody>
       {% for m in submodules %}
-      <tr>
+      <tr data-peak="{{ m.peak_idx }}">
         <td>
           <div class="mod-name-cell">
             <span class="mod-dot" style="background:{{ m.color }}"></span>
@@ -295,10 +333,18 @@
         </td>
         <td>{{ m.size }}</td>
         <td>
-          {% if m.famous_tfs %}
+          {% if m.spark_line %}
+          <svg viewBox="0 0 120 36" width="120" height="36" class="expr-spark">
+            <path class="spark-area" d="{{ m.spark_area }}" fill="{{ m.color }}"/>
+            <path class="spark-line" d="{{ m.spark_line }}" stroke="{{ m.color }}"/>
+          </svg>
+          {% else %}<span class="empty-chips">—</span>{% endif %}
+        </td>
+        <td>
+          {% if m.notable_genes %}
           <div class="chip-list">
-            {% for tf in m.famous_tfs %}
-            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}">{{ tf }}</a>
+            {% for g in m.notable_genes %}
+            <a class="gene-chip" href="{{ url_for('perturbseq.gene_page', gene_name=g) }}">{{ g }}</a>
             {% endfor %}
           </div>
           {% else %}<span class="empty-chips">—</span>{% endif %}
@@ -350,6 +396,24 @@
       const url = new URL(window.location);
       url.searchParams.set('tab', btn.dataset.tab);
       history.replaceState(null, '', url);
+    });
+  });
+
+  // Dev. Expression column sort
+  document.querySelectorAll('th.sort-expr').forEach(th => {
+    let asc = true;
+    th.addEventListener('click', () => {
+      const tbody = th.closest('table').querySelector('tbody');
+      const rows = [...tbody.querySelectorAll('tr')];
+      rows.sort((a, b) => {
+        const va = parseInt(a.dataset.peak ?? 99);
+        const vb = parseInt(b.dataset.peak ?? 99);
+        return asc ? va - vb : vb - va;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      th.classList.toggle('asc', asc);
+      th.classList.toggle('desc', !asc);
+      asc = !asc;
     });
   });
 

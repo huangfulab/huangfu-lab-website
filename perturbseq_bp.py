@@ -378,6 +378,40 @@ def rows_to_dicts(rows):
     return out
 
 
+_SPARK_TP_ORDER = ['ES_0h', 'DE_12h', 'DE_24h', 'DE_36h', 'DE_48h', 'DE_60h', 'DE_72h']
+
+def _spark_pts(values, w=120, h=36, pad=3):
+    """Return (line_d, area_d) smooth SVG path strings (Catmull-Rom spline) or (None, None)."""
+    clean = [(i, v) for i, v in enumerate(values) if v is not None]
+    if len(clean) < 2:
+        return None, None
+    vmin = min(v for _, v in clean)
+    vmax = max(v for _, v in clean)
+    vrange = vmax - vmin or 1
+    n = len(values)
+    bottom = h - pad
+    pts = []
+    for i, v in clean:
+        x = pad + i / (n - 1) * (w - 2 * pad)
+        y = bottom - (v - vmin) / vrange * (h - 2 * pad)
+        pts.append((x, y))
+    # Catmull-Rom → cubic bezier (clamped at endpoints)
+    m = len(pts)
+    d = f"M {pts[0][0]:.1f},{pts[0][1]:.1f}"
+    for i in range(m - 1):
+        p0 = pts[max(0, i - 1)]
+        p1 = pts[i]
+        p2 = pts[i + 1]
+        p3 = pts[min(m - 1, i + 2)]
+        cp1x = p1[0] + (p2[0] - p0[0]) / 6
+        cp1y = p1[1] + (p2[1] - p0[1]) / 6
+        cp2x = p2[0] - (p3[0] - p1[0]) / 6
+        cp2y = p2[1] - (p3[1] - p1[1]) / 6
+        d += f" C {cp1x:.1f},{cp1y:.1f} {cp2x:.1f},{cp2y:.1f} {p2[0]:.1f},{p2[1]:.1f}"
+    area_d = d + f" L {pts[-1][0]:.1f},{bottom:.1f} L {pts[0][0]:.1f},{bottom:.1f} Z"
+    return d, area_d
+
+
 @perturbseq_bp.route("/")
 def index():
     db = get_db()
@@ -395,7 +429,6 @@ def all_modules_page():
     db = get_db()
     tc = get_tc_db()
     pub_counts = _load_gene_pub_counts()
-    lambert_tfs = _load_lambert_tfs()
 
     # ── Developmental Gene Clusters ──────────────────────────────────────────
     gc_sizes = dict(tc.execute(
@@ -422,15 +455,14 @@ def all_modules_page():
     clusters = []
     for cid in sorted(gc_sizes.keys()):
         genes = gc_genes_by_cluster[cid]
-        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
-                  if g in lambert_tfs][:3]
+        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
         regs = gc_regs_by_cluster.get(cid, [])[:3]
         clusters.append({
             'id': cid,
             'display': _tc_display(cid),
             'size': gc_sizes[cid],
             'color': TC_CLUSTER_COLORS.get(cid, '#888'),
-            'famous_tfs': famous,
+            'notable_genes': notable,
             'regulators': regs,
         })
 
@@ -438,7 +470,7 @@ def all_modules_page():
     sup_rows = db.execute(
         "SELECT module_name, size FROM module_table "
         "WHERE source='hotspot_supermodule' AND module_name != 'unassigned' "
-        "ORDER BY module_name"
+        "ORDER BY CAST(SUBSTR(module_name, 4) AS INTEGER)"
     ).fetchall()
 
     sup_genes_raw = db.execute(
@@ -468,14 +500,13 @@ def all_modules_page():
     supermodules = []
     for mod_name, size in sup_rows:
         genes = sup_genes_by_mod.get(mod_name, [])
-        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
-                  if g in lambert_tfs][:3]
+        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
         regs = sup_regs_by_mod.get(mod_name, [])[:3]
         supermodules.append({
             'name': mod_name,
             'size': size,
             'color': MODULE_COLORS.get(mod_name, '#888'),
-            'famous_tfs': famous,
+            'notable_genes': notable,
             'regulators': regs,
         })
 
@@ -483,8 +514,9 @@ def all_modules_page():
     sub_rows = db.execute(
         "SELECT module_name, size, "
         "SUBSTR(module_name, 1, INSTR(module_name,'.')-1) AS supermodule "
-        "FROM module_table WHERE source='hotspot_submodule' "
-        "ORDER BY module_name"
+        "FROM module_table WHERE source='hotspot_submodule' AND module_name != 'unassigned' "
+        "ORDER BY CAST(SUBSTR(module_name, 4, INSTR(module_name,'.')-4) AS INTEGER), "
+        "CAST(SUBSTR(module_name, INSTR(module_name,'.')+1) AS INTEGER)"
     ).fetchall()
 
     sub_genes_raw = db.execute(
@@ -528,21 +560,74 @@ def all_modules_page():
     submodules = []
     for mod_name, size, supermodule in sub_rows:
         genes = sub_genes_by_mod.get(mod_name, [])
-        famous = [g for g in sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)
-                  if g in lambert_tfs][:3]
+        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
         regs = sub_regs_by_mod.get(mod_name, [])[:3]
         submodules.append({
             'name': mod_name,
             'supermodule': supermodule,
             'size': size,
             'color': MODULE_COLORS.get(supermodule, '#888'),
-            'famous_tfs': famous,
+            'notable_genes': notable,
             'regulators': regs,
             'terms': enr_by_mod.get(mod_name, [])[:3],
         })
 
     for m in supermodules:
         m['terms'] = enr_by_mod.get(m['name'], [])[:3]
+
+    # ── Expression sparklines (all three module types) ────────────────────────
+    core_db = get_core_db()
+
+    # Gene clusters — gene_cluster_profiles (value is z-score)
+    gc_expr_raw = tc.execute(
+        "SELECT cluster, timepoint, value FROM gene_cluster_profiles"
+    ).fetchall()
+    gc_expr_map: dict = defaultdict(dict)
+    for cid, tp, val in gc_expr_raw:
+        gc_expr_map[cid][tp] = val
+    for c in clusters:
+        tp_dict = gc_expr_map.get(c['id'], {})
+        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+        c['spark_line'], c['spark_area'] = _spark_pts(vals)
+
+    # Supermodules — module_expression (mean_tpm)
+    sup_expr_raw = core_db.execute(
+        "SELECT module, timepoint, mean_tpm FROM module_expression"
+    ).fetchall()
+    sup_expr_map: dict = defaultdict(dict)
+    for mod, tp, tpm in sup_expr_raw:
+        sup_expr_map[mod][tp] = tpm
+    for m in supermodules:
+        tp_dict = sup_expr_map.get(m['name'], {})
+        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+        m['spark_line'], m['spark_area'] = _spark_pts(vals)
+
+    # Submodules — submodule_expression (mean_tpm)
+    sub_expr_raw = core_db.execute(
+        "SELECT submodule, timepoint, mean_tpm FROM submodule_expression"
+    ).fetchall()
+    sub_expr_map: dict = defaultdict(dict)
+    for submod, tp, tpm in sub_expr_raw:
+        sub_expr_map[submod][tp] = tpm
+    for m in submodules:
+        tp_dict = sub_expr_map.get(m['name'], {})
+        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+        m['spark_line'], m['spark_area'] = _spark_pts(vals)
+
+    # ── Sort all three lists by developmental peak timing ────────────────────
+    def _peak_tp_idx(tp_dict):
+        pairs = [(i, tp_dict[tp]) for i, tp in enumerate(_SPARK_TP_ORDER)
+                 if tp_dict.get(tp) is not None]
+        return max(pairs, key=lambda x: x[1])[0] if pairs else len(_SPARK_TP_ORDER)
+
+    for c in clusters:
+        c['peak_idx'] = _peak_tp_idx(gc_expr_map.get(c['id'], {}))
+    for m in supermodules:
+        m['peak_idx'] = _peak_tp_idx(sup_expr_map.get(m['name'], {}))
+    for m in submodules:
+        m['peak_idx'] = _peak_tp_idx(sub_expr_map.get(m['name'], {}))
+
+    clusters.sort(key=lambda c: c['peak_idx'])
 
     return render_template(
         "perturbseq/all_modules.html",
