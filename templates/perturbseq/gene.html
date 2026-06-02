@@ -284,67 +284,18 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   background: rgba(5,150,105,0.08);
 }
 
-/* ── Sidebar layout ──────────────────────────────────────────── */
-.gene-page-wrap {
-  display: grid;
-  grid-template-columns: 192px 1fr;
-  gap: 0 32px;
-  align-items: start;
-}
-.gene-page-main { min-width: 0; }
-.page-sidebar {
-  position: sticky;
-  top: 68px;
-  max-height: calc(100vh - 88px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  padding-top: 4px;
-}
-.sidebar-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--text-muted);
-  padding: 0 6px 8px 4px;
-}
-.sidebar-role {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; padding: 8px 6px 2px 4px;
-  display: block;
-}
-.sidebar-role--regulator { color: #4a56b0; }
-.sidebar-role--target    { color: #059669; }
-.sidebar-link.indented   { padding-left: 12px; }
-.sidebar-nav {
-  display: flex; flex-direction: column; gap: 1px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 3px 2px;
-}
-.sidebar-link {
-  display: block; padding: 5px 6px 5px 4px;
-  font-size: 12.5px; color: var(--text-muted);
-  text-decoration: none; border-radius: 6px;
-  border-left: 2px solid transparent;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
-  line-height: 1.4;
-}
-.sidebar-link:hover { color: var(--text); background: var(--bg-elevated); }
-.sidebar-link.active {
-  color: var(--accent); border-left-color: var(--accent);
-  background: rgba(74,86,176,0.08); font-weight: 600;
-}
-[id^="sec-"] { scroll-margin-top: 72px; }
-@media (max-width: 960px) {
-  .gene-page-wrap { grid-template-columns: 1fr; }
-  .page-sidebar { display: none; }
-}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="gene-page-wrap">
+<div class="page-with-sidebar">
 
 <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
 <aside class="page-sidebar">
-  <div class="sidebar-label">On this page</div>
+  <div class="sidebar-header">
+    <span class="sidebar-label">On this page</span>
+    <button class="sidebar-toggle" aria-label="Toggle sidebar"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8,2 4,6 8,10"/></svg></button>
+  </div>
   <nav class="sidebar-nav">
     <a href="#sec-overview" class="sidebar-link">Overview</a>
     <a href="#sec-grna-coefs" class="sidebar-link" id="nav-grna-coefs" style="display:none">Perturbation Effects</a>
@@ -370,7 +321,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </aside>
 
 <!-- ── Main content ─────────────────────────────────────────────────────── -->
-<div class="gene-page-main">
+<div class="page-main">
 
 <!-- ── Header ───────────────────────────────────────────────────────────── -->
 <div class="gene-hero" id="sec-overview">
@@ -845,8 +796,8 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 {% endif %}
 
-</div><!-- end gene-page-main -->
-</div><!-- end gene-page-wrap -->
+</div><!-- end page-main -->
+</div><!-- end page-with-sidebar -->
 {% endblock %}
 
 {% block scripts %}
@@ -2051,26 +2002,6 @@ requestAnimationFrame(() => {
 })();
 {% endif %}
 
-/* ── Sidebar scroll-spy ──────────────────────────────────────── */
-(function() {
-  const links = [...document.querySelectorAll('.sidebar-link[href^="#"]')];
-  const sections = links.map(l => document.getElementById(l.getAttribute('href').slice(1))).filter(Boolean);
-  if (!links.length || !sections.length) return;
-
-  function update() {
-    const scrollY = window.scrollY + 90;
-    let active = sections[0];
-    for (const sec of sections) {
-      if (sec.offsetTop <= scrollY) active = sec;
-    }
-    links.forEach(l => l.classList.remove('active'));
-    const link = document.querySelector(`.sidebar-link[href="#${active.id}"]`);
-    if (link) link.classList.add('active');
-  }
-
-  window.addEventListener('scroll', update, { passive: true });
-  update();
-})();
 
 // ── Perturbation Effects: gRNA coefficient distribution ──────────────────────
 (function () {
