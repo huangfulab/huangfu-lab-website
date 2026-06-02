@@ -298,7 +298,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   </div>
   <nav class="sidebar-nav">
     <a href="#sec-overview" class="sidebar-link">Overview</a>
-    <a href="#sec-grna-coefs" class="sidebar-link" id="nav-grna-coefs" style="display:none">Perturbation Effects</a>
     {% if is_tf %}
     <span class="sidebar-role sidebar-role--regulator">As a Regulator</span>
     <a href="#sec-regulated-modules" class="sidebar-link indented">Regulated Modules</a>
@@ -314,6 +313,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     {% if reg_tfs %}
     <a href="#sec-reg-tfs" class="sidebar-link{% if is_tf %} indented{% endif %}">Upstream TFs</a>
     {% endif %}
+    <a href="#sec-grna-coefs" class="sidebar-link{% if is_tf %} indented{% endif %}" id="nav-grna-coefs" style="display:none">Perturbation Effects</a>
     {% if gene_locus %}
     <a href="#sec-genome-browser" class="sidebar-link">Genome Browser</a>
     {% endif %}
@@ -427,13 +427,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   </div>
 </div>
 {% endif %}
-
-<!-- ── Perturbation Effects (all genes) ───────────────────────────────── -->
-<hr class="section-divider" id="grna-coef-divider" style="display:none">
-<h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects <span class="section-count" id="grna-coef-count"></span></h2>
-<p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients across all gRNAs (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Highlighted rows are the top and bottom 5% most extreme gRNAs.</p>
-<div id="grna-coef-loading" style="display:none"><div class="dt-spinner"></div> Loading…</div>
-<div id="grna-coef-wrap" style="display:none"></div>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- TF-ONLY: Regulated Modules section                                    -->
@@ -765,6 +758,13 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 </div>
 {% endif %}
+
+<!-- ── Perturbation Effects (all genes) ───────────────────────────────── -->
+<hr class="section-divider" id="grna-coef-divider" style="display:none">
+<h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects <span class="section-count" id="grna-coef-count"></span></h2>
+<p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients across all gRNAs (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Highlighted rows are the top and bottom 5% most extreme gRNAs.</p>
+<div id="grna-coef-loading" style="display:none"><div class="dt-spinner"></div> Loading…</div>
+<div id="grna-coef-wrap" style="display:none"></div>
 
 {% if gene_locus %}
 <!-- ── Gene locus RNA-seq browser ───────────────────────────────────────── -->
