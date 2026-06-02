@@ -1,12 +1,11 @@
 from flask import Flask, render_template, jsonify
+import os
 import pandas as pd
 from pathlib import Path
 from perturbseq_bp import perturbseq_bp
-from timecourse_bp import timecourse_bp
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
-app.register_blueprint(timecourse_bp)
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
@@ -67,4 +66,5 @@ def api_network(level):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(debug=True, host="0.0.0.0", port=port)
