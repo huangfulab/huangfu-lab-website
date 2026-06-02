@@ -216,7 +216,7 @@
         <div class="intro-highlights">
           {% if desc.highlight_terms %}
           <span><strong>Key terms:</strong>
-            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+            {% for t in desc.highlight_terms %}<a class="intro-tag term-tag" href="{{ url_for('perturbseq.go_page', term_name=t) }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.highlight_genes %}
@@ -241,7 +241,7 @@
         <div class="intro-highlights">
           {% if desc.highlight_terms %}
           <span><strong>Key terms:</strong>
-            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+            {% for t in desc.highlight_terms %}<a class="intro-tag term-tag" href="{{ url_for('perturbseq.go_page', term_name=t) }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.highlight_genes %}
@@ -272,7 +272,7 @@
         <div class="intro-highlights">
           {% if desc.highlight_terms %}
           <span><strong>Key terms:</strong>
-            {% for t in desc.highlight_terms %}<span class="intro-tag term-tag">{{ t }}</span> {% endfor %}
+            {% for t in desc.highlight_terms %}<a class="intro-tag term-tag" href="{{ url_for('perturbseq.go_page', term_name=t) }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.highlight_genes %}

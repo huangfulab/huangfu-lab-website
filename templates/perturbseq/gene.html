@@ -2147,7 +2147,7 @@ requestAnimationFrame(() => {
     const vals = coefs.map(d => d.coef);
     const n    = vals.length;
     const RUG  = 10;
-    const margin = { top: 14, right: 20, bottom: 46, left: 20 };
+    const margin = { top: 42, right: 20, bottom: 48, left: 20 };
     const fullW  = Math.max(container.clientWidth || 500, 300);
     const W = fullW - margin.left - margin.right;
     const H = 150;
@@ -2321,14 +2321,6 @@ requestAnimationFrame(() => {
     const hi5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
       .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
 
-    // Floating percentile labels on threshold lines
-    const lo5Label = clipG.append('text').attr('y', 9)
-      .attr('text-anchor', 'end').attr('font-size', '9.5px').attr('font-weight', '600')
-      .attr('fill', '#3b82f6').attr('opacity', 0.9).text('← bottom 5%');
-    const hi5Label = clipG.append('text').attr('y', 9)
-      .attr('text-anchor', 'start').attr('font-size', '9.5px').attr('font-weight', '600')
-      .attr('fill', '#ec4899').attr('opacity', 0.9).text('top 5% →');
-
     // Rug strip
     const rugY    = H + 6;
     const rugTicks = clipG.selectAll('line.rug-tick').data(coefs).join('line')
@@ -2492,14 +2484,25 @@ requestAnimationFrame(() => {
     // X-axis sits below the rug strip so tick labels don't overlap it
     const xAxisG = g.append('g').attr('transform', `translate(0,${H + RUG + 8})`).attr('class', 'axis');
 
-    // ── Direction labels (fixed, not zoomed) ─────────────────────────────────
-    const labelY = totalH + 38;
-    g.append('text').attr('x', 0).attr('y', labelY)
+    // ── Annotation labels at top (in margin above chart area) ───────────────
+    g.append('text').attr('x', 3).attr('y', -27)
       .attr('text-anchor', 'start').attr('font-size', '10.5px').attr('fill', '#3b82f6').attr('opacity', 0.85)
       .text('← Perturbations that downregulate gene');
-    g.append('text').attr('x', W).attr('y', labelY)
+    g.append('text').attr('x', 3).attr('y', -13)
+      .attr('text-anchor', 'start').attr('font-size', '10.5px').attr('fill', '#3b82f6').attr('opacity', 0.85)
+      .text('(Top 5%)');
+    g.append('text').attr('x', W - 3).attr('y', -27)
       .attr('text-anchor', 'end').attr('font-size', '10.5px').attr('fill', '#ec4899').attr('opacity', 0.85)
       .text('Perturbations that upregulate gene →');
+    g.append('text').attr('x', W - 3).attr('y', -13)
+      .attr('text-anchor', 'end').attr('font-size', '10.5px').attr('fill', '#ec4899').attr('opacity', 0.85)
+      .text('(Top 5%)');
+
+    // ── X-axis label ─────────────────────────────────────────────────────────
+    g.append('text').attr('x', W / 2).attr('y', totalH + 38)
+      .attr('text-anchor', 'middle').attr('font-size', '11px')
+      .attr('fill', 'var(--text-muted)').attr('opacity', 0.8)
+      .text('Perturb-seq regression coefficients');
 
     // ── Rug tooltip ──────────────────────────────────────────────────────────
     const rugTip = document.createElement('div');
@@ -2534,9 +2537,6 @@ requestAnimationFrame(() => {
 
       lo5Line.attr('x1', xsc(lo5)).attr('x2', xsc(lo5));
       hi5Line.attr('x1', xsc(hi5)).attr('x2', xsc(hi5));
-      lo5Label.attr('x', xsc(lo5) - 6);
-      hi5Label.attr('x', xsc(hi5) + 6);
-
       loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
       hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
 
