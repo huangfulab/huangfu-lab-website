@@ -2131,15 +2131,11 @@ a#mod-tip .tip-chip,
 
   function buildContent(mod, data, color) {
     if (!data) return false;
-    // Header
     tipSw.style.background = color || '#4a56b0';
+    tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
     if (data.desc) {
-      // Submodule: compact narrative
-      tipN.textContent = mod;
       tipB.innerHTML = '<div style="color:var(--text-muted)">' + data.desc + '</div>';
     } else {
-      // Supermodule: title + gene/term chips
-      tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
       let html = '';
       if (data.genes && data.genes.length) {
         html += '<div class="tip-row"><span class="tip-label">Genes</span>'

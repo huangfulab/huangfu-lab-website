@@ -10,7 +10,6 @@ from flask import Blueprint, render_template, jsonify, request, g, redirect, url
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
 DB_PATH      = str(Path(__file__).resolve().parent / "db" / "tf-perturbseq.db")
-CORE_DB_PATH = str(Path(__file__).resolve().parent.parent.parent / "data" / "perturbseq.db")
 BW_DIR       = "/home/torred1/pipelines/tf-perturbseq/data/bulk-atacseq/s08-bigwig.dir"
 BW_EXTRA_DIR = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/08-2026_05_27_data/bw"
 BW_RNA_DIR   = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/09-2026_05_28_data/bw"
@@ -222,7 +221,6 @@ _lambert_tfs: frozenset | None = None
 _perturbed_tfs: frozenset | None = None
 _gene_name_map: dict | None = None
 _gene_pub_counts: dict | None = None
-_submodule_descriptions: dict | None = None
 
 def _load_lambert_tfs() -> frozenset:
     global _lambert_tfs
@@ -242,14 +240,16 @@ def _load_gene_pub_counts() -> dict:
     global _gene_pub_counts
     if _gene_pub_counts is None:
         try:
-            path = Path(__file__).resolve().parent.parent.parent / "data" / "tables" / "gene_pub_counts.tsv"
-            counts = {}
-            with open(path) as f:
-                for line in f:
-                    parts = line.rstrip('\n').split('\t', 1)
-                    if len(parts) == 2:
-                        counts[parts[0]] = int(parts[1])
-            _gene_pub_counts = counts
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                rows = conn.execute("""
+                    SELECT gt.gene_name, pc.publication_count
+                    FROM gene_publication_count pc
+                    JOIN gene_table gt ON pc.gene_id = gt.gene_id
+                """).fetchall()
+            finally:
+                conn.close()
+            _gene_pub_counts = {r[0]: r[1] for r in rows}
         except Exception:
             _gene_pub_counts = {}
     return _gene_pub_counts
@@ -269,23 +269,6 @@ def _load_gene_name_map() -> dict:
         except Exception:
             _gene_name_map = {}
     return _gene_name_map
-
-
-def _load_submodule_descriptions() -> dict:
-    """Load LLM-generated submodule descriptions from TSV."""
-    global _submodule_descriptions
-    if _submodule_descriptions is None:
-        try:
-            path = Path(__file__).resolve().parent.parent.parent / "data" / "06-llm_submodule_descriptions" / "submodule_descriptions-v3.tsv"
-            descs = {}
-            with open(path) as f:
-                reader = csv.DictReader(f, delimiter='\t')
-                for row in reader:
-                    descs[row['submodule']] = row['description']
-            _submodule_descriptions = descs
-        except Exception:
-            _submodule_descriptions = {}
-    return _submodule_descriptions
 
 
 def get_tc_db():
@@ -339,11 +322,6 @@ def get_db():
     return g.perturbseq_db
 
 
-def get_core_db():
-    if "core_db" not in g:
-        g.core_db = sqlite3.connect(CORE_DB_PATH)
-        g.core_db.row_factory = sqlite3.Row
-    return g.core_db
 
 
 @perturbseq_bp.context_processor
@@ -359,9 +337,6 @@ def close_db(exc):
     tc = g.pop("tc_db", None)
     if tc is not None:
         tc.close()
-    core = g.pop("core_db", None)
-    if core is not None:
-        core.close()
 
 
 def rows_to_dicts(rows):
@@ -410,6 +385,26 @@ def _spark_pts(values, w=120, h=36, pad=3):
         d += f" C {cp1x:.1f},{cp1y:.1f} {cp2x:.1f},{cp2y:.1f} {p2[0]:.1f},{p2[1]:.1f}"
     area_d = d + f" L {pts[-1][0]:.1f},{bottom:.1f} L {pts[0][0]:.1f},{bottom:.1f} Z"
     return d, area_d
+
+
+def _all_modules_expr_map(db, source: str) -> dict:
+    """Return {module_name: {timepoint: mean_tpm}} for all modules of given source.
+
+    Replaces the pre-computed module_expression / submodule_expression tables.
+    """
+    rows = db.execute("""
+        SELECT mt.module_name, be.sample, be.tpm
+        FROM module_table mt
+        JOIN gene_module_table gm ON mt.module_id = gm.module_id
+        JOIN bulk_expression be ON gm.gene_id = be.gene_id
+        WHERE mt.source = ? AND mt.module_name != 'unassigned' AND be.tpm IS NOT NULL
+    """, (source,)).fetchall()
+    by_mod_tp: dict = defaultdict(lambda: defaultdict(list))
+    for mod, sample, tpm in rows:
+        tp = _SAMPLE_TIMEPOINT_RE.sub('', sample)
+        by_mod_tp[mod][tp].append(tpm)
+    return {mod: {tp: sum(v) / len(v) for tp, v in by_tp.items()}
+            for mod, by_tp in by_mod_tp.items()}
 
 
 @perturbseq_bp.route("/")
@@ -474,8 +469,9 @@ def all_modules_page():
     ).fetchall()
 
     sup_genes_raw = db.execute(
-        "SELECT gm.gene_name, mt.module_name "
+        "SELECT gt.gene_name, mt.module_name "
         "FROM gene_module_table gm "
+        "JOIN gene_table gt ON gm.gene_id = gt.gene_id "
         "JOIN module_table mt ON gm.module_id = mt.module_id "
         "WHERE mt.source='hotspot_supermodule' AND mt.module_name != 'unassigned'"
     ).fetchall()
@@ -520,8 +516,9 @@ def all_modules_page():
     ).fetchall()
 
     sub_genes_raw = db.execute(
-        "SELECT gm.gene_name, mt.module_name "
+        "SELECT gt.gene_name, mt.module_name "
         "FROM gene_module_table gm "
+        "JOIN gene_table gt ON gm.gene_id = gt.gene_id "
         "JOIN module_table mt ON gm.module_id = mt.module_id "
         "WHERE mt.source='hotspot_submodule'"
     ).fetchall()
@@ -576,7 +573,6 @@ def all_modules_page():
         m['terms'] = enr_by_mod.get(m['name'], [])[:3]
 
     # ── Expression sparklines (all three module types) ────────────────────────
-    core_db = get_core_db()
 
     # Gene clusters — gene_cluster_profiles (value is z-score)
     gc_expr_raw = tc.execute(
@@ -590,25 +586,15 @@ def all_modules_page():
         vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
         c['spark_line'], c['spark_area'] = _spark_pts(vals)
 
-    # Supermodules — module_expression (mean_tpm)
-    sup_expr_raw = core_db.execute(
-        "SELECT module, timepoint, mean_tpm FROM module_expression"
-    ).fetchall()
-    sup_expr_map: dict = defaultdict(dict)
-    for mod, tp, tpm in sup_expr_raw:
-        sup_expr_map[mod][tp] = tpm
+    # Supermodules — computed from bulk_expression
+    sup_expr_map = _all_modules_expr_map(db, 'hotspot_supermodule')
     for m in supermodules:
         tp_dict = sup_expr_map.get(m['name'], {})
         vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
         m['spark_line'], m['spark_area'] = _spark_pts(vals)
 
-    # Submodules — submodule_expression (mean_tpm)
-    sub_expr_raw = core_db.execute(
-        "SELECT submodule, timepoint, mean_tpm FROM submodule_expression"
-    ).fetchall()
-    sub_expr_map: dict = defaultdict(dict)
-    for submod, tp, tpm in sub_expr_raw:
-        sub_expr_map[submod][tp] = tpm
+    # Submodules — computed from bulk_expression
+    sub_expr_map = _all_modules_expr_map(db, 'hotspot_submodule')
     for m in submodules:
         tp_dict = sub_expr_map.get(m['name'], {})
         vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
@@ -756,7 +742,8 @@ def _super_page(mod_name):
     timepoints = [r['timepoint'] for r in expr]
 
     genes_list = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL",
+        "SELECT gt.gene_name FROM gene_module_table gm "
+        "JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=?",
         (module_id,))]
     expr_z = _compute_mean_zscore_profile(db, genes_list, timepoints)
 
@@ -770,8 +757,9 @@ def _super_page(mod_name):
         sub_module_ids = [s['sub_module_id'] for s in sub_rows]
         ph = ','.join('?' * len(sub_module_ids))
         sub_gene_rows = db.execute(
-            f"SELECT module_id, gene_name FROM gene_module_table "
-            f"WHERE module_id IN ({ph}) AND gene_name IS NOT NULL",
+            f"SELECT gm.module_id, gt.gene_name FROM gene_module_table gm "
+            f"JOIN gene_table gt ON gm.gene_id = gt.gene_id "
+            f"WHERE gm.module_id IN ({ph})",
             sub_module_ids).fetchall()
         sub_genes_map: dict = defaultdict(list)
         for mid, gname in sub_gene_rows:
@@ -830,7 +818,9 @@ def _sub_page(name):
     supermodule = name.rsplit('.', 1)[0] if '.' in name else ''
 
     genes = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL ORDER BY gene_name",
+        "SELECT gt.gene_name FROM gene_module_table gm "
+        "JOIN gene_table gt ON gm.gene_id = gt.gene_id "
+        "WHERE gm.module_id=? ORDER BY gt.gene_name",
         (module_id,))]
     pub_counts = _load_gene_pub_counts()
     lambert   = _load_lambert_tfs()
@@ -871,11 +861,12 @@ def _sub_page(name):
         )
         summary_parts.append(f"Top TF regulators: {tf_str}.")
 
-    llm_descs = _load_submodule_descriptions()
-    llm_desc = llm_descs.get(name)
+    mod_desc_row = db.execute(
+        "SELECT md.title, md.standard FROM module_description md WHERE md.module_id=?",
+        (module_id,)).fetchone()
     desc = {
-        'title': highlight_terms[0] if highlight_terms else name,
-        'summary': llm_desc or (' '.join(summary_parts) or None),
+        'title': (mod_desc_row['title'] if mod_desc_row else None) or (highlight_terms[0] if highlight_terms else name),
+        'summary': (mod_desc_row['standard'] if mod_desc_row else None) or (' '.join(summary_parts) or None),
         'highlight_terms': highlight_terms,
         'highlight_genes': notable,
         'top_tfs': top_tfs_auto,
@@ -1024,51 +1015,52 @@ def go_page(term_name):
 def _go_page(term_name):
     db = get_db()
 
-    # If given a bare GO ID (e.g. "GO:0007015"), resolve to go_name for redirect
+    # If given a bare GO accession (e.g. "GO:0007015"), resolve to go_name for redirect
     if re.match(r'^GO:\d+$', term_name):
         row = db.execute(
-            "SELECT go_name FROM go_term_table WHERE go_id=?", (term_name,)).fetchone()
+            "SELECT go_id, go_name FROM go_term_table WHERE go_accession=?", (term_name,)).fetchone()
         if row:
             return redirect(url_for('perturbseq.go_page',
                                     term_name=f"{row['go_name']} ({term_name})"), 301)
         return render_template("perturbseq/404.html",
                                message=f"GO term not found: {term_name}"), 404
 
-    # Extract GO ID from term name string, e.g. "Cytoplasmic Translation (GO:0002181)"
-    go_id_match = re.search(r'\((GO:\d+)\)', term_name)
-    go_id = go_id_match.group(1) if go_id_match else None
+    # Extract GO accession from term name string, e.g. "Cytoplasmic Translation (GO:0002181)"
+    go_acc_match = re.search(r'\((GO:\d+)\)', term_name)
+    go_accession = go_acc_match.group(1) if go_acc_match else None
+    go_id = None  # integer PK in go_term_table
 
-    # Member genes via go_gene_table
-    if go_id:
+    if go_accession:
+        go_row = db.execute(
+            "SELECT go_id FROM go_term_table WHERE go_accession=? LIMIT 1", (go_accession,)).fetchone()
+        if go_row:
+            go_id = go_row['go_id']
+    else:
+        # Fallback: bare term name without accession
+        go_row = db.execute(
+            "SELECT go_id FROM go_term_table WHERE go_name=? LIMIT 1", (term_name,)).fetchone()
+        if go_row:
+            go_id = go_row['go_id']
+
+    # Member genes via go_gene_table (go_id is integer PK)
+    if go_id is not None:
         genes = [r[0] for r in db.execute("""
             SELECT g.gene_name FROM go_gene_table gg
             JOIN gene_table g ON gg.gene_id = g.gene_id
             WHERE gg.go_id=? ORDER BY g.gene_name
         """, (go_id,))]
     else:
-        # Fallback: bare term name without GO ID
-        go_row = db.execute(
-            "SELECT go_id FROM go_term_table WHERE go_name=? LIMIT 1", (term_name,)).fetchone()
-        if go_row:
-            go_id = go_row['go_id']
-            genes = [r[0] for r in db.execute("""
-                SELECT g.gene_name FROM go_gene_table gg
-                JOIN gene_table g ON gg.gene_id = g.gene_id
-                WHERE gg.go_id=? ORDER BY g.gene_name
-            """, (go_id,))]
-        else:
-            genes = []
+        genes = []
     if not genes:
         return render_template("perturbseq/404.html",
                                message=f"GO term not found: {term_name}"), 404
 
     # Enriched modules via go_module_enrichment
     enriched_modules = []
-    if go_id:
+    if go_id is not None:
         enriched_modules = rows_to_dicts(db.execute("""
             SELECT m.module_name AS module, m.source AS module_type,
-                   e.p_value, e.term_size, e.intersection_size,
-                   e.precision AS precision_val, e.recall, e.query_size
+                   e.p_value, e.term_size, e.intersection_size, e.query_size
             FROM go_module_enrichment e
             JOIN module_table m ON e.module_id = m.module_id
             WHERE e.go_id=? ORDER BY e.p_value
@@ -1088,20 +1080,20 @@ def _go_page(term_name):
                 row['color'] = '#4a56b0'
                 row['url'] = '#'
 
-    # TFs that perturb this GO term (via gsea_tf_table.go_id)
+    # TFs that perturb this GO term (via gsea_tf_table.go_id — integer FK)
     pert_rows = rows_to_dicts(db.execute(
         "SELECT gene_name AS tf, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj "
         "FROM gsea_tf_table WHERE go_id=? ORDER BY ABS(mean_NES) DESC",
-        (go_id,))) if go_id else []
+        (go_id,))) if go_id is not None else []
 
-    # TFs that bind this GO term gene set (via gmt_enrichment)
+    # TFs that bind this GO term gene set (via gmt_enrichment — gene_set uses accession string)
     bind_map = {r['tf']: r for r in rows_to_dicts(db.execute("""
         SELECT d.tf_gene_name AS tf, MAX(e."OR") AS odds_ratio
         FROM gmt_enrichment e
         JOIN tf_dataset_table d ON e.dataset_id = d.dataset_id
         WHERE e.gene_set LIKE ? AND e.gene_set_collection LIKE 'GO%'
         GROUP BY d.tf_gene_name
-    """, (f'%({go_id})%',)))} if go_id else {}
+    """, (f'%({go_accession})%',)))} if go_accession else {}
 
     tf_rows = _merge_pert_bind_edges(pert_rows, bind_map)
 
@@ -1129,14 +1121,15 @@ def _query_tf_elements(db, tf_name: str) -> list:
     rows = db.execute(f"""
         SELECT DISTINCT
             ap.atac_peak_id, ap.chr, ap.start, ap.end,
-            gr.gene_name
+            gt.gene_name
         FROM tf_peaks          tp
         JOIN atac_tf_overlaps  ato ON tp.peak_id         = ato.peak_id
         JOIN atac_peak_table        ap  ON ato.atac_peak_id   = ap.atac_peak_id
         JOIN tf_gene_overlaps  tgo ON tp.peak_id         = tgo.peak_id
         JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
+        JOIN gene_table             gt  ON gr.gene_id         = gt.gene_id
         WHERE tp.dataset_id IN ({ds_ph})
-        ORDER BY ap.chr, ap.start, gr.gene_name
+        ORDER BY ap.chr, ap.start, gt.gene_name
     """, ds_ids).fetchall()
     elements: dict = {}
     for r in rows:
@@ -1347,27 +1340,26 @@ def gene_page(gene_name):
     if supermodule: _tip_mods.add(supermodule)
     for _m in tf_reg_modules:
         _tip_mods.add(_m['module'])
-    _llm_descs = _load_submodule_descriptions()
     module_tooltips: dict = {}
-    for _m in _tip_mods:
-        if '.' in _m:
-            _desc = _llm_descs.get(_m)
-            if _desc:
-                module_tooltips[_m] = {'desc': _desc}
-    _sup_mods = [_m for _m in _tip_mods if '.' not in _m and _m not in module_tooltips]
-    if _sup_mods:
-        import json as _json
-        _ph = ','.join('?' * len(_sup_mods))
-        for _r in get_core_db().execute(
-            f"SELECT module, title, highlight_genes, highlight_terms "
-            f"FROM module_descriptions WHERE module IN ({_ph})",
-            _sup_mods,
+    if _tip_mods:
+        _ph = ','.join('?' * len(_tip_mods))
+        for _r in db.execute(
+            f"SELECT mt.module_name, md.title, md.standard, mt.source "
+            f"FROM module_description md "
+            f"JOIN module_table mt ON md.module_id = mt.module_id "
+            f"WHERE mt.module_name IN ({_ph})",
+            list(_tip_mods),
         ).fetchall():
-            module_tooltips[_r['module']] = {
-                'title': _r['title'],
-                'genes': _json.loads(_r['highlight_genes'] or '[]')[:5],
-                'terms': _json.loads(_r['highlight_terms'] or '[]')[:3],
-            }
+            if _r['source'] == 'hotspot_submodule':
+                module_tooltips[_r['module_name']] = {
+                    'title': _r['title'],
+                    'desc': _r['standard'],
+                }
+            else:
+                module_tooltips[_r['module_name']] = {
+                    'title': _r['title'],
+                    'desc': _r['standard'],
+                }
 
     tfs, modules = _nav_lists(db)
     reg_elements     = _query_gene_elements(db, gene_name, gene_id=gene_id)
@@ -1388,9 +1380,17 @@ def gene_page(gene_name):
             "LIMIT 1",
             (gene_id,)).fetchone()
         gene_locus['tss'] = _tss_row['tss'] if _tss_row else None
-    go_terms = [r['term'] for r in get_core_db().execute(
-        "SELECT term FROM go_genes WHERE gene = ? ORDER BY term",
-        (gene_name,)).fetchall()]
+    go_terms = [
+        f"{r['go_name']} ({r['go_accession']})"
+        for r in db.execute("""
+            SELECT gt2.go_accession, gt2.go_name
+            FROM go_gene_table gg
+            JOIN gene_table g ON gg.gene_id = g.gene_id
+            JOIN go_term_table gt2 ON gg.go_id = gt2.go_id
+            WHERE g.gene_name = ? AND gt2.is_obsolete = 0
+            ORDER BY gt2.go_name
+        """, (gene_name,)).fetchall()
+    ]
 
     return render_template("perturbseq/gene.html",
         gene=gene_name, expr=expr,
@@ -1454,9 +1454,10 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
             JOIN atac_peak_table       ap  ON ato.atac_peak_id  = ap.atac_peak_id
             JOIN tf_gene_overlaps tgo ON tp.peak_id        = tgo.peak_id
             JOIN gene_region_table     gr  ON tgo.gene_region_id = gr.gene_region_id
+            JOIN gene_table            gt  ON gr.gene_id         = gt.gene_id
             WHERE tp.dataset_id IN ({ds_ph})
             GROUP BY ap.atac_peak_id
-            HAVING (ap.chr LIKE ? OR GROUP_CONCAT(DISTINCT gr.gene_name) LIKE ?)
+            HAVING (ap.chr LIKE ? OR GROUP_CONCAT(DISTINCT gt.gene_name) LIKE ?)
         """
         params = ds_ids + [like, like]
         count_row = db.execute(
@@ -1465,7 +1466,7 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
         filtered_count = count_row[0] if count_row else 0
         rows = db.execute(f"""
             SELECT ap.atac_peak_id, ap.chr, ap.start, ap.end,
-                   GROUP_CONCAT(DISTINCT gr.gene_name) AS genes_str
+                   GROUP_CONCAT(DISTINCT gt.gene_name) AS genes_str
             {base_from}
             ORDER BY {order_by}
             LIMIT ? OFFSET ?
@@ -1513,11 +1514,12 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
     peak_ids = [r['atac_peak_id'] for r in page_rows]
     placeholders = ','.join('?' * len(peak_ids))
     gene_rows = db.execute(f"""
-        SELECT DISTINCT ato.atac_peak_id, gr.gene_name
+        SELECT DISTINCT ato.atac_peak_id, gt.gene_name
         FROM atac_tf_overlaps  ato
         JOIN tf_peaks          tp  ON ato.peak_id        = tp.peak_id
         JOIN tf_gene_overlaps  tgo ON ato.peak_id        = tgo.peak_id
         JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
+        JOIN gene_table             gt  ON gr.gene_id         = gt.gene_id
         WHERE ato.atac_peak_id IN ({placeholders})
           AND tp.dataset_id IN ({ds_ph})
     """, peak_ids + ds_ids).fetchall()
@@ -1560,7 +1562,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                                   q: str, order_col: int, order_dir: str) -> dict:
     safe_dir = 'DESC' if order_dir.upper() == 'DESC' else 'ASC'
     order_map = {
-        0: f'tgl.gene_name {safe_dir}',
+        0: f'gt.gene_name {safe_dir}',
         1: f'sub.module_name {safe_dir}',
         2: f'n_datasets {safe_dir}',
         3: f'n_ctg {safe_dir}',
@@ -1590,16 +1592,17 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
 
     if q:
         like = f'%{q}%'
-        having_clause = "HAVING (tgl.gene_name LIKE ? OR sub.module_name LIKE ?)"
+        having_clause = "HAVING (gt.gene_name LIKE ? OR sub.module_name LIKE ?)"
         params = ds_ids + [like, like]
         count_row = db.execute(f"""
             SELECT COUNT(*) FROM (
                 SELECT tgl.gene_id
                 FROM tf_gene_links tgl
+                JOIN gene_table gt ON tgl.gene_id = gt.gene_id
                 JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
                 {sub_join}
                 WHERE tgl.dataset_id IN ({ds_ph})
-                GROUP BY tgl.gene_id, tgl.gene_name
+                GROUP BY tgl.gene_id, gt.gene_name
                 {having_clause}
             )
         """, params).fetchone()
@@ -1624,7 +1627,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                    PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank
             FROM gene_de
         )
-        SELECT tgl.gene_name,
+        SELECT gt.gene_name,
                sub.module_name AS submodule,
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                COUNT(DISTINCT td.cell_type_group) AS n_ctg,
@@ -1632,11 +1635,12 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                gdp.mean_coef,
                gdp.de_pct_rank
         FROM tf_gene_links tgl
+        JOIN gene_table gt ON tgl.gene_id = gt.gene_id
         JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
         {sub_join}
         LEFT JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
-        GROUP BY tgl.gene_id, tgl.gene_name
+        GROUP BY tgl.gene_id, gt.gene_name
         {having_clause}
         ORDER BY {order_by}
         LIMIT ? OFFSET ?
@@ -1702,7 +1706,7 @@ def api_submodule(name):
     node['color'] = MODULE_COLORS.get(name.rsplit('.', 1)[0] if '.' in name else '', '#4a56b0')
     node['within_mean_z'] = 0.0
     genes = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL ORDER BY gene_name",
+        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
         (node['module_id'],))]
     return jsonify({"node": node, "genes": genes, "neighbors": []})
 
@@ -1837,12 +1841,11 @@ def api_module_detail(mod_name):
                         "gene_tf_status": {}, "gene_submodule": {}})
     module_id = mod_row['module_id']
     enrichment = rows_to_dicts(db.execute(
-        "SELECT term_id, source, term_name, p_value, term_size, intersection_size, "
-        "precision AS precision_val, recall "
+        "SELECT term_id, source, term_name, p_value, term_size, intersection_size "
         "FROM go_module_enrichment WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF')",
         (module_id,)).fetchall())
     genes = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL ORDER BY gene_name",
+        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
         (module_id,)).fetchall()]
     pub_counts = _load_gene_pub_counts()
     gene_pubs = {g: pub_counts.get(g, 0) for g in genes}
@@ -1865,7 +1868,8 @@ def api_module_detail(mod_name):
     gene_submodule = {}
     for sub_row in sub_rows:
         for gr in db.execute(
-            "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL",
+            "SELECT gt.gene_name FROM gene_module_table gm "
+            "JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=?",
                 (sub_row['sub_id'],)).fetchall():
             gene_submodule[gr[0]] = {"id": sub_row['module_name'], "color": sub_color}
     return jsonify({"enrichment": enrichment, "genes": genes,
@@ -1881,7 +1885,7 @@ def api_module_genes(mod_name):
     if not mod_row:
         return jsonify([])
     genes = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table WHERE module_id=? AND gene_name IS NOT NULL ORDER BY gene_name",
+        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
         (mod_row['module_id'],)).fetchall()]
     return jsonify(genes)
 
@@ -1894,8 +1898,7 @@ def api_module_enrichment(mod_name):
     if not mod_row:
         return jsonify([])
     rows = rows_to_dicts(db.execute(
-        "SELECT term_id, term_name, source, p_value, term_size, intersection_size, "
-        "precision AS precision_val, recall "
+        "SELECT term_id, term_name, source, p_value, term_size, intersection_size "
         "FROM go_module_enrichment WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') ORDER BY p_value",
         (mod_row['module_id'],)).fetchall())
     return jsonify(rows)
@@ -1942,13 +1945,13 @@ def api_search():
             (q + "%",)).fetchall()
         results.extend({"name": r[0], "type": "submodule"} for r in sub_rows)
 
-        # 2d. GO terms (search by go_name; build URL in old term-name format)
+        # 2d. GO terms (search by go_name; build URL with accession string)
         go_rows = db.execute(
-            "SELECT go_id, go_name FROM go_term_table "
+            "SELECT go_accession, go_name FROM go_term_table "
             "WHERE go_name LIKE ? AND is_obsolete=0 ORDER BY LENGTH(go_name) LIMIT 5",
             ('%' + q + '%',)).fetchall()
         for r in go_rows:
-            term_url_name = f"{r['go_name']} ({r['go_id']})"
+            term_url_name = f"{r['go_name']} ({r['go_accession']})"
             results.append({"name": term_url_name, "type": "go_term",
                             "url": "/perturbseq/go/" + term_url_name})
 
@@ -2164,7 +2167,7 @@ def _query_element_tfs(db, atac_peak_id: int) -> list:
 def _query_element_genes(db, atac_peak_id: int) -> list:
     rows = db.execute("""
         SELECT DISTINCT
-            gr.gene_name, gr.gene_region_subtype, gr.multiome_hicar_support,
+            gtt.gene_name, gr.gene_region_subtype, gr.multiome_hicar_support,
             gr.chr AS gr_chr, gr.start AS gr_start, gr.end AS gr_end,
             td.tf_gene_name,
             (ap.start + ap.end) / 2 AS peak_mid,
@@ -2182,6 +2185,7 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
         JOIN tf_dataset_table       td  ON tp.dataset_id        = td.dataset_id
         JOIN tf_gene_overlaps  tgo ON tp.peak_id           = tgo.peak_id
         JOIN gene_region_table      gr  ON tgo.gene_region_id   = gr.gene_region_id
+        JOIN gene_table             gtt ON gr.gene_id            = gtt.gene_id
         WHERE ato.atac_peak_id = ?
     """, (atac_peak_id,)).fetchall()
     groups: dict = {}
@@ -2403,7 +2407,10 @@ def api_link_tfs():
 @perturbseq_bp.route("/api/link-genes")
 def api_link_genes():
     db = get_db()
-    rows = db.execute("SELECT DISTINCT gene_name FROM gene_region_table WHERE gene_name IS NOT NULL ORDER BY gene_name").fetchall()
+    rows = db.execute(
+        "SELECT DISTINCT gt.gene_name FROM gene_region_table gr "
+        "JOIN gene_table gt ON gr.gene_id = gt.gene_id ORDER BY gt.gene_name"
+    ).fetchall()
     return jsonify([r[0] for r in rows])
 
 
@@ -2482,9 +2489,10 @@ def tf_module_link_page(tf, module_name):
         (module_id,)))
 
     top_genes = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_module_table "
-        "WHERE module_id=? AND gene_name IS NOT NULL AND gene_name NOT LIKE 'ENSG%' "
-        "ORDER BY gene_name LIMIT 40",
+        "SELECT gt.gene_name FROM gene_module_table gm "
+        "JOIN gene_table gt ON gm.gene_id = gt.gene_id "
+        "WHERE gm.module_id=? AND gt.gene_name NOT LIKE 'ENSG%' "
+        "ORDER BY gt.gene_name LIMIT 40",
         (module_id,)).fetchall()]
 
     has_pert = pert is not None
@@ -2875,13 +2883,15 @@ def dataset_page(dataset_id):
                WHERE tp.dataset_id=?""", (dataset_id,)
         ).fetchone()[0],
         "target_genes": db.execute(
-            "SELECT COUNT(DISTINCT gene_name) FROM tf_dataset_gene_table WHERE dataset_id=?",
+            "SELECT COUNT(DISTINCT gene_id) FROM tf_dataset_gene_table WHERE dataset_id=?",
             (dataset_id,)
         ).fetchone()[0],
     }
 
     gene_rows = rows_to_dicts(db.execute(
-        "SELECT gene_name, match_type FROM tf_dataset_gene_table WHERE dataset_id=? ORDER BY gene_name",
+        "SELECT gt.gene_name, dg.match_type FROM tf_dataset_gene_table dg "
+        "JOIN gene_table gt ON dg.gene_id = gt.gene_id "
+        "WHERE dg.dataset_id=? ORDER BY gt.gene_name",
         (dataset_id,)))
 
     element_rows = rows_to_dicts(db.execute("""

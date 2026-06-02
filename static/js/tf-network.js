@@ -337,7 +337,7 @@ window.TFNetwork = (function () {
       const termLink = (r.source === 'GO:BP' || r.source === 'GO:CC' || r.source === 'GO:MF') && r.term_id
         ? '<a class="node-link" href="/perturbseq/go/' + encodeURIComponent(r.term_id) + '">' + r.term_name + '</a>'
         : r.term_name;
-      tr.innerHTML = '<td>' + termLink + '</td><td><span class="enrich-source-badge enrich-source-' + r.source.replace(':', '') + '">' + r.source + '</span></td><td>' + r.p_value.toExponential(2) + '</td><td>' + r.intersection_size + '/' + r.term_size + '</td><td>' + (r.precision_val * 100).toFixed(1) + '%</td>';
+      tr.innerHTML = '<td>' + termLink + '</td><td><span class="enrich-source-badge enrich-source-' + r.source.replace(':', '') + '">' + r.source + '</span></td><td>' + r.p_value.toExponential(2) + '</td><td>' + r.intersection_size + '/' + r.term_size + '</td>';
       return tr;
     }
     function refresh() {

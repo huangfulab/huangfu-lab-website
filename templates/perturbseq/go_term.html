@@ -71,7 +71,6 @@
         <th class="sortable" data-key="module_type"       data-type="string">Type</th>
         <th class="sortable" data-key="p_value"           data-type="number">p-value</th>
         <th class="sortable" data-key="intersection_size" data-type="number">Overlap</th>
-        <th class="sortable" data-key="precision_val"     data-type="number">Precision</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -138,7 +137,7 @@ makeFilterSortTable(
                     : r.module_type === 'submodule'   ? 'Sub' : 'TC';
     const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.color};margin-right:6px;vertical-align:middle"></span>`;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${dot}<a class="node-link" href="${r.url}">${r.module}</a></td><td>${typeLabel}</td><td>${r.p_value.toExponential(2)}</td><td>${r.intersection_size}/${r.term_size||'?'}</td><td>${r.precision_val!=null?(r.precision_val*100).toFixed(1)+'%':'—'}</td>`;
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="${r.url}">${r.module}</a></td><td>${typeLabel}</td><td>${r.p_value.toExponential(2)}</td><td>${r.intersection_size}/${r.term_size||'?'}</td>`;
     return tr;
   },
   {
