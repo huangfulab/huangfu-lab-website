@@ -64,37 +64,7 @@
   }
   #sub-expr-chart { width: 100%; display: block; }
 
-  /* Gene co-expression network */
-  .gene-net-section { margin-top: 28px; }
-  .gene-net-header {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;
-  }
-  .gene-net-header h2 { margin: 0; }
-  .net-controls {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    font-size: 12px; color: var(--text-muted);
-  }
-  .net-controls label { display: flex; align-items: center; gap: 6px; }
-  .net-controls strong { color: var(--text); min-width: 36px; display: inline-block; }
-  .net-controls .ctrl-sep { color: var(--border); user-select: none; }
-  #z-slider, #rep-slider, #scale-slider {
-    width: 120px; accent-color: var(--accent); cursor: pointer;
-  }
-  .net-edge-count { font-size: 11px; color: var(--text-muted); }
-  .net-legend {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--text-muted);
-  }
-  .net-legend-grad {
-    width: 80px; height: 8px; border-radius: 4px;
-    background: linear-gradient(to right, #c6dbef, #08306b);
-    border: 1px solid var(--border);
-  }
-  #gene-cy {
-    width: 100%; height: 62vh;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-card); box-shadow: var(--shadow-lg);
-  }
+
 </style>
 {% endblock %}
 
@@ -110,7 +80,6 @@
   <nav class="sidebar-nav">
     <a href="#sec-neighbors" class="sidebar-link">Connected Submodules</a>
     <a href="#sec-genes" class="sidebar-link">Member Genes</a>
-    <a href="#sec-coexpr" class="sidebar-link">Co-expression</a>
   </nav>
 </aside>
 
@@ -199,36 +168,6 @@
       {% endfor %}
     </div>
   </div>
-</div>
-<hr class="section-divider">
-<p class="section-desc">Local co-expression network for {{ submodule }} member genes built from Hotspot z-scores. Adjust the z-score threshold and repulsion sliders to explore the neighbourhood.</p>
-<div class="gene-net-section">
-  <div class="gene-net-header">
-    <h2 class="section-h2" id="sec-coexpr">Gene Co-expression Network</h2>
-    <div class="net-controls">
-      <label>
-        Min z: <strong id="slider-val">—</strong>
-        <input type="range" id="z-slider" step="1">
-      </label>
-      <span class="ctrl-sep">|</span>
-      <label>
-        Repulsion: <strong id="rep-val">80k</strong>
-        <input type="range" id="rep-slider" min="10000" max="200000" step="5000" value="80000">
-      </label>
-      <span class="ctrl-sep">|</span>
-      <label>
-        Node scale: <strong id="scale-val">1.0×</strong>
-        <input type="range" id="scale-slider" min="0.3" max="3" step="0.1" value="1">
-      </label>
-      <span class="net-edge-count" id="edge-count"></span>
-    </div>
-    <div class="net-legend">
-      <span>Low</span>
-      <div class="net-legend-grad"></div>
-      <span>High z</span>
-    </div>
-  </div>
-  <div id="gene-cy"></div>
 </div>
 </div>{# page-main #}
 </div>{# page-with-sidebar #}
@@ -327,200 +266,6 @@ document.getElementById('sub-jump-input').addEventListener('change', e => {
     const tbody = table.querySelector('tbody');
     rows.forEach(r => tbody.appendChild(r));
   }));
-})();
-
-// ── Gene co-expression network ────────────────────────────────────────────────
-const SUBMODULE_ID = {{ node.id | tojson }};
-
-(async function() {
-  const resp = await fetch(
-    '/perturbseq/api/submodule/' + encodeURIComponent(SUBMODULE_ID) + '/gene_network'
-  );
-  const data = await resp.json();
-  if (!data.edges || !data.edges.length) return;
-
-  const allEdges  = data.edges;          // sorted desc by z_score
-  const zMin      = data.z_min;
-  const zMax      = data.z_max;
-  const zDefault  = data.z_p75;          // start showing top-25% of edges
-
-  // Color scale: z → CSS color  (light blue → dark blue)
-  function zColor(z) {
-    const t = Math.max(0, Math.min(1, (z - zMin) / (zMax - zMin || 1)));
-    const L = Math.round(85 - t * 55);   // 85% (light) → 30% (dark)
-    const S = Math.round(40 + t * 40);   // 40% → 80% saturation
-    return `hsl(215,${S}%,${L}%)`;
-  }
-
-  // Collect unique genes
-  const genes = [...new Set(allEdges.flatMap(e => [e.gene1, e.gene2]))];
-
-  // Build cytoscape elements
-  const nodeEls = genes.map(g => ({ data: { id: g, label: g } }));
-  const edgeEls = allEdges.map((e, i) => ({
-    data: {
-      id: `e${i}`, source: e.gene1, target: e.gene2,
-      z: e.z_score, color: zColor(e.z_score),
-      width: 0.6 + ((e.z_score - zMin) / (zMax - zMin || 1)) * 3.4,
-    }
-  }));
-
-  // Pre-compute per-node total strength across ALL edges (for stable sizing reference)
-  const totalStrength = {};
-  genes.forEach(g => { totalStrength[g] = 0; });
-  allEdges.forEach(e => {
-    totalStrength[e.gene1] = (totalStrength[e.gene1] || 0) + e.z_score;
-    totalStrength[e.gene2] = (totalStrength[e.gene2] || 0) + e.z_score;
-  });
-  const maxStr = Math.max(...Object.values(totalStrength)) || 1;
-
-  let nodeScale = 1.0;
-
-  function nodeSize(strength, maxS) {
-    return (18 + Math.sqrt(strength / maxS) * 34) * nodeScale;
-  }
-
-  // Top-5 genes by total strength (always labelled)
-  const top5 = new Set(
-    genes.slice().sort((a, b) => totalStrength[b] - totalStrength[a]).slice(0, 5)
-  );
-
-  // Initial visibility: hide edges below default threshold
-  edgeEls.forEach(e => { e.data.vis = e.data.z >= zDefault ? 1 : 0; });
-
-  const cy = cytoscape({
-    container: document.getElementById('gene-cy'),
-    elements:  [...nodeEls, ...edgeEls],
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'background-color':  NODE_COLOR && NODE_COLOR !== '#FFFFFF' ? NODE_COLOR : '#4a56b0',
-          'border-color':      '#fff',
-          'border-width':      1.5,
-          'label':             '',
-          'font-size':         11,
-          'color':             '#111',
-          'text-valign':       'center',
-          'text-halign':       'center',
-          'text-background-color':   '#ffffff',
-          'text-background-opacity': 0,
-          'text-background-padding': '4px',
-          'text-background-shape':   'roundrectangle',
-          'width':             'data(sz)',
-          'height':            'data(sz)',
-        }
-      },
-      {
-        selector: 'edge',
-        style: {
-          'line-color':   'data(color)',
-          'width':        'data(width)',
-          'opacity':      0.65,
-          'curve-style':  'haystack',
-        }
-      },
-      {
-        selector: 'edge[vis = 0]',
-        style: { 'display': 'none' }
-      },
-      {
-        selector: 'node:selected',
-        style: { 'border-color': 'var(--accent)', 'border-width': 2.5 }
-      },
-    ],
-    layout: { name: 'cose', animate: false, randomize: true,
-              nodeRepulsion: () => 80000, gravity: 0.05,
-              idealEdgeLength: () => 100, numIter: 1500 },
-  });
-
-  // Set initial node sizes
-  cy.nodes().forEach(n => n.data('sz', nodeSize(totalStrength[n.id()] || 0, maxStr)));
-
-  // Pin labels on top-5 nodes
-  cy.nodes().forEach(n => {
-    if (top5.has(n.id())) {
-      n.style({ 'label': n.id(), 'text-background-opacity': 0.9 });
-    }
-  });
-
-  // Navigate to gene page on click
-  cy.on('tap', 'node', evt => {
-    window.location.href = '/perturbseq/gene/' + encodeURIComponent(evt.target.id());
-  });
-
-  // Show label on hover, hide on mouse-out
-  cy.on('mouseover', 'node', evt => {
-    evt.target.style({
-      'label':                   evt.target.id(),
-      'text-background-opacity': 0.9,
-    });
-  });
-  cy.on('mouseout', 'node', evt => {
-    if (top5.has(evt.target.id())) return;   // keep permanent label
-    evt.target.style({
-      'label':                   '',
-      'text-background-opacity': 0,
-    });
-  });
-
-  // Repulsion slider (re-runs layout without randomizing positions)
-  const repSlider = document.getElementById('rep-slider');
-  const repVal    = document.getElementById('rep-val');
-  repSlider.addEventListener('change', () => {
-    const rep = +repSlider.value;
-    repVal.textContent = Math.round(rep / 1000) + 'k';
-    cy.layout({
-      name: 'cose', animate: false, randomize: false,
-      nodeRepulsion: () => rep, gravity: 0.05,
-      idealEdgeLength: () => 100, numIter: 500,
-    }).run();
-  });
-
-  // Z-score slider
-  const slider   = document.getElementById('z-slider');
-  const sliderVal = document.getElementById('slider-val');
-  const edgeCnt  = document.getElementById('edge-count');
-
-  slider.min   = Math.floor(zMin);
-  slider.max   = Math.ceil(zMax);
-  slider.value = Math.round(zDefault);
-
-  function applyThreshold(threshold) {
-    sliderVal.textContent = threshold.toFixed(0);
-    let visible = 0;
-    cy.edges().forEach(e => {
-      const show = e.data('z') >= threshold;
-      e.data('vis', show ? 1 : 0);
-      if (show) visible++;
-    });
-    // Recompute node strength from visible edges only and update size
-    const str = {};
-    genes.forEach(g => { str[g] = 0; });
-    cy.edges('[vis = 1]').forEach(e => {
-      const z = e.data('z');
-      str[e.data('source')] += z;
-      str[e.data('target')] += z;
-    });
-    const maxS = Math.max(...Object.values(str), 1);
-    cy.nodes().forEach(n => {
-      n.data('sz', nodeSize(str[n.id()] || 0, maxS));
-    });
-    edgeCnt.textContent = `${visible} / ${allEdges.length} edges`;
-  }
-
-  slider.addEventListener('input', () => applyThreshold(+slider.value));
-
-  // Node scale slider
-  const scaleSlider = document.getElementById('scale-slider');
-  const scaleVal    = document.getElementById('scale-val');
-  scaleSlider.addEventListener('input', () => {
-    nodeScale = +scaleSlider.value;
-    scaleVal.textContent = nodeScale.toFixed(1) + '×';
-    applyThreshold(+slider.value);  // recomputes sizes with new scale
-  });
-
-  applyThreshold(+slider.value);
 })();
 </script>
 {% endblock %}

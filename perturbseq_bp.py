@@ -798,7 +798,7 @@ def _super_page(mod_name):
         (module_id,)).fetchone()
     highlight_terms = [r[0] for r in db.execute(
         "SELECT term_name FROM go_module_enrichment "
-        "WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') "
+        "WHERE module_id=? AND source = 'GO:BP'"
         "ORDER BY p_value LIMIT 5", (module_id,)).fetchall()]
     top_tf_names = [r['tf'] for r in top_tfs[:5] if r.get('tf')]
     desc = {
@@ -881,7 +881,7 @@ def _sub_page(name):
 
     highlight_terms = [r[0] for r in db.execute(
         "SELECT term_name FROM go_module_enrichment "
-        "WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') "
+        "WHERE module_id=? AND source = 'GO:BP'"
         "ORDER BY p_value LIMIT 4", (module_id,)).fetchall()]
     tf_rows = db.execute(
         "SELECT gene_name AS tf, direction FROM gsea_tf_table "
@@ -1006,7 +1006,7 @@ def _gc_page(name):
         if gc_desc_row:
             highlight_terms = [r[0] for r in db.execute(
                 "SELECT term_name FROM go_module_enrichment "
-                "WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') "
+                "WHERE module_id=? AND source = 'GO:BP'"
                 "ORDER BY p_value LIMIT 5", (mod_row['module_id'],)).fetchall()]
             desc = {
                 'title': gc_desc_row['title'] or name,
@@ -2027,7 +2027,7 @@ def api_module_enrichment(mod_name):
         return jsonify([])
     rows = rows_to_dicts(db.execute(
         "SELECT term_id, term_name, source, p_value, term_size, intersection_size "
-        "FROM go_module_enrichment WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') ORDER BY p_value",
+        "FROM go_module_enrichment WHERE module_id=? AND source = 'GO:BP'ORDER BY p_value",
         (mod_row['module_id'],)).fetchall())
     return jsonify(rows)
 
