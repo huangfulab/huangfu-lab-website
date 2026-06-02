@@ -16,7 +16,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/deploy/app
-            git pull origin main
+            git pull origin master
             source venv/bin/activate
             pip install -r requirements.txt
             sudo systemctl restart flask
