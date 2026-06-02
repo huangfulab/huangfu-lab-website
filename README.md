@@ -30,7 +30,7 @@ Both blueprints need SQLite databases built before first run:
 
 | Database | Location | Built by |
 |---|---|---|
-| `perturbseq.db` | `../../data/perturbseq.db` | `python ../../pipeline/build_db.py` |
+| `perturbseq.db` | `../../data/perturbseq.db` | external pipeline |
 | `timecourse.db` | `timecourse.db` (this dir) | `python ../../pipeline/preprocess_timecourse.py` |
 
 `perturbseq_bp.py` opens both databases — gene-cluster (GC) and peak-cluster (PC) pages live under the `/perturbseq/` URL scheme but pull timecourse data.
@@ -79,19 +79,10 @@ static/
 
 | Script | Purpose |
 |---|---|
-| `pipeline/build_db.py` | Build/rebuild `perturbseq.db` from source TSVs in `data/tables/` and `data/datasets/` |
 | `pipeline/preprocess_timecourse.py` | Build `timecourse.db` from `data/04-timecourse_data/` |
 | `pipeline/generate_submodule_descriptions.py` | Generate LLM functional descriptions for submodules |
 | `pipeline/collate_submodule_summaries.py` | Collate submodule gene lists into JSON for LLM input |
 | `pipeline/extract_mfuzz_profiles.R` | Extract mfuzz soft-clustering profiles to TSV |
-
-### Rebuilding perturbseq.db
-
-```bash
-python pipeline/build_db.py              # rebuild all tables
-python pipeline/build_db.py --list       # show registered tables + source-file status
-python pipeline/build_db.py module_genes submodule_genes  # rebuild specific tables only
-```
 
 ---
 
