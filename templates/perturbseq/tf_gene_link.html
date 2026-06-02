@@ -1019,13 +1019,13 @@ let _igvBrowser = null;
     { tp: 'DE_72h', label: 'DE 72h', color: '#f87171' },
   ];
   const _RNA_TRACKS = [
-    { file: 'ESC.all.bw',    label: 'ES 0h',  color: '#6366f1' },
-    { file: 'DE-12h.all.bw', label: 'DE 12h', color: '#818cf8' },
-    { file: 'DE-24h.all.bw', label: 'DE 24h', color: '#38bdf8' },
-    { file: 'DE-36h.all.bw', label: 'DE 36h', color: '#34d399' },
-    { file: 'DE-48h.all.bw', label: 'DE 48h', color: '#fbbf24' },
-    { file: 'DE-60h.all.bw', label: 'DE 60h', color: '#fb923c' },
-    { file: 'DE-72h.all.bw', label: 'DE 72h', color: '#f87171' },
+    { file: 'ESC.rnaseq.bw',    label: 'ES 0h',  color: '#6366f1' },
+    { file: 'DE-12h.rnaseq.bw', label: 'DE 12h', color: '#818cf8' },
+    { file: 'DE-24h.rnaseq.bw', label: 'DE 24h', color: '#38bdf8' },
+    { file: 'DE-36h.rnaseq.bw', label: 'DE 36h', color: '#34d399' },
+    { file: 'DE-48h.rnaseq.bw', label: 'DE 48h', color: '#fbbf24' },
+    { file: 'DE-60h.rnaseq.bw', label: 'DE 60h', color: '#fb923c' },
+    { file: 'DE-72h.rnaseq.bw', label: 'DE 72h', color: '#f87171' },
   ];
 
   const tracks = [];
@@ -1052,7 +1052,7 @@ let _igvBrowser = null;
   });
   _ATAC_TRACKS.forEach(bw => tracks.push({
     name: `${bw.label} (ATAC)`, type: 'wig', format: 'bigwig',
-    url:  `/perturbseq/bw/${bw.tp}/${bw.tp}-merged.bw`,
+    url:  `/perturbseq/bw/${bw.tp}-atacseq.bw`,
     color: bw.color, height: 40, autoscaleGroup: 'atac',
   }));
   _RNA_TRACKS.forEach(t => tracks.push({

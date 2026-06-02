@@ -9,11 +9,11 @@ from flask import Blueprint, render_template, jsonify, request, g, redirect, url
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
-DB_PATH      = str(Path(__file__).resolve().parent / "db" / "tf-perturbseq.db")
-BW_DIR       = "/home/torred1/pipelines/tf-perturbseq/data/bulk-atacseq/s08-bigwig.dir"
-BW_EXTRA_DIR = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/08-2026_05_27_data/bw"
-BW_RNA_DIR   = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/09-2026_05_28_data/bw"
-GTF_DIR      = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/08-2026_05_27_data/gtf"
+DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq.db")
+BW_DIR       = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
+BW_EXTRA_DIR = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
+BW_RNA_DIR   = str(Path(__file__).resolve().parent / "data" / "bw" / "rna")
+GTF_DIR      = str(Path(__file__).resolve().parent / "data" / "gtf")
 
 TC_CLUSTER_COLORS = {
     "gene_cluster_1": "#4E79A7",
