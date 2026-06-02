@@ -1148,6 +1148,9 @@ let _igvBrowser = null;
       renderDropdown('');
       dropdown.classList.add('open');
     });
+    input.addEventListener('click', () => {
+      input.select();
+    });
     input.addEventListener('input', () => {
       sizeInput();
       renderDropdown(input.value);

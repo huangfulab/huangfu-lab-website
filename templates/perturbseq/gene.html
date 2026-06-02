@@ -343,6 +343,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <div class="sidebar-label">On this page</div>
   <nav class="sidebar-nav">
     <a href="#sec-overview" class="sidebar-link">Overview</a>
+    <a href="#sec-grna-coefs" class="sidebar-link" id="nav-grna-coefs" style="display:none">Perturbation Effects</a>
     {% if is_tf %}
     <span class="sidebar-role sidebar-role--regulator">As a Regulator</span>
     <a href="#sec-regulated-modules" class="sidebar-link indented">Regulated Modules</a>
@@ -471,6 +472,13 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   </div>
 </div>
 {% endif %}
+
+<!-- ── Perturbation Effects (all genes) ───────────────────────────────── -->
+<hr class="section-divider" id="grna-coef-divider" style="display:none">
+<h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects <span class="section-count" id="grna-coef-count"></span></h2>
+<p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients across all gRNAs (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Highlighted rows are the top and bottom 5% most extreme gRNAs.</p>
+<div id="grna-coef-loading" style="display:none"><div class="dt-spinner"></div> Loading…</div>
+<div id="grna-coef-wrap" style="display:none"></div>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- TF-ONLY: Regulated Modules section                                    -->
@@ -614,13 +622,15 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 {% if is_tf %}
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-linked-genes">Candidate Target Genes <span class="section-count" id="tf-lg-count"></span></h2>
-<p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> — open chromatin regions overlapping its ChIP-seq or motif footprint binding peaks.</p>
+<p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> — open chromatin regions overlapping its ChIP-seq or motif footprint binding peaks. Showing only the top and bottom 5% of Perturb-seq DE responders (strongest up- or down-regulated genes upon TF knockdown).</p>
 <div id="tf-lg-loading"><div class="dt-spinner"></div>Loading linked genes…</div>
 <div id="tf-lg-wrap" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:4px"></div>
 {% endif %}
 
 <!-- ── Regulatory elements bound by the TF ────────────────────────────── -->
+<!-- hidden: not yet informative; restore when data is ready -->
 {% if is_tf %}
+<div style="display:none">
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-tf-elements">Regulatory Elements bound by the TF <span class="section-count" id="tf-el-count"></span></h2>
 <p class="section-desc">Open chromatin elements (ATAC-seq) where <strong>{{ gene }}</strong> has ChIP-seq or motif footprint binding evidence and which are linked to at least one target gene region.</p>
@@ -630,6 +640,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <thead><tr><th>Element</th><th>Size</th><th>Linked genes</th></tr></thead>
     <tbody></tbody>
   </table>
+</div>
 </div>
 {% endif %}
 
@@ -1024,7 +1035,7 @@ const cyInstances = {};
               : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
   }, { barId:'tf-reg-filter-bar', countId:'tf-reg-count', searchKey:'module', onChange: applyCyFilter });
 
@@ -1146,7 +1157,7 @@ const cyInstances = {};
               : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td>${dot}<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.id)}">${r.id}</a></td><td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.id)}" data-mod-tip="${r.id}" data-mod-color="${window.MODULE_COLORS?.[r.id]||''}">${r.id}</a></td><td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
   }
 
@@ -1587,18 +1598,18 @@ requestAnimationFrame(() => {
   if (!wrapEl) return;
 
   const SOURCE_META = {
-    'huangfu-tf_chipseq': { short: 'H', label: 'Huangfu ChIP-seq', color: '#6366f1' },
-    'encode_chipseq':     { short: 'E', label: 'ENCODE ChIP-seq',  color: '#10b981' },
-    'remap_chipseq':      { short: 'R', label: 'ReMap ChIP-seq',   color: '#f59e0b' },
-    'tobias':             { short: 'T', label: 'TOBIAS footprint',  color: '#ec4899' },
+    'huangfu-tf_chipseq': { display: 'Huangfu ChIP', color: '#6366f1' },
+    'encode_chipseq':     { display: 'ENCODE ChIP',  color: '#10b981' },
+    'remap_chipseq':      { display: 'ReMap ChIP',   color: '#f59e0b' },
+    'tobias':             { display: 'TOBIAS',        color: '#ec4899' },
   };
 
   function srcBadge(src) {
-    const m = SOURCE_META[src] || { short: (src[0] || '?').toUpperCase(), label: src, color: '#9098b8' };
-    return `<span title="${m.label}" style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:${m.color};color:#fff;font-size:9px;font-weight:700;margin-right:2px;flex-shrink:0">${m.short}</span>`;
+    const m = SOURCE_META[src] || { display: src, color: '#9098b8' };
+    return `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${m.color}22;color:${m.color};border:1px solid ${m.color}55;margin-right:3px;white-space:nowrap">${m.display}</span>`;
   }
 
-  let page = 1, perPage = 25, search = '', orderCol = 2, orderDir = 'desc';
+  let page = 1, perPage = 25, search = '', orderCol = 4, orderDir = 'asc';
   let debounce;
 
   wrapEl.innerHTML = `
@@ -1613,12 +1624,13 @@ requestAnimationFrame(() => {
         <thead><tr>
           <th class="sst-sortable" data-col="0">Gene</th>
           <th class="sst-sortable" data-col="1">Module</th>
-          <th class="sst-sortable" data-col="4" title="Perturb-seq differential expression percentile (KD effect on this gene vs all tested genes)">DE Rank</th>
-          <th class="sst-sortable sst-desc" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene"># Datasets</th>
+          <th class="sst-sortable sst-asc" data-col="4" title="How extreme this gene's response to TF knockdown is, within the top/bottom 5% of DE responders">KD Effect</th>
+          <th class="sst-sortable" data-col="5" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Computed as the average per-gRNA log-fold-change effect on this gene's expression. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
+          <th class="sst-sortable" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene"># Datasets</th>
           <th class="sst-sortable" data-col="3" title="Number of distinct cell-type groups with binding evidence"># Cell types</th>
-          <th title="Data sources: H=Huangfu ChIP, E=ENCODE, R=ReMap, T=TOBIAS">Sources</th>
+          <th title="ChIP-seq and motif footprint data sources">Sources</th>
         </tr></thead>
-        <tbody id="lg-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+        <tbody id="lg-tbody"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
       </table>
     </div>
     <div class="sst-bar bottom">
@@ -1638,27 +1650,40 @@ requestAnimationFrame(() => {
         tbody.innerHTML = resp.data && resp.data.length
           ? resp.data.map(r => {
               const gLink = `<a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
-              const modLink = r.submodule
-                ? `<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
-                : '<span style="color:var(--text-muted)">—</span>';
+              let modLink = '';
+              if (r.supermodule || r.submodule) {
+                const mc = (window.MODULE_COLORS && window.MODULE_COLORS[r.supermodule]) || '#9098b8';
+                const superPill = r.supermodule
+                  ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
+                  : '';
+                const subPill = r.submodule
+                  ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
+                  : '';
+                modLink = superPill + subPill;
+              }
               const srcs = (r.sources || []).map(srcBadge).join('');
               let deCell;
-              if (r.de_pct_rank == null) {
+              if (r.signed_pct_rank == null) {
                 deCell = '<td style="color:var(--text-muted);font-size:12px">—</td>';
               } else {
-                const pct = Math.round(r.de_pct_rank * 100);
-                const isUp = r.mean_coef > 0;
+                const signed   = r.signed_pct_rank;
+                const isUp     = signed >= 0.95;
                 const barColor = isUp ? '#ec4899' : '#3b82f6';
-                const dir = isUp ? '▲' : '▼';
-                deCell = `<td><div style="display:flex;align-items:center;gap:6px" title="${dir} mean coef ${r.mean_coef.toFixed(3)} · ${pct}th percentile">` +
-                  `<div style="width:52px;height:7px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">` +
-                  `<div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px"></div></div>` +
-                  `<span style="font-size:11px;color:var(--text-muted);min-width:28px">${pct}th</span>` +
-                  `</div></td>`;
+                const label    = isUp ? 'upregulated' : 'downregulated';
+                const tailPct  = isUp ? Math.round((1 - signed) * 100) : Math.round(signed * 100);
+                const tailStr  = tailPct === 0 ? '<1' : tailPct;
+                deCell = `<td>` +
+                  `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${barColor}22;color:${barColor};border:1px solid ${barColor}55;white-space:nowrap">` +
+                  `top ${tailStr}% ${label}</span></td>`;
               }
-              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}<td>${r.n_datasets}</td><td>${r.n_ctg}</td><td style="white-space:nowrap">${srcs}</td></tr>`;
+              const coef = r.mean_coef != null ? r.mean_coef : null;
+              const coefColor = coef == null ? 'var(--text-muted)' : (coef > 0 ? '#ec4899' : '#3b82f6');
+              const coefCell = coef == null
+                ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
+                : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
+              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}<td>${r.n_datasets}</td><td>${r.n_ctg}</td><td style="white-space:nowrap">${srcs}</td></tr>`;
             }).join('')
-          : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+          : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
 
         const total    = resp.total    || 0;
         const filtered = resp.filtered || 0;
@@ -1678,7 +1703,7 @@ requestAnimationFrame(() => {
       })
       .catch(() => {
         const tbody = document.getElementById('lg-tbody');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
       });
   }
 
@@ -1715,7 +1740,7 @@ requestAnimationFrame(() => {
     if (!th) return;
     const col = +th.dataset.col;
     if (col === orderCol) orderDir = orderDir === 'asc' ? 'desc' : 'asc';
-    else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4) ? 'desc' : 'asc'; }
+    else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4 || col === 5) ? 'desc' : 'asc'; }
     wrapEl.querySelectorAll('th[data-col]').forEach(h => h.className = 'sst-sortable' + (h === th ? ` sst-${orderDir}` : ''));
     page = 1; fetchPage();
   });
@@ -2042,157 +2067,602 @@ requestAnimationFrame(() => {
   window.addEventListener('scroll', update, { passive: true });
   update();
 })();
-</script>
 
-<!-- ── Module pill tooltips ─────────────────────────────────────────────── -->
-<div id="mod-tip" role="tooltip" aria-hidden="true">
-  <div id="mod-tip-header">
-    <span id="mod-tip-swatch"></span>
-    <span id="mod-tip-name"></span>
-  </div>
-  <div id="mod-tip-body"></div>
-</div>
-<style>
-#mod-tip {
-  display: none;
-  position: fixed;
-  z-index: 9999;
-  width: 272px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  font-family: inherit;
-}
-#mod-tip-header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 11px 7px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-#mod-tip-swatch {
-  width: 10px; height: 10px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-#mod-tip-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: 0.1px;
-}
-#mod-tip-body {
-  padding: 8px 11px 9px;
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.55;
-}
-#mod-tip .tip-row { margin-top: 5px; }
-#mod-tip .tip-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 4px;
-}
-#mod-tip .tip-chips { margin-top: 2px; }
-#mod-tip .tip-chip {
-  display: inline-block;
-  padding: 1px 6px;
-  margin: 2px 2px 0 0;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--bg-elevated);
-  color: var(--text);
-  border: 1px solid var(--border);
-  text-decoration: none;
-  transition: background 0.1s, border-color 0.1s;
-}
-a#mod-tip .tip-chip,
-#mod-tip a.tip-chip:hover {
-  background: var(--border);
-  border-color: #c0c8e0;
-  color: var(--accent);
-}
-</style>
-<script>
+// ── Perturbation Effects: gRNA coefficient distribution ──────────────────────
 (function () {
-  const MODULE_TOOLTIPS = {{ module_tooltips | tojson }};
-  const tip   = document.getElementById('mod-tip');
-  const tipSw = document.getElementById('mod-tip-swatch');
-  const tipN  = document.getElementById('mod-tip-name');
-  const tipB  = document.getElementById('mod-tip-body');
-  if (!tip) return;
+  const loadingEl = document.getElementById('grna-coef-loading');
+  const wrapEl    = document.getElementById('grna-coef-wrap');
+  const countEl   = document.getElementById('grna-coef-count');
+  const divider   = document.getElementById('grna-coef-divider');
+  const heading   = document.getElementById('sec-grna-coefs');
+  const desc      = document.getElementById('grna-coef-desc');
+  const navLink   = document.getElementById('nav-grna-coefs');
+  if (!wrapEl) return;
 
-  function buildContent(mod, data, color) {
-    if (!data) return false;
-    tipSw.style.background = color || '#4a56b0';
-    tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
-    if (data.desc) {
-      tipB.innerHTML = '<div style="color:var(--text-muted)">' + data.desc + '</div>';
-    } else {
-      let html = '';
-      if (data.genes && data.genes.length) {
-        html += '<div class="tip-row"><span class="tip-label">Genes</span>'
-              + '<div class="tip-chips">'
-              + data.genes.map(g => '<a class="tip-chip" href="/perturbseq/gene/' + encodeURIComponent(g) + '">' + g + '</a>').join('')
-              + '</div></div>';
-      }
-      if (data.terms && data.terms.length) {
-        html += '<div class="tip-row"><span class="tip-label">Terms</span>'
-              + '<div class="tip-chips">'
-              + data.terms.map(t => '<a class="tip-chip" href="/perturbseq/go/' + encodeURIComponent(t) + '">' + t + '</a>').join('')
-              + '</div></div>';
-      }
-      tipB.innerHTML = html;
+  function show(el) { if (el) el.style.display = ''; }
+
+  function coefSpan(coef) {
+    const color = coef > 0 ? '#ec4899' : '#3b82f6';
+    return `<span style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${color};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</span>`;
+  }
+
+  function effectPill(d) {
+    const isUp = d.signed_pct_rank >= 0.95, isDown = d.signed_pct_rank <= 0.05;
+    if (!isUp && !isDown) return '';
+    const c = isUp ? '#ec4899' : '#3b82f6';
+    const label = isUp ? 'upregulated' : 'downregulated';
+    const pct = isUp ? Math.round((1 - d.signed_pct_rank) * 100) : Math.round(d.signed_pct_rank * 100);
+    const str = pct === 0 ? '<1' : pct;
+    return `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${c}22;color:${c};border:1px solid ${c}55;white-space:nowrap">top ${str}% ${label}</span>`;
+  }
+
+  // Sortable table — re-renders tbody in place on header click
+  function renderSortableTable(rows, container, showEffect) {
+    let sortCol = 'coef', sortDir = 1;
+
+    function doRender() {
+      const sorted = [...rows].sort((a, b) => {
+        const va = a[sortCol], vb = b[sortCol];
+        return sortDir * (typeof va === 'string' ? va.localeCompare(vb) : va - vb);
+      });
+
+      const colDef = [
+        { key: 'tf_name',   label: 'TF' },
+        { key: 'grna_name', label: 'gRNA' },
+        { key: 'coef',      label: 'Coefficient' },
+        ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
+      ];
+
+      const ths = colDef.map(c => {
+        const arrow = c.key === sortCol ? (sortDir > 0 ? ' ▲' : ' ▼') : '';
+        const sortable = c.key !== '_effect';
+        return `<th ${sortable ? `class="sst-sortable${c.key===sortCol ? (sortDir>0?' sst-asc':' sst-desc') : ''}" data-grna-col="${c.key}" style="cursor:pointer"` : ''}>${c.label}${arrow}</th>`;
+      }).join('');
+
+      const trs = sorted.map(d => `<tr>
+        <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
+        <td style="font-family:'SF Mono','Fira Code',monospace;font-size:11px">${d.grna_name}</td>
+        <td>${coefSpan(d.coef)}</td>
+        ${showEffect ? `<td>${effectPill(d)}</td>` : ''}
+      </tr>`).join('');
+
+      container.innerHTML = `<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr>${ths}</tr></thead>
+        <tbody>${trs}</tbody>
+      </table></div>`;
+
+      container.querySelectorAll('th[data-grna-col]').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.grnaCol;
+          sortDir = col === sortCol ? -sortDir : 1;
+          sortCol = col;
+          doRender();
+        });
+      });
     }
-    return true;
+
+    doRender();
   }
 
-  let hideTimer = null;
+  // Density plot using Epanechnikov KDE + Silverman bandwidth, with hoverable rug
+  function renderDensity(coefs, container) {
+    const vals = coefs.map(d => d.coef);
+    const n    = vals.length;
+    const RUG  = 10;
+    const margin = { top: 14, right: 20, bottom: 46, left: 20 };
+    const fullW  = Math.max(container.clientWidth || 500, 300);
+    const W = fullW - margin.left - margin.right;
+    const H = 150;
+    const totalH = H + RUG + 6;
 
-  function positionNear(el) {
-    const pad = 8, W = window.innerWidth, H = window.innerHeight;
-    const rect = el.getBoundingClientRect();
-    const tw = tip.offsetWidth, th = tip.offsetHeight;
-    let x = rect.left;
-    let y = rect.bottom + 6;
-    if (y + th > H - pad) y = rect.top - th - 6;
-    if (x + tw > W - pad) x = rect.right - tw;
-    tip.style.left = Math.max(pad, x) + 'px';
-    tip.style.top  = Math.max(pad, y) + 'px';
-  }
+    const sorted = [...vals].sort((a, b) => a - b);
+    const lo5 = sorted[Math.max(0, Math.ceil(n * 0.05) - 1)];
+    const hi5 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
 
-  function scheduleHide() {
-    hideTimer = setTimeout(() => {
-      tip.style.display = 'none';
-      tip.style.borderTopWidth = '1px';
-    }, 150);
-  }
+    // Silverman bandwidth
+    const mean = d3.mean(vals);
+    const std  = Math.sqrt(d3.mean(vals.map(v => (v - mean) ** 2))) || 0.01;
+    const bw   = 1.06 * std * Math.pow(n, -0.2);
 
-  document.querySelectorAll('[data-mod-tip]').forEach(el => {
-    const mod   = el.dataset.modTip;
-    const color = el.dataset.modColor || '';
-    if (!MODULE_TOOLTIPS[mod]) return;
-    el.addEventListener('mouseenter', () => {
-      clearTimeout(hideTimer);
-      if (buildContent(mod, MODULE_TOOLTIPS[mod], color)) {
-        tip.style.borderTopColor = color || 'var(--border)';
-        tip.style.borderTopWidth = '3px';
-        tip.style.display = 'block';
-        positionNear(el);
+    function epanechnikov(h) {
+      return v => Math.abs(v /= h) <= 1 ? 0.75 * (1 - v * v) / h : 0;
+    }
+    const kernel = epanechnikov(bw);
+
+    const ext  = d3.extent(vals);
+    const x0   = d3.scaleLinear().domain([ext[0] - bw * 2, ext[1] + bw * 2]).nice().range([0, W]);
+    const pts  = d3.range(x0.domain()[0], x0.domain()[1], (x0.domain()[1] - x0.domain()[0]) / 256);
+    const density = pts.map(t => [t, d3.mean(vals, v => kernel(t - v))]);
+
+    const y = d3.scaleLinear().domain([0, d3.max(density, d => d[1]) * 1.15]).range([H, 0]);
+
+    // ── Toolbar ─────────────────────────────────────────────────────────────
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display:flex;align-items:center;gap:3px;margin-bottom:4px;';
+
+    function mkBtn(title, svgContent, fn) {
+      const btn = document.createElement('button');
+      btn.title = title;
+      btn.innerHTML = svgContent;
+      btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
+        'border:1px solid var(--border);border-radius:5px;background:var(--bg-card);' +
+        'color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
+      btn.addEventListener('mouseenter', () => { btn.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btn.style.color='var(--text)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background='var(--bg-card)'; btn.style.color='var(--text-muted)'; });
+      btn.addEventListener('click', fn);
+      return btn;
+    }
+
+    // SVG icon snippets (16px viewBox)
+    const iconSearch = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>`;
+    const iconPlus   = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>`;
+    const iconMinus  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="8" x2="13" y2="8"/></svg>`;
+    const iconLeft   = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,3 4,8 10,13"/></svg>`;
+    const iconRight  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,3 12,8 6,13"/></svg>`;
+    const iconReset  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1-3"/><polyline points="1,2 3,5 6,3"/></svg>`;
+
+    const ZOOM_STEP = 1.5;
+    const PAN_PX   = 60;
+
+    // Zoom-in: magnifying glass + plus
+    const btnZoomIn = document.createElement('button');
+    btnZoomIn.title = 'Zoom in';
+    btnZoomIn.innerHTML = `<span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px">${iconSearch}<span style="position:absolute;bottom:-1px;right:-3px;font-size:9px;font-weight:700;line-height:1;color:currentColor">+</span></span>`;
+    btnZoomIn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
+    btnZoomIn.addEventListener('mouseenter', () => { btnZoomIn.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnZoomIn.style.color='var(--text)'; });
+    btnZoomIn.addEventListener('mouseleave', () => { btnZoomIn.style.background='var(--bg-card)'; btnZoomIn.style.color='var(--text-muted)'; });
+
+    const btnZoomOut = document.createElement('button');
+    btnZoomOut.title = 'Zoom out';
+    btnZoomOut.innerHTML = `<span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px">${iconSearch}<span style="position:absolute;bottom:-1px;right:-3px;font-size:9px;font-weight:700;line-height:1;color:currentColor">−</span></span>`;
+    btnZoomOut.style.cssText = btnZoomIn.style.cssText;
+    btnZoomOut.addEventListener('mouseenter', () => { btnZoomOut.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnZoomOut.style.color='var(--text)'; });
+    btnZoomOut.addEventListener('mouseleave', () => { btnZoomOut.style.background='var(--bg-card)'; btnZoomOut.style.color='var(--text-muted)'; });
+
+    const btnPanL  = mkBtn('Pan left',  iconLeft,  () => zoom.translateBy(svgSel, PAN_PX,  0));
+    const btnPanR  = mkBtn('Pan right', iconRight, () => zoom.translateBy(svgSel, -PAN_PX, 0));
+    const btnReset = mkBtn('Reset view', iconReset, () => zoom.transform(svgSel, d3.zoomIdentity));
+
+    const onTargetRaw = coefs.filter(d => d.tf_name && d.tf_name.toLowerCase() === GENE.toLowerCase());
+    const hasOnTarget = onTargetRaw.length > 0;
+    let onTargetVisible = false;
+
+    const btnOnTarget = document.createElement('button');
+    btnOnTarget.textContent = 'Display on-target guides';
+    btnOnTarget.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:26px;' +
+      'border:1px solid var(--border);border-radius:5px;background:var(--bg-card);' +
+      `color:${hasOnTarget ? 'var(--text-muted)' : 'var(--border)'};` +
+      `cursor:${hasOnTarget ? 'pointer' : 'default'};padding:0 8px;font-size:11px;white-space:nowrap;` +
+      `transition:background 0.12s,color 0.12s,border-color 0.12s;flex-shrink:0;margin-left:6px;` +
+      `opacity:${hasOnTarget ? '1' : '0.45'}`;
+    btnOnTarget.title = hasOnTarget
+      ? `${onTargetRaw.length} guide${onTargetRaw.length > 1 ? 's' : ''} targeting ${GENE}`
+      : `No on-target gRNAs available for ${GENE}`;
+    if (hasOnTarget) {
+      btnOnTarget.addEventListener('mouseenter', () => {
+        if (!onTargetVisible) { btnOnTarget.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnOnTarget.style.color='var(--text)'; }
+      });
+      btnOnTarget.addEventListener('mouseleave', () => {
+        if (!onTargetVisible) { btnOnTarget.style.background='var(--bg-card)'; btnOnTarget.style.color='var(--text-muted)'; }
+      });
+    }
+
+    // ── Label visibility toggle + count slider ───────────────────────────────
+    let labelsVisible = true;
+    let labelCount    = 3;
+
+    const sep1 = document.createElement('div');
+    sep1.style.cssText = 'width:1px;height:16px;background:var(--border);margin:0 5px;flex-shrink:0';
+
+    const iconTagLabel = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h5.5l6 6-5.5 5.5L2 7.5V2z"/><circle cx="5.5" cy="5.5" r="1.1" fill="currentColor" stroke="none"/></svg>`;
+
+    const btnLabels = document.createElement('button');
+    btnLabels.title = 'Toggle gRNA labels';
+    btnLabels.innerHTML = iconTagLabel;
+    btnLabels.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
+      'border:1px solid var(--accent,#6366f1);border-radius:5px;background:var(--bg-elevated,rgba(100,116,139,0.14));' +
+      'color:var(--accent,#6366f1);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s,border-color 0.12s;flex-shrink:0';
+
+    const sliderWrap = document.createElement('div');
+    sliderWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex-shrink:0';
+
+    const sliderLbl = document.createElement('span');
+    sliderLbl.textContent = 'top/bot:';
+    sliderLbl.style.cssText = 'font-size:10px;color:var(--text-muted);white-space:nowrap';
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min  = '1';
+    slider.max  = '10';
+    slider.value = '3';
+    slider.style.cssText = 'width:72px;accent-color:var(--accent,#6366f1);cursor:pointer;margin:0';
+
+    const sliderVal = document.createElement('span');
+    sliderVal.textContent = '3';
+    sliderVal.style.cssText = 'font-size:10px;color:var(--text-muted);min-width:12px;font-variant-numeric:tabular-nums';
+
+    sliderWrap.append(sliderLbl, slider, sliderVal);
+
+    toolbar.append(btnZoomIn, btnZoomOut, btnPanL, btnPanR, btnReset, btnOnTarget, sep1, btnLabels, sliderWrap);
+    container.appendChild(toolbar);
+
+    // ── SVG scaffold ─────────────────────────────────────────────────────────
+    const svg = d3.create('svg')
+      .attr('width', fullW)
+      .attr('height', totalH + margin.top + margin.bottom)
+      .style('display', 'block')
+      .style('cursor', 'grab');
+
+    const defs = svg.append('defs');
+
+    // Clip path that keeps chart content inside the plot area
+    defs.append('clipPath').attr('id', 'grna-chart-clip').append('rect')
+      .attr('x', 0).attr('y', -2).attr('width', W).attr('height', H + RUG + 10);
+
+    // Updateable tail-shade clip rects
+    const loClipRect = defs.append('clipPath').attr('id', 'grna-clip-lo').append('rect').attr('y', 0).attr('height', H);
+    const hiClipRect = defs.append('clipPath').attr('id', 'grna-clip-hi').append('rect').attr('y', 0).attr('height', H);
+
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Transparent rect to capture drag/wheel events over the whole chart area
+    g.append('rect').attr('width', W).attr('height', H + RUG + 6)
+      .attr('fill', 'none').attr('pointer-events', 'all');
+
+    // Inner group — clipped; all zoom-affected elements go here
+    const clipG = g.append('g').attr('clip-path', 'url(#grna-chart-clip)');
+
+    const basePath    = clipG.append('path').attr('fill', 'rgba(100,116,139,0.10)');
+    const loPath      = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', 'url(#grna-clip-lo)');
+    const hiPath      = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', 'url(#grna-clip-hi)');
+    const outlinePath = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
+    const zeroLine    = clipG.append('line').attr('y1', 0).attr('y2', H)
+      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.4);
+    const lo5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
+      .attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+    const hi5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
+      .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+
+    // Floating percentile labels on threshold lines
+    const lo5Label = clipG.append('text').attr('y', 9)
+      .attr('text-anchor', 'end').attr('font-size', '9.5px').attr('font-weight', '600')
+      .attr('fill', '#3b82f6').attr('opacity', 0.9).text('← bottom 5%');
+    const hi5Label = clipG.append('text').attr('y', 9)
+      .attr('text-anchor', 'start').attr('font-size', '9.5px').attr('font-weight', '600')
+      .attr('fill', '#ec4899').attr('opacity', 0.9).text('top 5% →');
+
+    // Rug strip
+    const rugY    = H + 6;
+    const rugTicks = clipG.selectAll('line.rug-tick').data(coefs).join('line')
+      .attr('class', 'rug-tick')
+      .attr('y1', rugY).attr('y2', rugY + RUG)
+      .attr('stroke', d => d.signed_pct_rank >= 0.95 ? '#ec4899'
+                          : d.signed_pct_rank <= 0.05 ? '#3b82f6'
+                          : 'var(--text-muted)')
+      .attr('stroke-width', 1.8)
+      .attr('opacity', d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35)
+      .attr('stroke-linecap', 'round')
+      .style('cursor', 'pointer');
+
+    // ── geom_label_repel for top/bottom 3 ────────────────────────────────────
+    const sortedCoefs = [...coefs].sort((a, b) => a.coef - b.coef);
+    const labelG      = clipG.append('g').attr('class', 'repel-labels');
+
+    const RL_FONT   = 9;
+    const RL_PAD_X  = 4;
+    const RL_PAD_Y  = 2;
+    const RL_BOX_H  = RL_FONT + RL_PAD_Y * 2;
+    const RL_CHAR_W = RL_FONT * 0.54;
+
+    function drawRepelLabels(xsc) {
+      labelG.selectAll('*').remove();
+      if (!labelsVisible) return;
+      const n = Math.min(labelCount, Math.floor(sortedCoefs.length / 2));
+      const repelData = [...sortedCoefs.slice(0, n), ...sortedCoefs.slice(-n)];
+
+      const items = repelData.map(d => ({
+        d,
+        tickX : xsc(d.coef),
+        cx    : xsc(d.coef),
+        cy    : H - RL_BOX_H / 2 - 5,   // start near bottom of density area
+        w     : Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
+        color : d.signed_pct_rank <= 0.05 ? '#3b82f6' : '#ec4899'
+      }));
+
+      // 2-D force repulsion: push overlapping labels apart in whichever axis has less overlap
+      for (let iter = 0; iter < 600; iter++) {
+        let moved = false;
+        for (let i = 0; i < items.length; i++) {
+          for (let j = i + 1; j < items.length; j++) {
+            const dx = items[j].cx - items[i].cx;
+            const dy = items[j].cy - items[i].cy;
+            const overlapX = (items[i].w + items[j].w) / 2 + 2 - Math.abs(dx);
+            const overlapY = RL_BOX_H + 3 - Math.abs(dy);
+            if (overlapX > 0 && overlapY > 0) {
+              moved = true;
+              if (overlapX <= overlapY) {
+                const push = overlapX / 2 + 0.5;
+                const sx = dx === 0 ? 1 : Math.sign(dx);
+                items[i].cx -= sx * push;
+                items[j].cx += sx * push;
+              } else {
+                const push = overlapY / 2 + 0.5;
+                const sy = dy === 0 ? -1 : Math.sign(dy);
+                items[i].cy -= sy * push;
+                items[j].cy += sy * push;
+              }
+            }
+          }
+          // Clamp to chart bounds
+          const hw = items[i].w / 2, hh = RL_BOX_H / 2;
+          items[i].cx = Math.max(hw + 1,     Math.min(W - hw - 1,     items[i].cx));
+          items[i].cy = Math.max(hh + 4,     Math.min(H - hh - 4,     items[i].cy));
+        }
+        if (!moved) break;
+      }
+
+      items.forEach(({ d, cx, cy, w, tickX, color }) => {
+        const lg = labelG.append('g');
+        // connector from box bottom-centre to rug tick top
+        lg.append('line')
+          .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
+          .attr('x2', tickX).attr('y2', rugY)
+          .attr('stroke', color).attr('stroke-width', 0.9)
+          .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
+        // background box
+        lg.append('rect')
+          .attr('x', cx - w / 2).attr('y', cy - RL_BOX_H / 2)
+          .attr('width', w).attr('height', RL_BOX_H)
+          .attr('rx', 3)
+          .attr('fill', 'var(--bg-card)').attr('stroke', color)
+          .attr('stroke-width', 0.9).attr('opacity', 0.93);
+        // label text, vertically centred in box
+        lg.append('text')
+          .attr('x', cx).attr('y', cy)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('font-size', `${RL_FONT}px`)
+          .attr('font-family', "'SF Mono','Fira Code',monospace")
+          .attr('fill', color).attr('font-weight', '600')
+          .text(d.grna_name);
+      });
+    }
+
+    // ── On-target guide labels (repel, slate colour) ──────────────────────────
+    const onTargetG = clipG.append('g').attr('class', 'on-target-labels').attr('display', 'none');
+    const OT_COLOR  = '#94a3b8';
+
+    function drawOnTargetLabels(xsc) {
+      onTargetG.selectAll('*').remove();
+      const items = onTargetRaw.map(d => ({
+        d,
+        tickX: xsc(d.coef),
+        cx:    xsc(d.coef),
+        cy:    H - RL_BOX_H / 2 - 5,
+        w:     Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
+      }));
+      // 2-D repulsion (same algorithm as drawRepelLabels)
+      for (let iter = 0; iter < 600; iter++) {
+        let moved = false;
+        for (let i = 0; i < items.length; i++) {
+          for (let j = i + 1; j < items.length; j++) {
+            const dx = items[j].cx - items[i].cx;
+            const dy = items[j].cy - items[i].cy;
+            const overlapX = (items[i].w + items[j].w) / 2 + 2 - Math.abs(dx);
+            const overlapY = RL_BOX_H + 3 - Math.abs(dy);
+            if (overlapX > 0 && overlapY > 0) {
+              moved = true;
+              if (overlapX <= overlapY) {
+                const push = overlapX / 2 + 0.5;
+                const sx = dx === 0 ? 1 : Math.sign(dx);
+                items[i].cx -= sx * push; items[j].cx += sx * push;
+              } else {
+                const push = overlapY / 2 + 0.5;
+                const sy = dy === 0 ? -1 : Math.sign(dy);
+                items[i].cy -= sy * push; items[j].cy += sy * push;
+              }
+            }
+          }
+          const hw = items[i].w / 2, hh = RL_BOX_H / 2;
+          items[i].cx = Math.max(hw + 1, Math.min(W - hw - 1, items[i].cx));
+          items[i].cy = Math.max(hh + 4, Math.min(H - hh - 4, items[i].cy));
+        }
+        if (!moved) break;
+      }
+      items.forEach(({ d, cx, cy, w, tickX }) => {
+        const lg = onTargetG.append('g');
+        lg.append('line')
+          .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
+          .attr('x2', tickX).attr('y2', rugY)
+          .attr('stroke', OT_COLOR).attr('stroke-width', 0.9)
+          .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
+        lg.append('rect')
+          .attr('x', cx - w / 2).attr('y', cy - RL_BOX_H / 2)
+          .attr('width', w).attr('height', RL_BOX_H).attr('rx', 3)
+          .attr('fill', 'var(--bg-card)').attr('stroke', OT_COLOR)
+          .attr('stroke-width', 0.9).attr('opacity', 0.93);
+        lg.append('text')
+          .attr('x', cx).attr('y', cy)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+          .attr('font-size', `${RL_FONT}px`)
+          .attr('font-family', "'SF Mono','Fira Code',monospace")
+          .attr('fill', OT_COLOR).attr('font-weight', '600')
+          .text(d.grna_name);
+      });
+    }
+
+    // X-axis sits below the rug strip so tick labels don't overlap it
+    const xAxisG = g.append('g').attr('transform', `translate(0,${H + RUG + 8})`).attr('class', 'axis');
+
+    // ── Direction labels (fixed, not zoomed) ─────────────────────────────────
+    const labelY = totalH + 38;
+    g.append('text').attr('x', 0).attr('y', labelY)
+      .attr('text-anchor', 'start').attr('font-size', '10.5px').attr('fill', '#3b82f6').attr('opacity', 0.85)
+      .text('← Perturbations that downregulate gene');
+    g.append('text').attr('x', W).attr('y', labelY)
+      .attr('text-anchor', 'end').attr('font-size', '10.5px').attr('fill', '#ec4899').attr('opacity', 0.85)
+      .text('Perturbations that upregulate gene →');
+
+    // ── Rug tooltip ──────────────────────────────────────────────────────────
+    const rugTip = document.createElement('div');
+    rugTip.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:11px;font-family:"SF Mono","Fira Code",monospace;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap';
+    document.body.appendChild(rugTip);
+
+    rugTicks
+      .on('mouseover', function(event, d) {
+        const color = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
+        rugTip.innerHTML = `<span style="color:${color};font-weight:600">${d.grna_name}</span> <span style="color:var(--text-muted)">${d.coef > 0 ? '+' : ''}${d.coef.toFixed(3)}</span>`;
+        rugTip.style.display = 'block';
+      })
+      .on('mousemove', function(event) {
+        rugTip.style.left = (event.clientX + 12) + 'px';
+        rugTip.style.top  = (event.clientY - 10) + 'px';
+      })
+      .on('mouseout', function() { rugTip.style.display = 'none'; });
+
+    // ── Update function (called on every zoom event) ──────────────────────────
+    function update(xsc) {
+      const areaFn = d3.area().x(d => xsc(d[0])).y0(H).y1(d => y(d[1])).curve(d3.curveBasis);
+      const lineFn = d3.line().x(d => xsc(d[0])).y(d => y(d[1])).curve(d3.curveBasis);
+
+      basePath.datum(density).attr('d', areaFn);
+      loPath.datum(density).attr('d', areaFn);
+      hiPath.datum(density).attr('d', areaFn);
+      outlinePath.datum(density).attr('d', lineFn);
+
+      const [xlo, xhi] = xsc.domain();
+      zeroLine.attr('x1', xsc(0)).attr('x2', xsc(0))
+        .attr('display', xlo < 0 && xhi > 0 ? null : 'none');
+
+      lo5Line.attr('x1', xsc(lo5)).attr('x2', xsc(lo5));
+      hi5Line.attr('x1', xsc(hi5)).attr('x2', xsc(hi5));
+      lo5Label.attr('x', xsc(lo5) - 6);
+      hi5Label.attr('x', xsc(hi5) + 6);
+
+      loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
+      hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
+
+      rugTicks.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+
+      drawRepelLabels(xsc);
+      if (onTargetVisible) drawOnTargetLabels(xsc);
+
+      xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
+    }
+
+    update(x0);
+
+    // ── D3 zoom behaviour ────────────────────────────────────────────────────
+    const zoom = d3.zoom()
+      .scaleExtent([1, 30])
+      .extent([[0, 0], [W, H]])
+      .on('zoom', (event) => {
+        svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
+        update(event.transform.rescaleX(x0));
+      })
+      .on('end', () => svg.style('cursor', 'grab'));
+
+    const svgSel = svg;
+    svg.call(zoom).on('dblclick.zoom', null);
+
+    btnZoomIn.addEventListener('click',  () => zoom.scaleBy(svgSel, ZOOM_STEP));
+    btnZoomOut.addEventListener('click', () => zoom.scaleBy(svgSel, 1 / ZOOM_STEP));
+
+    if (hasOnTarget) {
+      btnOnTarget.addEventListener('click', () => {
+        onTargetVisible = !onTargetVisible;
+        onTargetG.attr('display', onTargetVisible ? null : 'none');
+        if (onTargetVisible) {
+          const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
+          drawOnTargetLabels(xsc);
+          btnOnTarget.style.background   = 'var(--bg-elevated,rgba(100,116,139,0.14))';
+          btnOnTarget.style.color        = 'var(--accent,#6366f1)';
+          btnOnTarget.style.borderColor  = 'var(--accent,#6366f1)';
+        } else {
+          btnOnTarget.style.background  = 'var(--bg-card)';
+          btnOnTarget.style.color       = 'var(--text-muted)';
+          btnOnTarget.style.borderColor = 'var(--border)';
+        }
+      });
+    }
+
+    // Label toggle
+    btnLabels.addEventListener('click', () => {
+      labelsVisible = !labelsVisible;
+      labelG.selectAll('*').remove();
+      if (labelsVisible) {
+        btnLabels.style.borderColor = 'var(--accent,#6366f1)';
+        btnLabels.style.background  = 'var(--bg-elevated,rgba(100,116,139,0.14))';
+        btnLabels.style.color       = 'var(--accent,#6366f1)';
+        const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
+        drawRepelLabels(xsc);
+      } else {
+        btnLabels.style.borderColor = 'var(--border)';
+        btnLabels.style.background  = 'var(--bg-card)';
+        btnLabels.style.color       = 'var(--text-muted)';
       }
     });
-    el.addEventListener('mouseleave', scheduleHide);
-  });
 
-  tip.addEventListener('mouseenter', () => clearTimeout(hideTimer));
-  tip.addEventListener('mouseleave', scheduleHide);
+    // Label count slider
+    slider.addEventListener('input', () => {
+      labelCount = +slider.value;
+      sliderVal.textContent = labelCount;
+      if (labelsVisible) {
+        const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
+        drawRepelLabels(xsc);
+      }
+    });
+
+    container.appendChild(svg.node());
+  }
+
+  show(loadingEl);
+  fetch(`/perturbseq/api/gene/${encodeURIComponent(GENE)}/grna-coefs`)
+    .then(r => r.json())
+    .then(resp => {
+      loadingEl.style.display = 'none';
+      const coefs = resp.coefs || [];
+      if (!coefs.length) return;
+
+      show(divider); show(heading); show(desc); show(navLink);
+      if (countEl) countEl.textContent = `${coefs.length} gRNAs`;
+
+      const highlighted = coefs.filter(d => d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05);
+
+      const histWrap = document.createElement('div');
+      histWrap.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px;margin-top:4px';
+
+      const tblLabel = document.createElement('h3');
+      tblLabel.style.cssText = 'font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--text)';
+      tblLabel.textContent = `Top & bottom 5% gRNAs (${highlighted.length})`;
+
+      const tblWrap = document.createElement('div');
+      tblWrap.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:4px';
+
+      const toggle = document.createElement('button');
+      toggle.style.cssText = 'font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 0;margin-top:10px';
+      toggle.textContent = `▶ Show all ${coefs.length} gRNAs`;
+
+      const allWrap = document.createElement('div');
+      allWrap.style.cssText = 'display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:6px';
+
+      wrapEl.append(histWrap, tblLabel, tblWrap, toggle, allWrap);
+
+      renderDensity(coefs, histWrap);
+      renderSortableTable(highlighted, tblWrap, true);
+
+      let allRendered = false;
+      toggle.addEventListener('click', () => {
+        const open = allWrap.style.display !== 'none';
+        allWrap.style.display = open ? 'none' : '';
+        toggle.textContent = open ? `▶ Show all ${coefs.length} gRNAs` : `▼ Hide all gRNAs`;
+        if (!allRendered) { renderSortableTable(coefs, allWrap, false); allRendered = true; }
+      });
+
+      show(wrapEl);
+    })
+    .catch(() => { loadingEl.style.display = 'none'; });
 })();
 </script>
+
 {% endblock %}

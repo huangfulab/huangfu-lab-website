@@ -102,7 +102,7 @@
 <div class="submod-header">
   <div class="submod-swatch" style="background:{{ node.color }}"></div>
   <span class="submod-title">{{ node.id }}</span>
-  <a class="parent-pill" href="/perturbseq/module/{{ node.supermodule }}">
+  <a class="parent-pill" href="/perturbseq/module/{{ node.supermodule }}" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
     ↑ Supermodule {{ node.supermodule }}
   </a>
 </div>
@@ -116,7 +116,7 @@
     </div>
     <div class="no-pert-note" style="margin-bottom:0">
       TF perturbation and binding analysis is at the supermodule level.
-      <a href="/perturbseq/module/{{ node.supermodule }}" style="color:var(--accent)">
+      <a href="/perturbseq/module/{{ node.supermodule }}" style="color:var(--accent)" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
         View {{ node.supermodule }} →
       </a>
     </div>

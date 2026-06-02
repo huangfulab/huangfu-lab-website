@@ -194,8 +194,8 @@
       <tr data-peak="{{ c.peak_idx }}">
         <td>
           <div class="mod-name-cell">
-            <span class="mod-dot" style="background:{{ c.color }}"></span>
-            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=c.display) }}">{{ c.display }}</a>
+            <span class="mod-dot" data-mod-tip="{{ c.display }}" data-mod-color="{{ c.color }}" style="background:{{ c.color }};cursor:default"></span>
+            <a class="mod-link" data-mod-tip="{{ c.display }}" data-mod-color="{{ c.color }}" href="{{ url_for('perturbseq.module_page', name=c.display) }}">{{ c.display }}</a>
           </div>
         </td>
         <td>{{ c.size }}</td>
@@ -256,8 +256,8 @@
       <tr data-peak="{{ m.peak_idx }}">
         <td>
           <div class="mod-name-cell">
-            <span class="mod-dot" style="background:{{ m.color }}"></span>
-            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
+            <span class="mod-dot" data-mod-tip="{{ m.name }}" data-mod-color="{{ m.color }}" style="background:{{ m.color }};cursor:default"></span>
+            <a class="mod-link" data-mod-tip="{{ m.name }}" data-mod-color="{{ m.color }}" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
           </div>
         </td>
         <td>{{ m.size }}</td>
@@ -326,9 +326,9 @@
       <tr data-peak="{{ m.peak_idx }}">
         <td>
           <div class="mod-name-cell">
-            <span class="mod-dot" style="background:{{ m.color }}"></span>
-            <a class="mod-link" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
-            <span class="sup-badge">{{ m.supermodule }}</span>
+            <span class="mod-dot" data-mod-tip="{{ m.name }}" data-mod-color="{{ m.color }}" style="background:{{ m.color }};cursor:default"></span>
+            <a class="mod-link" data-mod-tip="{{ m.name }}" data-mod-color="{{ m.color }}" href="{{ url_for('perturbseq.module_page', name=m.name) }}">{{ m.name }}</a>
+            <span class="sup-badge" data-mod-tip="{{ m.supermodule }}" data-mod-color="{{ m.color }}" style="cursor:default">{{ m.supermodule }}</span>
           </div>
         </td>
         <td>{{ m.size }}</td>

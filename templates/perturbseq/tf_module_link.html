@@ -259,7 +259,7 @@
       <div>
         <div class="expr-card-title">Module Expression (mean ± SD)</div>
         <div class="expr-card-name">
-          <a href="{{ url_for('perturbseq.module_page', name=module) }}" class="expr-name-link">{{ module }}</a>
+          <a href="{{ url_for('perturbseq.module_page', name=module) }}" class="expr-name-link" data-mod-tip="{{ module }}" data-mod-color="{{ module_color }}">{{ module }}</a>
         </div>
       </div>
       <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff;background:{{ module_color }}">{{ module_size }} genes</span>
@@ -324,6 +324,7 @@
   {% for s in sub_pert %}
   <a class="sub-card"
      href="{{ url_for('perturbseq.module_page', name=s.submodule) }}"
+     data-mod-tip="{{ s.submodule }}" data-mod-color="{{ module_color }}"
      style="background:{{ module_color }}18;border-color:{{ module_color }}55;color:{{ module_color }}">
     <div class="sub-card-name">{{ s.submodule }}</div>
     <div class="sub-card-nes {{ 'up' if s.direction == 'up' else 'down' }}"

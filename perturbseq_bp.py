@@ -9,17 +9,11 @@ from flask import Blueprint, render_template, jsonify, request, g, redirect, url
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
-DB_PATH      = str(Path(__file__).resolve().parent / "db" / "tf-perturbseq.db")
+DB_PATH      = str(Path(__file__).resolve().parent / "db" / "tf-perturbseq_20260602.db")
 BW_DIR       = "/home/torred1/pipelines/tf-perturbseq/data/bulk-atacseq/s08-bigwig.dir"
 BW_EXTRA_DIR = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/08-2026_05_27_data/bw"
 BW_RNA_DIR   = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/09-2026_05_28_data/bw"
 GTF_DIR      = "/data1/huangfud/torred1/sandbox/sandbox008-hotspot_network/data/08-2026_05_27_data/gtf"
-TC_DB_PATH = str(Path(__file__).resolve().parent / "timecourse.db")
-COEF_ES_PATH = "/data1/huangfud/torred1/tf-perturbseq/perturbseq-regression/rawdata/regression_v2/ES_coefs.hdf"
-COEF_DE_PATH = "/data1/huangfud/torred1/tf-perturbseq/perturbseq-regression/rawdata/regression_v2/DE_coefs.hdf"
-
-_coef_cache: dict = {}  # keyed by path: {'grnas': [...], 'genes': [...]}
-_GRNA_SUFFIX_RE = re.compile(r'^\d+$|^[A-Z]$|^main$')
 
 TC_CLUSTER_COLORS = {
     "gene_cluster_1": "#4E79A7",
@@ -216,6 +210,10 @@ def _tc_display(cid: str) -> str:
         return 'PC' + cid[len('peak_cluster_'):]
     return cid
 
+def _mfuzz_to_internal(name: str) -> str:
+    """Convert 'cluster_N' (new DB module_name) to 'gene_cluster_N' (legacy internal ID)."""
+    return 'gene_cluster_' + name.split('_')[1]
+
 _expressed_tfs: frozenset | None = None
 _lambert_tfs: frozenset | None = None
 _perturbed_tfs: frozenset | None = None
@@ -272,10 +270,7 @@ def _load_gene_name_map() -> dict:
 
 
 def get_tc_db():
-    if "tc_db" not in g:
-        g.tc_db = sqlite3.connect(TC_DB_PATH)
-        g.tc_db.row_factory = sqlite3.Row
-    return g.tc_db
+    return get_db()
 
 
 def _load_expressed_tfs() -> frozenset:
@@ -334,9 +329,6 @@ def close_db(exc):
     db = g.pop("perturbseq_db", None)
     if db is not None:
         db.close()
-    tc = g.pop("tc_db", None)
-    if tc is not None:
-        tc.close()
 
 
 def rows_to_dicts(rows):
@@ -422,30 +414,38 @@ def index():
 def all_modules_page():
     tab = request.args.get("tab", "submodules")
     db = get_db()
-    tc = get_tc_db()
     pub_counts = _load_gene_pub_counts()
 
     # ── Developmental Gene Clusters ──────────────────────────────────────────
-    gc_sizes = dict(tc.execute(
-        "SELECT cluster, COUNT(*) FROM gene_cluster_members "
-        "WHERE cluster NOT IN ('gene_cluster_7') GROUP BY cluster"
-    ).fetchall())
+    gc_rows = db.execute(
+        "SELECT module_name, size FROM module_table "
+        "WHERE source='mfuzz_k7' AND module_name != 'cluster_7' ORDER BY module_name"
+    ).fetchall()
+    gc_sizes = {_mfuzz_to_internal(r[0]): r[1] for r in gc_rows}
 
-    gc_genes_raw = tc.execute(
-        "SELECT cluster, gene FROM gene_cluster_members "
-        "WHERE cluster NOT IN ('gene_cluster_7') ORDER BY membership DESC"
+    gc_genes_raw = db.execute(
+        "SELECT mt.module_name, gt.gene_name "
+        "FROM gene_module_table gmt "
+        "JOIN module_table mt ON gmt.module_id = mt.module_id "
+        "JOIN gene_table gt ON gmt.gene_id = gt.gene_id "
+        "WHERE mt.source = 'mfuzz_k7' AND mt.module_name != 'cluster_7'"
     ).fetchall()
     gc_genes_by_cluster: dict = defaultdict(list)
-    for cid, gene in gc_genes_raw:
-        gc_genes_by_cluster[cid].append(gene)
+    for mod_name, gene in gc_genes_raw:
+        gc_genes_by_cluster[_mfuzz_to_internal(mod_name)].append(gene)
 
-    gc_regs_raw = tc.execute(
-        "SELECT gene_cluster, tf, nes FROM perturbation_edges ORDER BY ABS(nes) DESC"
+    gc_regs_raw = db.execute(
+        "SELECT module, gene_name, mean_NES, direction FROM gsea_tf_table "
+        "WHERE module_collection='mfuzz_k7' "
+        "AND gene_set_collection='ESC_DE-gene_clustering_data_var0.3_k7_top1000_DE' "
+        "ORDER BY module, ABS(mean_NES) DESC"
     ).fetchall()
     gc_regs_by_cluster: dict = defaultdict(list)
-    for cid, tf, nes in gc_regs_raw:
-        gc_regs_by_cluster[cid].append({'tf': tf, 'nes': round(nes, 2),
-                                         'direction': 'up' if nes > 0 else 'down'})
+    for mod_name, tf, nes, direction in gc_regs_raw:
+        gc_regs_by_cluster[_mfuzz_to_internal(mod_name)].append({
+            'tf': tf, 'nes': round(nes, 2),
+            'direction': direction or ('up' if nes > 0 else 'down'),
+        })
 
     clusters = []
     for cid in sorted(gc_sizes.keys()):
@@ -574,13 +574,11 @@ def all_modules_page():
 
     # ── Expression sparklines (all three module types) ────────────────────────
 
-    # Gene clusters — gene_cluster_profiles (value is z-score)
-    gc_expr_raw = tc.execute(
-        "SELECT cluster, timepoint, value FROM gene_cluster_profiles"
-    ).fetchall()
-    gc_expr_map: dict = defaultdict(dict)
-    for cid, tp, val in gc_expr_raw:
-        gc_expr_map[cid][tp] = val
+    # Gene clusters — mean TPM per timepoint from bulk_expression
+    gc_expr_map: dict = {
+        _mfuzz_to_internal(k): v
+        for k, v in _all_modules_expr_map(db, 'mfuzz_k7').items()
+    }
     for c in clusters:
         tp_dict = gc_expr_map.get(c['id'], {})
         vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
@@ -794,14 +792,56 @@ def _super_page(mod_name):
         row['color'] = MODULE_COLORS.get(mod_name, '#4a56b0')
     top_tfs.sort(key=lambda r: abs(r['mean_NES'] or 0), reverse=True)
 
+    notable = _top_genes_by_pub(genes_list)
+    mod_desc_row = db.execute(
+        "SELECT title, standard FROM module_description WHERE module_id=?",
+        (module_id,)).fetchone()
+    highlight_terms = [r[0] for r in db.execute(
+        "SELECT term_name FROM go_module_enrichment "
+        "WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') "
+        "ORDER BY p_value LIMIT 5", (module_id,)).fetchall()]
+    top_tf_names = [r['tf'] for r in top_tfs[:5] if r.get('tf')]
+    desc = {
+        'title': (mod_desc_row['title'] if mod_desc_row else None) or mod_name,
+        'summary': (mod_desc_row['standard'] if mod_desc_row else None),
+        'highlight_terms': highlight_terms,
+        'highlight_genes': notable[:8],
+        'top_tfs': top_tf_names,
+        'similar_submodules': [],
+    }
+    # Tooltip data for submodule links in the table (description + expression sparkline)
+    sub_module_ids = [s['sub_module_id'] for s in submodules] if submodules else []
+    module_tooltips: dict = {}
+    if sub_module_ids:
+        ph = ','.join('?' * len(sub_module_ids))
+        for _r in db.execute(
+            f"SELECT mt.module_name, md.title, md.standard "
+            f"FROM module_description md "
+            f"JOIN module_table mt ON md.module_id = mt.module_id "
+            f"WHERE mt.module_id IN ({ph})",
+            sub_module_ids,
+        ).fetchall():
+            module_tooltips[_r['module_name']] = {
+                'title': _r['title'],
+                'desc':  _r['standard'],
+            }
+        sub_expr_map = _all_modules_expr_map(db, 'hotspot_submodule')
+        for sub_name, tip in module_tooltips.items():
+            tp_dict = sub_expr_map.get(sub_name, {})
+            vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+            line_d, area_d = _spark_pts(vals)
+            if line_d:
+                tip['spark_line'] = line_d
+                tip['spark_area'] = area_d
     tfs, modules = _nav_lists(db)
     mod_color = MODULE_COLORS.get(mod_name, '#4a56b0')
     return render_template("perturbseq/module.html",
         module_type='super', name=mod_name, color=mod_color, card_color=mod_color,
-        desc=None, expr=expr, expr_z=expr_z, profile=None, parent=None, node=None,
+        desc=desc, expr=expr, expr_z=expr_z, profile=None, parent=None, node=None,
         submodules=submodules, neighbors=[], genes=genes_list,
-        notable_genes=_top_genes_by_pub(genes_list),
+        notable_genes=notable,
         top_tfs=top_tfs, assoc=[], assoc_label='', enrichment=[],
+        module_tooltips=module_tooltips,
         tfs=tfs, modules=modules)
 
 
@@ -890,25 +930,37 @@ def _gc_page(name):
     internal_id = 'gene_cluster_' + name[2:]
     if internal_id in HIDDEN_TC:
         return render_template("perturbseq/404.html", message=f"Cluster not found: {name}"), 404
-    tc = get_tc_db()
-    profile = rows_to_dicts(tc.execute(
-        "SELECT timepoint, value FROM gene_cluster_profiles WHERE cluster=? ORDER BY rowid",
-        (internal_id,)).fetchall())
+    db = get_db()
+    mfuzz_name = 'cluster_' + name[2:]
+    tp_map = _all_modules_expr_map(db, 'mfuzz_k7').get(mfuzz_name, {})
+    profile = [{'timepoint': tp, 'value': round(tp_map[tp], 5)}
+               for tp in _SPARK_TP_ORDER if tp in tp_map]
     if not profile:
         return render_template("perturbseq/404.html", message=f"Cluster not found: {name}"), 404
-    pert_tfs = {r['tf']: r for r in rows_to_dicts(tc.execute(
-        "SELECT tf, nes, padj FROM perturbation_edges WHERE gene_cluster=?",
-        (internal_id,)).fetchall())}
-    bind_tfs = {
-        r[0]: round(r[1], 3)
-        for r in tc.execute("""
-            SELECT b.tf, MAX(b.odds_ratio) as odds_ratio
-            FROM binding_edges b
-            JOIN peak_gene_edges p ON b.peak_cluster = p.peak_cluster
-            WHERE p.gene_cluster = ? AND b.fdr < 0.05 AND p.fdr < 0.05
-            GROUP BY b.tf
-        """, (internal_id,)).fetchall()
-    }
+    pert_rows = rows_to_dicts(db.execute("""
+        SELECT gene_name AS tf, mean_NES AS nes, min_padj AS padj
+        FROM gsea_tf_table
+        WHERE module=? AND module_collection='mfuzz_k7'
+        AND gene_set_collection='ESC_DE-gene_clustering_data_var0.3_k7_top1000_DE'
+    """, (mfuzz_name,)).fetchall())
+    pert_tfs = {r['tf']: r for r in pert_rows}
+    mod_row = db.execute(
+        "SELECT module_id FROM module_table WHERE module_name=? AND source='mfuzz_k7'",
+        (mfuzz_name,)).fetchone()
+    if mod_row:
+        bind_tfs = {
+            r[0]: round(r[1], 3)
+            for r in db.execute("""
+                SELECT td.tf_gene_name, MAX(e."OR") AS odds_ratio
+                FROM tf_module_enrichment e
+                JOIN tf_dataset_table td ON e.dataset_id = td.dataset_id
+                WHERE e.module_id=? AND e.gene_set_collection='mfuzz' AND e.padj_fisher < 0.05
+                GROUP BY td.tf_gene_name
+            """, (mod_row['module_id'],)).fetchall()
+        }
+    else:
+        bind_tfs = {}
+    assoc = []
     top_tfs = []
     for tf, p in pert_tfs.items():
         b = bind_tfs.get(tf)
@@ -925,26 +977,17 @@ def _gc_page(name):
                 'binding': '✓', 'odds_ratio': or_val, 'evidence': 'binding',
             })
     top_tfs.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
-    assoc_raw = rows_to_dicts(tc.execute(
-        "SELECT peak_cluster, odds_ratio, fdr FROM peak_gene_edges WHERE gene_cluster=? ORDER BY odds_ratio DESC",
-        (internal_id,)).fetchall())
-    assoc = [{'name': _tc_display(r['peak_cluster']),
-              'url': url_for('perturbseq.module_page', name=_tc_display(r['peak_cluster'])),
-              'odds_ratio': r['odds_ratio'], 'fdr': r['fdr']}
-             for r in assoc_raw if r['peak_cluster'] not in HIDDEN_TC]
-    rev_map = {v: k for k, v in _load_gene_name_map().items()}
-    members_ensg = [r[0] for r in tc.execute(
-        "SELECT gene FROM gene_cluster_members WHERE cluster=? ORDER BY membership DESC LIMIT 500",
-        (internal_id,)).fetchall()]
-    genes = [rev_map.get(e, e) for e in members_ensg]
-    db = get_db()
+    genes = [r[0] for r in db.execute("""
+        SELECT gt.gene_name FROM gene_module_table gmt
+        JOIN module_table mt ON gmt.module_id = mt.module_id
+        JOIN gene_table gt ON gmt.gene_id = gt.gene_id
+        WHERE mt.module_name=? AND mt.source='mfuzz_k7'
+    """, (mfuzz_name,)).fetchall()]
     pub_counts = _load_gene_pub_counts()
     lambert    = _load_lambert_tfs()
     perturbed  = _load_perturbed_tfs()
     gc_gene_data = []
     for g in genes:
-        if g.startswith('ENSG'):
-            continue
         if g in perturbed:
             tf_status = 'Active TF'
         elif g in lambert:
@@ -953,14 +996,31 @@ def _gc_page(name):
             tf_status = 'Gene'
         gc_gene_data.append({'name': g, 'pubs': pub_counts.get(g, 0), 'tf_status': tf_status})
     timepoints = [r['timepoint'] for r in profile]
-    named_genes = [g for g in genes if not g.startswith('ENSG')]
-    expr_z = _compute_mean_zscore_profile(db, named_genes, timepoints)
-    expr = _compute_mean_tpm_profile(db, named_genes, timepoints)
+    expr_z = _compute_mean_zscore_profile(db, genes, timepoints)
+    expr = _compute_mean_tpm_profile(db, genes, timepoints)
+    desc = None
+    if mod_row:
+        gc_desc_row = db.execute(
+            "SELECT title, standard FROM module_description WHERE module_id=?",
+            (mod_row['module_id'],)).fetchone()
+        if gc_desc_row:
+            highlight_terms = [r[0] for r in db.execute(
+                "SELECT term_name FROM go_module_enrichment "
+                "WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF') "
+                "ORDER BY p_value LIMIT 5", (mod_row['module_id'],)).fetchall()]
+            desc = {
+                'title': gc_desc_row['title'] or name,
+                'summary': gc_desc_row['standard'],
+                'highlight_terms': highlight_terms,
+                'highlight_genes': _top_genes_by_pub(genes)[:8],
+                'top_tfs': [r['tf'] for r in top_tfs[:5] if r.get('tf')],
+                'similar_submodules': [],
+            }
     tfs, modules = _nav_lists(db)
     gc_color = TC_CLUSTER_COLORS.get(internal_id, '#4a56b0')
     return render_template("perturbseq/module.html",
         module_type='gc', name=name, color=gc_color, card_color=gc_color,
-        desc=None, expr=expr, expr_z=expr_z, profile=profile, parent=None, node=None,
+        desc=desc, expr=expr, expr_z=expr_z, profile=profile, parent=None, node=None,
         submodules=[], neighbors=[], genes=genes,
         gc_gene_data=gc_gene_data,
         notable_genes=_top_genes_by_pub(genes),
@@ -972,39 +1032,9 @@ def _pc_page(name):
     internal_id = 'peak_cluster_' + name[2:]
     if internal_id in HIDDEN_TC:
         return render_template("perturbseq/404.html", message=f"Cluster not found: {name}"), 404
-    tc = get_tc_db()
-    profile = rows_to_dicts(tc.execute(
-        "SELECT timepoint, value FROM peak_cluster_profiles WHERE cluster=? ORDER BY rowid",
-        (internal_id,)).fetchall())
-    if not profile:
-        return render_template("perturbseq/404.html", message=f"Cluster not found: {name}"), 404
-    top_chipseq = rows_to_dicts(tc.execute(
-        "SELECT tf, odds_ratio, fdr, source FROM binding_edges "
-        "WHERE peak_cluster=? AND source='chipseq' ORDER BY odds_ratio DESC LIMIT 50",
-        (internal_id,)).fetchall())
-    top_footprint = rows_to_dicts(tc.execute(
-        "SELECT tf, odds_ratio, fdr, source FROM binding_edges "
-        "WHERE peak_cluster=? AND source='footprint' ORDER BY odds_ratio DESC LIMIT 50",
-        (internal_id,)).fetchall())
-    assoc_raw = rows_to_dicts(tc.execute(
-        "SELECT gene_cluster, odds_ratio, fdr FROM peak_gene_edges WHERE peak_cluster=? ORDER BY odds_ratio DESC",
-        (internal_id,)).fetchall())
-    assoc = [{'name': _tc_display(r['gene_cluster']),
-              'url': url_for('perturbseq.module_page', name=_tc_display(r['gene_cluster'])),
-              'odds_ratio': r['odds_ratio'], 'fdr': r['fdr']}
-             for r in assoc_raw if r['gene_cluster'] not in HIDDEN_TC]
-    members = [r[0] for r in tc.execute(
-        "SELECT peak FROM peak_cluster_members WHERE cluster=? ORDER BY membership DESC LIMIT 100",
-        (internal_id,)).fetchall()]
-    db = get_db()
-    tfs, modules = _nav_lists(db)
-    return render_template("perturbseq/module.html",
-        module_type='pc', name=name, color='#e07b39', card_color='#e07b39',
-        desc=None, expr=None, expr_z=[], profile=profile, parent=None, node=None,
-        submodules=[], neighbors=[], genes=members,
-        notable_genes=[],
-        top_tfs=top_chipseq + top_footprint, assoc=assoc, assoc_label='Gene Clusters',
-        enrichment=[], tfs=tfs, modules=modules)
+    # Peak cluster data not available in consolidated DB
+    return render_template("perturbseq/404.html",
+                           message=f"Peak cluster pages are not available: {name}"), 404
 
 
 @perturbseq_bp.route("/go/<path:term_name>")
@@ -1181,25 +1211,23 @@ def gene_page(gene_name):
         supermodule = submodule.rsplit('.', 1)[0] if '.' in submodule else None
     membership = {'submodule': submodule, 'supermodule': supermodule} if (submodule or supermodule) else None
 
-    # Timecourse gene cluster membership (unchanged — uses timecourse.db)
+    # Developmental cluster membership from consolidated DB (mfuzz_k7 modules)
     tc_clusters = []
-    gene_map = _load_gene_name_map()
-    ensg_id = gene_map.get(gene_name)
-    if ensg_id:
-        try:
-            tc_db = get_tc_db()
-            for r in tc_db.execute(
-                "SELECT cluster, membership FROM gene_cluster_members WHERE gene=? "
-                "ORDER BY membership DESC", (ensg_id,)).fetchall():
-                tc_clusters.append({
-                    "cluster": r[0],
-                    "label": r[0].replace("gene_cluster_", "GC"),
-                    "membership": r[1],
-                    "color": TC_CLUSTER_COLORS.get(r[0], "#8090b0"),
-                    "url": url_for('perturbseq.module_page', name=_tc_display(r[0])),
-                })
-        except Exception:
-            pass
+    for r in db.execute("""
+        SELECT mt.module_name
+        FROM gene_module_table gmt
+        JOIN module_table mt ON gmt.module_id = mt.module_id
+        JOIN gene_table gt ON gmt.gene_id = gt.gene_id
+        WHERE mt.source = 'mfuzz_k7' AND gt.gene_name = ?
+    """, (gene_name,)).fetchall():
+        num = r[0].split('_')[1]          # "cluster_4" → "4"
+        internal_id = 'gene_cluster_' + num
+        tc_clusters.append({
+            "cluster": internal_id,
+            "label": 'GC' + num,
+            "color": TC_CLUSTER_COLORS.get(internal_id, "#8090b0"),
+            "url": url_for('perturbseq.module_page', name='GC' + num),
+        })
 
     # TF status check
     is_tf = bool(db.execute(
@@ -1252,47 +1280,40 @@ def gene_page(gene_name):
                     s['within_mean_z'] = 0.0
                 submodules_by_mod[mod] = subs
 
-        # Timecourse cluster regulation (unchanged — uses timecourse.db)
-        try:
-            tc_db = get_tc_db()
-            HIDDEN = {'gene_cluster_7'}
-            pert_gc = {
-                r[0]: {'nes': r[1], 'padj': r[2]}
-                for r in tc_db.execute(
-                    "SELECT gene_cluster, nes, padj FROM perturbation_edges WHERE tf=?",
-                    (gene_name,)).fetchall()
-                if r[0] not in HIDDEN
-            }
-            bind_gc = {
-                r[0]: round(r[1], 3)
-                for r in tc_db.execute("""
-                    SELECT p.gene_cluster, MAX(b.odds_ratio) as odds_ratio
-                    FROM binding_edges b
-                    JOIN peak_gene_edges p ON b.peak_cluster = p.peak_cluster
-                    WHERE b.tf = ? AND b.fdr < 0.05 AND p.fdr < 0.05
-                    GROUP BY p.gene_cluster
-                """, (gene_name,)).fetchall()
-                if r[0] not in HIDDEN
-            }
-            for gc in set(pert_gc.keys()) | set(bind_gc.keys()):
-                p = pert_gc.get(gc)
-                b = bind_gc.get(gc)
-                evidence = 'both' if (p and b is not None) else ('perturbation' if p else 'binding')
-                tc_reg_clusters.append({
-                    "cluster": gc,
-                    "label": gc.replace("gene_cluster_", "GC"),
-                    "nes": round(p['nes'], 3) if p else None,
-                    "padj": p['padj'] if p else None,
-                    "color": TC_CLUSTER_COLORS.get(gc, "#8090b0"),
-                    "url": url_for('perturbseq.module_page', name=_tc_display(gc)),
-                    "direction": ("Up" if p['nes'] > 0 else "Down") if p else "—",
-                    "binding": "✓" if b is not None else "",
-                    "odds_ratio": b,
-                    "evidence": evidence,
-                })
-            tc_reg_clusters.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
-        except Exception:
-            pass
+        # Timecourse cluster regulation from consolidated DB
+        HIDDEN = {'gene_cluster_7'}
+        pert_gc = {
+            _mfuzz_to_internal(r[0]): {'nes': r[1], 'padj': r[2], 'direction': r[3]}
+            for r in db.execute("""
+                SELECT module, mean_NES, min_padj, direction FROM gsea_tf_table
+                WHERE gene_name=? AND module_collection='mfuzz_k7'
+                AND gene_set_collection='ESC_DE-gene_clustering_data_var0.3_k7_top1000_DE'
+            """, (gene_name,)).fetchall()
+            if _mfuzz_to_internal(r[0]) not in HIDDEN
+        }
+        # Binding enrichment from tf_module_enrichment (gene_set_collection='mfuzz')
+        bind_gc = {
+            _mfuzz_to_internal(mod): round(data['odds_ratio'], 3)
+            for mod, data in _bind_edges_for_tf(db, gene_name, 'mfuzz').items()
+            if _mfuzz_to_internal(mod) not in HIDDEN
+        }
+        for gc in set(pert_gc.keys()) | set(bind_gc.keys()):
+            p = pert_gc.get(gc)
+            b = bind_gc.get(gc)
+            evidence = 'both' if (p and b is not None) else ('perturbation' if p else 'binding')
+            tc_reg_clusters.append({
+                "cluster": gc,
+                "label": gc.replace("gene_cluster_", "GC"),
+                "nes": round(p['nes'], 3) if p else None,
+                "padj": p['padj'] if p else None,
+                "color": TC_CLUSTER_COLORS.get(gc, "#8090b0"),
+                "url": url_for('perturbseq.module_page', name=_tc_display(gc)),
+                "direction": ("Up" if p['nes'] > 0 else "Down") if p else "—",
+                "binding": "✓" if b is not None else "",
+                "odds_ratio": b,
+                "evidence": evidence,
+            })
+        tc_reg_clusters.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
 
         # Submodule-level perturbation + binding flat list
         sub_pert = {r['module']: r for r in rows_to_dicts(db.execute(
@@ -1566,9 +1587,10 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         1: f'sub.module_name {safe_dir}',
         2: f'n_datasets {safe_dir}',
         3: f'n_ctg {safe_dir}',
-        4: f'gdp.de_pct_rank {safe_dir}',
+        4: f'gdp.signed_pct_rank {safe_dir}',
+        5: f'gdp.mean_coef {safe_dir}',
     }
-    order_by = order_map.get(order_col, 'n_datasets DESC')
+    order_by = order_map.get(order_col, 'gdp.signed_pct_rank ASC')
 
     ds_ids = _tf_dataset_ids(db, tf_name)
     if not ds_ids:
@@ -1580,39 +1602,20 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
             SELECT gm.gene_id, mo.module_name
             FROM gene_module_table gm
             JOIN module_table mo ON gm.module_id = mo.module_id
-            WHERE mo.source = 'hotspot_submodule'
+            WHERE mo.source = 'hotspot_submodule' AND mo.module_name != 'unassigned'
         ) sub ON tgl.gene_id = sub.gene_id
+        LEFT JOIN (
+            SELECT gm.gene_id, mo.module_name
+            FROM gene_module_table gm
+            JOIN module_table mo ON gm.module_id = mo.module_id
+            WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
+        ) sup ON tgl.gene_id = sup.gene_id
     """
 
-    total_row = db.execute(
-        f"SELECT COUNT(DISTINCT gene_id) FROM tf_gene_links WHERE dataset_id IN ({ds_ph})",
-        ds_ids
-    ).fetchone()
-    total = total_row[0] if total_row else 0
-
-    if q:
-        like = f'%{q}%'
-        having_clause = "HAVING (gt.gene_name LIKE ? OR sub.module_name LIKE ?)"
-        params = ds_ids + [like, like]
-        count_row = db.execute(f"""
-            SELECT COUNT(*) FROM (
-                SELECT tgl.gene_id
-                FROM tf_gene_links tgl
-                JOIN gene_table gt ON tgl.gene_id = gt.gene_id
-                JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
-                {sub_join}
-                WHERE tgl.dataset_id IN ({ds_ph})
-                GROUP BY tgl.gene_id, gt.gene_name
-                {having_clause}
-            )
-        """, params).fetchone()
-        filtered = count_row[0] if count_row else 0
-    else:
-        having_clause = ""
-        params = ds_ids
-        filtered = total
-
-    rows = db.execute(f"""
+    # CTE that computes signed percentile rank (0=most downregulated, 1=most upregulated)
+    # and abs percentile rank (for display bar). Only genes in the top or bottom 5% by
+    # signed rank (i.e. strongest up- or down-regulated responders) are returned.
+    de_cte = """
         WITH tf_grnas AS (
             SELECT grna_id FROM grna_table WHERE gene_name = ?
         ),
@@ -1624,22 +1627,66 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         ),
         gene_de_pct AS (
             SELECT gene_id, mean_coef,
-                   PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank
+                   PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank,
+                   PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
             FROM gene_de
         )
+    """
+    de_filter = "(gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)"
+
+    total_row = db.execute(f"""
+        {de_cte}
+        SELECT COUNT(DISTINCT tgl.gene_id)
+        FROM tf_gene_links tgl
+        JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
+        WHERE tgl.dataset_id IN ({ds_ph})
+        AND {de_filter}
+    """, [tf_name] + ds_ids).fetchone()
+    total = total_row[0] if total_row else 0
+
+    if q:
+        like = f'%{q}%'
+        having_clause = "HAVING (gt.gene_name LIKE ? OR sub.module_name LIKE ?)"
+        params = ds_ids + [like, like]
+        count_row = db.execute(f"""
+            {de_cte}
+            SELECT COUNT(*) FROM (
+                SELECT tgl.gene_id
+                FROM tf_gene_links tgl
+                JOIN gene_table gt ON tgl.gene_id = gt.gene_id
+                JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
+                {sub_join}
+                JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
+                WHERE tgl.dataset_id IN ({ds_ph})
+                AND {de_filter}
+                GROUP BY tgl.gene_id, gt.gene_name
+                {having_clause}
+            )
+        """, [tf_name] + params).fetchone()
+        filtered = count_row[0] if count_row else 0
+    else:
+        having_clause = ""
+        params = ds_ids
+        filtered = total
+
+    rows = db.execute(f"""
+        {de_cte}
         SELECT gt.gene_name,
                sub.module_name AS submodule,
+               sup.module_name AS supermodule,
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                COUNT(DISTINCT td.cell_type_group) AS n_ctg,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
                gdp.mean_coef,
-               gdp.de_pct_rank
+               gdp.de_pct_rank,
+               gdp.signed_pct_rank
         FROM tf_gene_links tgl
         JOIN gene_table gt ON tgl.gene_id = gt.gene_id
         JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
         {sub_join}
-        LEFT JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
+        JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
+        AND {de_filter}
         GROUP BY tgl.gene_id, gt.gene_name
         {having_clause}
         ORDER BY {order_by}
@@ -1648,18 +1695,17 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
 
     data = []
     for r in rows:
-        submod = r['submodule']
-        supermod = submod.rsplit('.', 1)[0] if submod and '.' in submod else None
         sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
         data.append({
             'gene_name':   r['gene_name'],
-            'submodule':   submod,
-            'supermodule': supermod,
+            'submodule':   r['submodule'],
+            'supermodule': r['supermodule'],
             'n_datasets':  r['n_datasets'],
             'n_ctg':       r['n_ctg'],
             'sources':     sources,
-            'mean_coef':   r['mean_coef'],
-            'de_pct_rank': r['de_pct_rank'],
+            'mean_coef':        r['mean_coef'],
+            'de_pct_rank':      r['de_pct_rank'],
+            'signed_pct_rank':  r['signed_pct_rank'],
         })
     return {'data': data, 'filtered': filtered, 'total': total}
 
@@ -1670,8 +1716,8 @@ def api_tf_linked_genes(tf_name):
     start     = int(request.args.get('start', 0))
     length    = int(request.args.get('length', 25))
     q         = request.args.get('q', '').strip()
-    order_col = int(request.args.get('order_col', 2))
-    order_dir = request.args.get('order_dir', 'desc')
+    order_col = int(request.args.get('order_col', 4))
+    order_dir = request.args.get('order_dir', 'asc')
     result = _query_tf_linked_genes_paged(db, tf_name, start, length, q, order_col, order_dir)
     return jsonify(result)
 
@@ -1890,6 +1936,88 @@ def api_module_genes(mod_name):
     return jsonify(genes)
 
 
+@perturbseq_bp.route("/api/module/<mod_name>/tooltip")
+def api_module_tooltip(mod_name):
+    db = get_db()
+    # GC display names (GC3) map to mfuzz_k7 module names (cluster_3)
+    lookup = ('cluster_' + mod_name[2:]) if re.match(r'^GC\d+$', mod_name) else mod_name
+    mod_row = db.execute(
+        "SELECT module_id FROM module_table WHERE module_name=?", (lookup,)).fetchone()
+    if not mod_row:
+        return jsonify({'title': None, 'desc': None})
+    desc_row = db.execute(
+        "SELECT title, standard FROM module_description WHERE module_id=?",
+        (mod_row['module_id'],)).fetchone()
+    return jsonify({
+        'title': desc_row['title'] if desc_row else None,
+        'desc':  desc_row['standard'] if desc_row else None,
+    })
+
+
+@perturbseq_bp.route("/api/gene/<gene_name>/tooltip")
+def api_gene_tooltip(gene_name):
+    db = get_db()
+    gene_row = resolve_gene(db, gene_name)
+    if not gene_row:
+        return jsonify({'full_name': None, 'summary': None, 'submodule': None,
+                        'supermodule': None, 'is_tf': False})
+
+    desc_row = db.execute(
+        "SELECT description, Summary FROM gene_table WHERE gene_id=?",
+        (gene_row['gene_id'],)
+    ).fetchone()
+    gene_name_full = (desc_row['description'] or None) if desc_row else None
+    summary        = (desc_row['Summary']     or None) if desc_row else None
+
+    mem_rows = db.execute("""
+        SELECT m.module_name, m.source
+        FROM gene_module_table gm JOIN module_table m ON gm.module_id = m.module_id
+        WHERE gm.gene_id=?
+    """, (gene_row['gene_id'],)).fetchall()
+    submodule   = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_submodule'),   None)
+    supermodule = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_supermodule'), None)
+    if submodule   == 'unassigned': submodule   = None
+    if supermodule == 'unassigned': supermodule = None
+    if submodule and not supermodule:
+        supermodule = submodule.rsplit('.', 1)[0] if '.' in submodule else None
+
+    is_tf = bool(db.execute(
+        "SELECT 1 FROM gsea_tf_table WHERE gene_name=? AND gene_set_collection='DE-hotspot_modules' LIMIT 1",
+        (gene_name,)
+    ).fetchone())
+
+    return jsonify({
+        'full_name':   gene_name_full,
+        'summary':     summary,
+        'submodule':   submodule,
+        'supermodule': supermodule,
+        'is_tf':       is_tf,
+    })
+
+
+@perturbseq_bp.route("/api/gene/<gene_name>/grna-coefs")
+def api_gene_grna_coefs(gene_name):
+    db = get_db()
+    gene_row = resolve_gene(db, gene_name)
+    if not gene_row:
+        return jsonify({'coefs': []})
+
+    rows = db.execute("""
+        SELECT gr.gene_name AS tf_name, gr.grna_name, dr.coef,
+               PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank
+        FROM de_results dr
+        JOIN grna_table gr ON dr.grna_id = gr.grna_id
+        WHERE dr.gene_id = ?
+        ORDER BY dr.coef
+    """, (gene_row['gene_id'],)).fetchall()
+
+    return jsonify({'coefs': [
+        {'tf_name': r['tf_name'], 'grna_name': r['grna_name'],
+         'coef': r['coef'], 'signed_pct_rank': r['signed_pct_rank']}
+        for r in rows
+    ]})
+
+
 @perturbseq_bp.route("/api/module/<mod_name>/enrichment")
 def api_module_enrichment(mod_name):
     db = get_db()
@@ -1955,26 +2083,18 @@ def api_search():
             results.append({"name": term_url_name, "type": "go_term",
                             "url": "/perturbseq/go/" + term_url_name})
 
-        # 2c. TC gene / peak clusters (unchanged — timecourse.db)
-        try:
-            tc = get_tc_db()
-            q_up = q.upper()
-            for cid in [r[0] for r in tc.execute(
-                    "SELECT DISTINCT cluster FROM gene_cluster_profiles ORDER BY cluster")]:
-                if cid in HIDDEN_TC: continue
-                dn = _tc_display(cid)
-                if dn.upper().startswith(q_up):
-                    results.append({"name": dn, "type": "gc_cluster",
-                                    "url": "/perturbseq/module/" + dn})
-            for cid in [r[0] for r in tc.execute(
-                    "SELECT DISTINCT cluster FROM peak_cluster_profiles ORDER BY cluster")]:
-                if cid in HIDDEN_TC: continue
-                dn = _tc_display(cid)
-                if dn.upper().startswith(q_up):
-                    results.append({"name": dn, "type": "pc_cluster",
-                                    "url": "/perturbseq/module/" + dn})
-        except Exception:
-            pass
+        # 2c. TC gene clusters from consolidated DB
+        q_up = q.upper()
+        for r in db.execute(
+                "SELECT module_name FROM module_table WHERE source='mfuzz_k7' ORDER BY module_name"
+        ).fetchall():
+            internal_id = _mfuzz_to_internal(r[0])
+            if internal_id in HIDDEN_TC: continue
+            dn = _tc_display(internal_id)
+            if dn.upper().startswith(q_up):
+                results.append({"name": dn, "type": "gc_cluster",
+                                "url": "/perturbseq/module/" + dn})
+        # peak cluster data not available in consolidated DB — omitted
 
         # 3. Lambert TFs not in the perturbation library
         all_lambert = _load_lambert_tfs()
@@ -2525,70 +2645,59 @@ def tf_module_link_page(tf, module_name):
     )
 
 
-def _get_coef_axes(path: str) -> tuple:
-    """Return (grna_names, gene_names) for a coefficient HDF file. Cached at module level."""
-    if path not in _coef_cache:
-        import h5py
-        with h5py.File(path, 'r') as f:
-            grnas = [g.decode() for g in f['coefs']['axis1'][:]]
-            genes  = [g.decode() for g in f['coefs']['axis0'][:]]
-        _coef_cache[path] = {'grnas': grnas, 'genes': genes}
-    return _coef_cache[path]['grnas'], _coef_cache[path]['genes']
+def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
+    """Return KDE density curves for all gRNAs targeting tf, using DE coefficients from DB.
 
-
-def _get_grna_indices(grna_names: list, tf: str) -> list:
-    prefix = tf + '_'
-    return [
-        i for i, g in enumerate(grna_names)
-        if g.startswith(prefix) and _GRNA_SUFFIX_RE.match(g[len(prefix):])
-    ]
-
-
-def _coef_kde_data(path: str, tf: str, gene: str, n_pts: int = 100):
-    """Return KDE density curves for all gRNAs targeting tf, plus target_coef for gene.
-
-    Returns None if no gRNAs found for this TF in this condition.
+    Returns None if no gRNAs found for this TF.
     """
-    import h5py
     import numpy as np
     from scipy.stats import gaussian_kde
 
-    grna_names, gene_names = _get_coef_axes(path)
-    grna_idxs = _get_grna_indices(grna_names, tf)
-    if not grna_idxs:
+    rows = db.execute("""
+        SELECT gt.grna_id, gt.grna_name, d.coef
+        FROM de_results d
+        JOIN grna_table gt ON d.grna_id = gt.grna_id
+        WHERE gt.gene_name = ?
+        ORDER BY gt.grna_id
+    """, (tf,)).fetchall()
+
+    if not rows:
         return None
 
-    gene_col = gene_names.index(gene) if gene in gene_names else None
+    grna_coefs = defaultdict(list)
+    grna_names = {}
+    for grna_id, grna_name, coef in rows:
+        grna_coefs[grna_id].append(coef)
+        grna_names[grna_id] = grna_name
 
-    with h5py.File(path, 'r') as f:
-        mat = f['coefs']['block0_values'][grna_idxs, :]  # (n_grnas, n_genes)
+    target_rows = db.execute("""
+        SELECT d.grna_id, d.coef
+        FROM de_results d
+        JOIN grna_table gt ON d.grna_id = gt.grna_id
+        JOIN gene_table g ON d.gene_id = g.gene_id
+        WHERE gt.gene_name = ? AND g.gene_name = ?
+    """, (tf, gene)).fetchall()
+    target_map = {r[0]: r[1] for r in target_rows}
 
-    all_vals = mat.ravel()
-    x_min = float(all_vals.min())
-    x_max = float(all_vals.max())
+    all_vals = [c for coefs in grna_coefs.values() for c in coefs]
+    x_min = float(min(all_vals))
+    x_max = float(max(all_vals))
     rng = (x_max - x_min) or 1.0
     pad = 0.02 * rng
-    x_min -= pad
-    x_max += pad
+    xs = np.linspace(x_min - pad, x_max + pad, n_pts)
 
-    target_coefs = {}
-    if gene_col is not None:
-        for local_i, grna_i in enumerate(grna_idxs):
-            target_coefs[grna_names[grna_i]] = float(mat[local_i, gene_col])
-
-    xs = np.linspace(x_min, x_max, n_pts)
     result_grnas = []
-    for local_i, grna_i in enumerate(grna_idxs):
-        gname = grna_names[grna_i]
-        coefs = mat[local_i, :].astype(float)
+    for grna_id, coefs in grna_coefs.items():
+        coefs_arr = np.array(coefs, dtype=float)
         try:
-            ys = gaussian_kde(coefs, bw_method='scott')(xs).tolist()
+            ys = gaussian_kde(coefs_arr, bw_method='scott')(xs).tolist()
         except Exception:
             ys = [0.0] * n_pts
+        target_coef = target_map.get(grna_id)
         result_grnas.append({
-            'grna': gname,
+            'grna': grna_names[grna_id],
             'y': [round(v, 6) for v in ys],
-            'target_coef': round(target_coefs[gname], 6) if gname in target_coefs else None,
+            'target_coef': round(target_coef, 6) if target_coef is not None else None,
         })
 
     return {'x': [round(v, 5) for v in xs.tolist()], 'gRNAs': result_grnas}
@@ -2596,13 +2705,13 @@ def _coef_kde_data(path: str, tf: str, gene: str, n_pts: int = 100):
 
 @perturbseq_bp.route("/api/link/<tf>/<gene>/coefs")
 def api_link_coefs(tf, gene):
+    db = get_db()
     try:
-        es = _coef_kde_data(COEF_ES_PATH, tf, gene)
-        de = _coef_kde_data(COEF_DE_PATH, tf, gene)
+        de = _coef_kde_data_db(db, tf, gene)
     except Exception:
-        return jsonify({"tf": tf, "gene": gene, "es": None, "de": None,
+        return jsonify({"tf": tf, "gene": gene, "de": None,
                         "error": "coefficient data unavailable"}), 503
-    return jsonify({"tf": tf, "gene": gene, "es": es, "de": de})
+    return jsonify({"tf": tf, "gene": gene, "de": de})
 
 
 @perturbseq_bp.route("/api/atac-counts/<int:atac_peak_id>")

@@ -153,6 +153,7 @@
     <summary>
       <span class="submod-acc-mod">
         <a class="node-link" href="/perturbseq/module/{{ mod }}"
+           data-mod-tip="{{ mod }}" data-mod-color="{{ module_colors.get(mod, '#4a56b0') }}"
            onclick="event.stopPropagation()">{{ mod }}</a>
       </span>
       {% if mod in pert_by_mod %}
@@ -342,7 +343,7 @@ async function main() {
               : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}">${r.module}</a></td>
+      <td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td>
       <td>${dir}</td>
       <td>${r.mean_NES   != null ? r.mean_NES.toFixed(3)      : '—'}</td>
       <td>${r.n_sig_gRNA != null ? r.n_sig_gRNA               : '—'}</td>

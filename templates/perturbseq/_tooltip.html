@@ -1,0 +1,193 @@
+<!-- ── Global gene tooltip ────────────────────────────────────────────── -->
+<div id="gene-tip" role="tooltip" aria-hidden="true">
+  <div id="gene-tip-header"><span id="gene-tip-badge"></span><span id="gene-tip-name"></span></div>
+  <div id="gene-tip-body"></div>
+</div>
+<style>
+#gene-tip{display:none;position:fixed;z-index:9999;width:340px;border-radius:var(--radius,6px);background:var(--bg-card,#fff);border:1px solid var(--border,#dde);border-left:4px solid #2563eb;box-shadow:0 4px 18px rgba(0,0,0,.13);overflow:hidden;font-family:inherit;pointer-events:none}
+#gene-tip-header{display:flex;align-items:center;gap:7px;padding:8px 11px 7px;border-bottom:1px solid var(--border,#dde);background:var(--bg-elevated,#f6f7fb)}
+#gene-tip-badge{font-size:10px;font-weight:700;letter-spacing:.05px;padding:1px 5px;border-radius:3px;flex-shrink:0;background:#e8f0ff;color:#3a4ab0}
+#gene-tip-name{font-size:12px;font-weight:700;color:var(--text,#111);letter-spacing:.1px}
+#gene-tip-body{padding:8px 11px 9px;font-size:12px;color:var(--text-muted,#555);line-height:1.55}
+#gene-tip-body .gene-tip-full{font-style:italic;margin-bottom:5px;color:var(--text,#333)}
+#gene-tip-body .gene-tip-row{display:flex;gap:5px;align-items:baseline;margin-bottom:2px}
+#gene-tip-body .gene-tip-label{font-size:11px;color:var(--text-muted,#888);flex-shrink:0;min-width:70px}
+#gene-tip-body .gene-tip-val{color:var(--text,#333)}
+#gene-tip-body .gene-tip-desc{margin-top:6px;padding-top:6px;border-top:1px solid var(--border,#eee);font-size:11px;color:var(--text-muted,#666);line-height:1.5}
+</style>
+<script>
+(function(){
+  const tip  = document.getElementById('gene-tip');
+  const tipN  = document.getElementById('gene-tip-name');
+  const tipBa = document.getElementById('gene-tip-badge');
+  const tipB  = document.getElementById('gene-tip-body');
+  const cache = {};
+  let hideTimer = null, currentEl = null;
+
+  function resolveTarget(target) {
+    const a = target.closest('a[href]');
+    if (!a) return null;
+    const m = a.getAttribute('href').match(/\/perturbseq\/gene\/([^/?#]+)/);
+    if (!m) return null;
+    return { el: a, gene: decodeURIComponent(m[1]) };
+  }
+
+  function positionNear(el) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (y + th > H - pad) y = r.top - th - 6;
+    if (x + tw > W - pad) x = r.right - tw;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function render(gene, data, el) {
+    tipN.textContent = gene;
+    if (data.is_tf) {
+      tipBa.textContent = 'TF';
+      tipBa.style.display = '';
+      tip.style.borderLeftColor = '#3a4ab0';
+    } else {
+      tipBa.style.display = 'none';
+      tip.style.borderLeftColor = '#2563eb';
+    }
+
+    const modColor = (window.MODULE_COLORS && window.MODULE_COLORS[data.supermodule]) || '#9098b8';
+    const modPill = (name, opacity) =>
+      `<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:${modColor};color:#fff;font-family:'SF Mono','Fira Code',monospace;font-size:10px;font-weight:500;opacity:${opacity}">${name}</span>`;
+
+    let html = '';
+    if (data.full_name) {
+      html += `<div class="gene-tip-full">${data.full_name}</div>`;
+    }
+    if (data.supermodule) {
+      html += `<div class="gene-tip-row"><span class="gene-tip-label">Supermodule</span><span class="gene-tip-val">${modPill(data.supermodule, 0.8)}</span></div>`;
+    }
+    if (data.submodule) {
+      html += `<div class="gene-tip-row"><span class="gene-tip-label">Submodule</span><span class="gene-tip-val">${modPill(data.submodule, 1)}</span></div>`;
+    }
+    if (data.summary) {
+      const truncated = data.summary.length > 300 ? data.summary.slice(0, 300).trimEnd() + '…' : data.summary;
+      html += `<div class="gene-tip-desc">${truncated}</div>`;
+    }
+    if (!html) html = '<span style="color:var(--text-muted,#aaa)">No additional info</span>';
+    tipB.innerHTML = html;
+    tip.style.display = 'block';
+    positionNear(el);
+  }
+
+  function scheduleHide() {
+    hideTimer = setTimeout(() => { tip.style.display = 'none'; }, 150);
+  }
+
+  function show(el, gene) {
+    clearTimeout(hideTimer);
+    if (!gene) return;
+    if (cache[gene] !== undefined) { render(gene, cache[gene], el); return; }
+    render(gene, {full_name: null, summary: null, submodule: null, supermodule: null, is_tf: false}, el);
+    fetch('/perturbseq/api/gene/' + encodeURIComponent(gene) + '/tooltip')
+      .then(r => r.json())
+      .then(data => { cache[gene] = data; if (currentEl === el) render(gene, data, el); })
+      .catch(() => { cache[gene] = {full_name: null, summary: null, submodule: null, supermodule: null, is_tf: false}; });
+  }
+
+  document.addEventListener('mouseover', e => {
+    const r = resolveTarget(e.target);
+    if (!r) return;
+    currentEl = r.el;
+    show(r.el, r.gene);
+  });
+  document.addEventListener('mouseout', e => {
+    const r = resolveTarget(e.target);
+    if (r) { currentEl = null; scheduleHide(); }
+  });
+})();
+</script>
+
+<!-- ── Global module tooltip ───────────────────────────────────────────── -->
+<div id="mod-tip" role="tooltip" aria-hidden="true">
+  <div id="mod-tip-header"><span id="mod-tip-swatch"></span><span id="mod-tip-name"></span></div>
+  <div id="mod-tip-body"></div>
+</div>
+<style>
+#mod-tip{display:none;position:fixed;z-index:9999;width:360px;border-radius:var(--radius,6px);background:var(--bg-card,#fff);border:1px solid var(--border,#dde);border-left:4px solid #4a56b0;box-shadow:0 4px 18px rgba(0,0,0,.13);overflow:hidden;font-family:inherit;pointer-events:none}
+#mod-tip-header{display:flex;align-items:center;gap:7px;padding:8px 11px 7px;border-bottom:1px solid var(--border,#dde);background:var(--bg-elevated,#f6f7fb)}
+#mod-tip-swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+#mod-tip-name{font-size:12px;font-weight:700;color:var(--text,#111);letter-spacing:.1px}
+#mod-tip-body{padding:8px 11px 9px;font-size:12px;color:var(--text-muted,#555);line-height:1.55}
+</style>
+<script>
+(function(){
+  const tip  = document.getElementById('mod-tip');
+  const tipSw = document.getElementById('mod-tip-swatch');
+  const tipN  = document.getElementById('mod-tip-name');
+  const tipB  = document.getElementById('mod-tip-body');
+  const cache = {};
+  let hideTimer = null, currentEl = null;
+
+  function getColor(el, mod) {
+    return el.dataset.modColor
+      || (window.MODULE_COLORS && window.MODULE_COLORS[mod])
+      || '#4a56b0';
+  }
+
+  function resolveTarget(target) {
+    const explicit = target.closest('[data-mod-tip]');
+    if (explicit) return { el: explicit, mod: explicit.dataset.modTip };
+    const a = target.closest('a[href]');
+    if (!a) return null;
+    const m = a.getAttribute('href').match(/\/perturbseq\/(?:module|submodule)\/([^/?#]+)/);
+    if (!m) return null;
+    return { el: a, mod: decodeURIComponent(m[1]) };
+  }
+
+  function positionNear(el) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (y + th > H - pad) y = r.top - th - 6;
+    if (x + tw > W - pad) x = r.right - tw;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function render(mod, data, el) {
+    const c = getColor(el, mod);
+    tipSw.style.background = c;
+    tip.style.borderLeftColor = c;
+    tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
+    tipB.innerHTML   = data.desc  ? '<div>' + data.desc + '</div>' : '';
+    tip.style.display = 'block';
+    positionNear(el);
+  }
+
+  function scheduleHide() {
+    hideTimer = setTimeout(() => { tip.style.display = 'none'; }, 150);
+  }
+
+  function show(el, mod) {
+    clearTimeout(hideTimer);
+    if (!mod) return;
+    if (cache[mod] !== undefined) { render(mod, cache[mod], el); return; }
+    render(mod, {title: null, desc: null}, el);
+    fetch('/perturbseq/api/module/' + encodeURIComponent(mod) + '/tooltip')
+      .then(r => r.json())
+      .then(data => { cache[mod] = data; if (currentEl === el) render(mod, data, el); })
+      .catch(() => { cache[mod] = {title: null, desc: null}; });
+  }
+
+  document.addEventListener('mouseover', e => {
+    const r = resolveTarget(e.target);
+    if (!r) return;
+    currentEl = r.el;
+    show(r.el, r.mod);
+  });
+  document.addEventListener('mouseout', e => {
+    const r = resolveTarget(e.target);
+    if (r) { currentEl = null; scheduleHide(); }
+  });
+})();
+</script>

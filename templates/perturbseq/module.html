@@ -148,7 +148,7 @@
 {# ── Breadcrumb ──────────────────────────────────────────────────── #}
 {% if parent %}
 <div class="mod-crumb">
-  <a href="/perturbseq/module/{{ parent }}">{{ parent }}</a>
+  <a href="/perturbseq/module/{{ parent }}" data-mod-tip="{{ parent }}" data-mod-color="{{ card_color }}">{{ parent }}</a>
   <span class="mod-crumb-sep">›</span>
 </div>
 {% endif %}
@@ -336,7 +336,7 @@
         {% for s in submodules %}
         <tr>
           <td>
-            <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{{ s.color }};margin-right:7px;vertical-align:middle;flex-shrink:0"></span><a class="node-link" href="/perturbseq/module/{{ s.id }}">{{ s.id }}</a>
+            <a class="node-link" data-mod-tip="{{ s.id }}" data-mod-color="{{ s.color }}" href="/perturbseq/module/{{ s.id }}" style="display:inline-flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:{{ s.color }};flex-shrink:0"></span>{{ s.id }}</a>
           </td>
           <td>{{ s.n_genes }}</td>
           <td style="white-space:normal">
@@ -380,6 +380,11 @@
     </div>
     <div class="enrich-source-filters" id="enrich-source-filters"></div>
   </div>
+  <table class="data-table" id="enrich-table" style="display:none">
+    <thead><tr>
+      <th class="sortable" data-key="term_name"         data-type="string">Term</th>
+      <th class="sortable" data-key="source"            data-type="string">Source</th>
+      <th class="sortable" data-key="p_value"           data-type="number">p-value</th>
       <th class="sortable" data-key="intersection_size" data-type="number">Genes</th>
     </tr></thead>
     <tbody></tbody>
