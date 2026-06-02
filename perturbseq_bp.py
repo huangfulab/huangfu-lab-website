@@ -1948,10 +1948,21 @@ def api_module_tooltip(mod_name):
     desc_row = db.execute(
         "SELECT title, standard FROM module_description WHERE module_id=?",
         (mod_row['module_id'],)).fetchone()
-    return jsonify({
+    result = {
         'title': desc_row['title'] if desc_row else None,
         'desc':  desc_row['standard'] if desc_row else None,
-    })
+    }
+    if re.match(r'^GC\d+$', mod_name):
+        internal_id = 'gene_cluster_' + mod_name[2:]
+        genes = [r[0] for r in db.execute(
+            "SELECT gt.gene_name FROM gene_module_table gmt "
+            "JOIN module_table mt ON gmt.module_id = mt.module_id "
+            "JOIN gene_table gt ON gmt.gene_id = gt.gene_id "
+            "WHERE mt.module_name=? AND mt.source='mfuzz_k7'",
+            (lookup,)).fetchall()]
+        result['expr']  = _compute_mean_zscore_profile(db, genes, _TP_ORDER)
+        result['color'] = TC_CLUSTER_COLORS.get(internal_id, '#4a56b0')
+    return jsonify(result)
 
 
 @perturbseq_bp.route("/api/gene/<gene_name>/tooltip")
