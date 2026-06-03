@@ -151,10 +151,7 @@ makeFilterSortTable(
   document.getElementById('gene-table'),
   GENE_DATA,
   r => {
-    const badge = r.tf_status === 'Active TF'
-      ? '<span class="intro-tag gene-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">Active TF</span>'
-      : r.tf_status === 'TF'
-      ? '<span class="intro-tag term-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">TF</span>' : '';
+    const badge = TFNetwork.tfStatusBadge(r.tf_status, 'inline');
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.pub_count}</td>`;
     return tr;

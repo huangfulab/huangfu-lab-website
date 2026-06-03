@@ -411,6 +411,24 @@ window.TFNetwork = (function () {
     cy.fit(cy.elements(':visible'), padding);
   }
 
+  // ── TF status badge ───────────────────────────────────────────────────────
+
+  /**
+   * Return an HTML string for a TF/gene type badge.
+   * @param {string} status  - 'Active TF' | 'TF' | 'Gene' | ''
+   * @param {string} variant - 'type' (default, tf-type-* classes) | 'inline' (intro-tag classes)
+   */
+  function tfStatusBadge(status, variant) {
+    if (variant === 'inline') {
+      if (status === 'Active TF') return '<span class="intro-tag gene-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">Active TF</span>';
+      if (status === 'TF')        return '<span class="intro-tag term-tag" style="font-size:9px;padding:1px 6px;margin-left:6px">TF</span>';
+      return '';
+    }
+    if (status === 'Active TF') return '<span class="tf-type-active">Active TF</span>';
+    if (status === 'TF')        return '<span class="tf-type-tf">TF</span>';
+    return '<span style="color:var(--text-muted);font-size:11px">Gene</span>';
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     MODULE_COLORS,
@@ -424,5 +442,6 @@ window.TFNetwork = (function () {
     makeSortable,
     makeEnrichTable,
     applyCyFilter,
+    tfStatusBadge,
   };
 })();

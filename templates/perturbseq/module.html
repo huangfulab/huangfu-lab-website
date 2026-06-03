@@ -982,9 +982,7 @@ const PROFILE     = {{ profile    | tojson }};
     tb.innerHTML = '';
     d.slice(page * PAGE, (page + 1) * PAGE).forEach(r => {
       const tr = document.createElement('tr');
-      const type = r.tf_status === 'Active TF' ? `<span class="tf-type-active">Active TF</span>`
-                 : r.tf_status === 'TF'        ? `<span class="tf-type-tf">TF</span>`
-                 : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      const type = TFNetwork.tfStatusBadge(r.tf_status);
       tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${type}</td><td>${r.pubs || '—'}</td>`;
       tb.appendChild(tr);
     });
@@ -1015,7 +1013,7 @@ const PROFILE     = {{ profile    | tojson }};
 // ── Supermodule / Submodule: filter+sort + cytoscape + module API ────────────
 {% if module_type in ('super', 'sub') %}
 // Use shared utilities from TFNetwork
-const { makeFilterSortTable, makeSortable, makeEnrichTable, placeSector, initNetwork, MODULE_COLORS, EDGE_STYLES_FULL } = TFNetwork;
+const { makeFilterSortTable, makeSortable, makeEnrichTable, placeSector, initNetwork, MODULE_COLORS, EDGE_STYLES_FULL, tfStatusBadge } = TFNetwork;
 
 const MODULE_NODE_COLOR = {{ color | tojson }};
 
@@ -1091,11 +1089,7 @@ async function main() {
     style:[
       {selector:'node[type="module"]',style:{'background-color':'data(color)','label':'data(label)','font-size':'12px','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'}},
       {selector:'node[type="tf"]',style:{'background-color':'#4a56b0','label':'data(label)','font-size':'9px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':22,'height':22}},
-      {selector:'edge[direction="up"][evidence="both"]',style:{'line-color':'#ec4899','width':2.5,'curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle'}},
-      {selector:'edge[direction="down"][evidence="both"]',style:{'line-color':'#3b82f6','width':2.5,'curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle'}},
-      {selector:'edge[direction="up"][evidence="perturbation"]',style:{'line-color':'#ec4899','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#ec4899','target-arrow-shape':'triangle'}},
-      {selector:'edge[direction="down"][evidence="perturbation"]',style:{'line-color':'#3b82f6','width':2,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#3b82f6','target-arrow-shape':'triangle'}},
-      {selector:'edge[direction="bind"]',style:{'line-color':'#9098b8','width':1.5,'line-style':'dashed','curve-style':'bezier','target-arrow-color':'#9098b8','target-arrow-shape':'triangle'}},
+      ...EDGE_STYLES_FULL,
     ],
     layout:{name:'preset',animate:false}
   });
@@ -1223,11 +1217,7 @@ async function main() {
     tb.innerHTML = '';
     pageData.forEach(r => {
       const tr = document.createElement('tr');
-      const typeHtml = r.tfStatus === 'Active TF'
-        ? `<span class="tf-type-active">Active TF</span>`
-        : r.tfStatus === 'TF'
-        ? `<span class="tf-type-tf">TF</span>`
-        : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      const typeHtml = tfStatusBadge(r.tfStatus);
       const dot = r.submodule
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.submoduleColor};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>`
         : '';
@@ -1326,11 +1316,7 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
     tb.innerHTML = '';
     d.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(r => {
       const tr = document.createElement('tr');
-      const typeHtml = r.tf_status === 'Active TF'
-        ? `<span class="tf-type-active">Active TF</span>`
-        : r.tf_status === 'TF'
-        ? `<span class="tf-type-tf">TF</span>`
-        : `<span style="color:var(--text-muted);font-size:11px">Gene</span>`;
+      const typeHtml = tfStatusBadge(r.tf_status);
       tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${r.pubs || '—'}</td>`;
       tb.appendChild(tr);
     });
