@@ -2291,6 +2291,17 @@ def _norm_chr(chrom: str) -> str:
     return chrom
 
 
+def _format_tss_dist(dist: int | None) -> str | None:
+    """Human-readable distance label from peak_tss_distances.distance values."""
+    if dist is None:
+        return None
+    if dist == 0:
+        return "at TSS"
+    if dist >= 1000:
+        return f"{dist / 1000:.1f} kb"
+    return f"{dist:,} bp"
+
+
 def _query_tf_gene_link(db, tf: str, gene: str) -> list:
     """Return list of regulatory element dicts for a (TF, gene) pair."""
     gene_row = db.execute("SELECT gene_id FROM gene_table WHERE gene_name=? LIMIT 1", (gene,)).fetchone()
@@ -2436,7 +2447,7 @@ def _query_element_tfs(db, atac_peak_id: int) -> list:
 
 
 def _query_element_genes(db, atac_peak_id: int) -> list:
-    # CTE avoids referencing outer-query alias (ap) inside a subquery ORDER BY,
+    # CTE avoids referencing outer-query alias inside a subquery ORDER BY,
     # which is not supported by all SQLite versions.
     rows = db.execute("""
         WITH peak_pos AS (
@@ -2444,7 +2455,8 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
             FROM atac_peak_table WHERE atac_peak_id = ?
         )
         SELECT DISTINCT
-            gtt.gene_name, gr.gene_region_subtype, gr.multiome_hicar_support,
+            gtt.gene_name, gtt.gene_id,
+            gr.gene_region_subtype, gr.multiome_hicar_support,
             gr.chr AS gr_chr, gr.chrom_start AS gr_start, gr.chrom_end AS gr_end,
             td.tf_gene_name,
             (SELECT mid FROM peak_pos) AS peak_mid,
@@ -2465,27 +2477,50 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
         JOIN gene_table             gtt ON gr.gene_id            = gtt.gene_id
         WHERE ato.atac_peak_id = ?
     """, (atac_peak_id, atac_peak_id)).fetchall()
-    groups: dict = {}
+
+    # Fetch pre-computed TSS distances (peak-edge to TSS) keyed by gene_id.
+    gene_ids = list({r["gene_id"] for r in rows})
+    tss_dists: dict = {}
+    if gene_ids:
+        placeholders = ",".join("?" * len(gene_ids))
+        tss_dists = {
+            r["gene_id"]: r["min_dist"]
+            for r in db.execute(f"""
+                SELECT gene_id, MIN(distance) AS min_dist
+                FROM peak_tss_distances
+                WHERE atac_peak_id = ? AND gene_id IN ({placeholders})
+                GROUP BY gene_id
+            """, [atac_peak_id] + gene_ids).fetchall()
+        }
+
+    # Build one entry per gene, keeping the gene region closest to the peak midpoint
+    # to determine link_type (a peak can overlap both proximal and distal regions).
+    groups: dict = {}   # gene_name -> entry dict
+    best_gr_dist: dict = {}  # gene_name -> closest gr midpoint distance seen so far
     for r in rows:
         g = r["gene_name"]
-        if g not in groups:
+        gr_mid = (r["gr_start"] + r["gr_end"]) / 2
+        gr_dist = abs(r["peak_mid"] - gr_mid)
+        if g not in groups or gr_dist < best_gr_dist[g]:
             gr_chr = _norm_chr(str(r["gr_chr"])) if r["gr_chr"] else None
-            # tss is the closest proximal-region centre; fall back to linked region midpoint
             tss = r["tss"] if r["tss"] is not None else (r["gr_start"] + r["gr_end"]) // 2
-            dist = abs(tss - r["peak_mid"])
-            dist_label = f"{dist / 1000:.1f} kb" if dist >= 1000 else f"{dist:,} bp"
-            groups[g] = {
+            dist = tss_dists.get(r["gene_id"])
+            entry = groups.get(g) or {
                 "gene":          g,
-                "link_type":     _subtype_to_link_type(r["gene_region_subtype"], r["multiome_hicar_support"]),
                 "mediating_tfs": set(),
-                "gr_chr":        gr_chr,
-                "gr_start":      r["gr_start"],
-                "gr_end":        r["gr_end"],
-                "tss":           tss,
-                "tss_chr":       gr_chr,
                 "tss_dist":      dist,
-                "tss_dist_label": dist_label,
+                "tss_dist_label": _format_tss_dist(dist),
             }
+            entry.update({
+                "link_type": _subtype_to_link_type(r["gene_region_subtype"], r["multiome_hicar_support"]),
+                "gr_chr":    gr_chr,
+                "gr_start":  r["gr_start"],
+                "gr_end":    r["gr_end"],
+                "tss":       tss,
+                "tss_chr":   gr_chr,
+            })
+            groups[g] = entry
+            best_gr_dist[g] = gr_dist
         groups[g]["mediating_tfs"].add(r["tf_gene_name"])
     result = [dict(g, mediating_tfs=sorted(t for t in g["mediating_tfs"] if t is not None)) for g in groups.values()]
     result.sort(key=lambda g: g["gene"])
@@ -2650,10 +2685,6 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
     result = []
     for r in rows:
         dist = tss_dists.get(r["atac_peak_id"])
-        if dist is not None:
-            dist_label = "at TSS" if dist == 0 else (f"{dist / 1000:.1f} kb" if dist >= 1000 else f"{dist:,} bp")
-        else:
-            dist_label = None
         result.append({
             "atac_peak_id":  r["atac_peak_id"],
             "chr":           _norm_chr(r["chr"]),
@@ -2662,7 +2693,7 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
             "link_type":     _subtype_to_link_type(r["gene_region_subtype"], r["multiome_hicar_support"]),
             "n_tfs":         tf_counts.get(r["atac_peak_id"], 0),
             "tss_dist":      dist,
-            "tss_dist_label": dist_label,
+            "tss_dist_label": _format_tss_dist(dist),
         })
     return result
 
@@ -2970,10 +3001,12 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
         return None
 
     link_type = _subtype_to_link_type(rows[0]["gene_region_subtype"], rows[0]["multiome_hicar_support"])
-    peak_mid = (peak["start"] + peak["end"]) // 2
-    gr_mid   = (rows[0]["gr_start"] + rows[0]["gr_end"]) // 2
-    dist     = abs(peak_mid - gr_mid)
-    dist_label = f"{dist / 1000:.1f} kb" if dist >= 1000 else f"{dist:,} bp"
+    dist_row = db.execute(
+        "SELECT MIN(distance) AS d FROM peak_tss_distances WHERE atac_peak_id=? AND gene_id=?",
+        (atac_peak_id, gene_id)
+    ).fetchone()
+    dist = dist_row["d"] if dist_row else None
+    dist_label = _format_tss_dist(dist)
 
     tfs: dict = {}
     for r in rows:
