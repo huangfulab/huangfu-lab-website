@@ -124,6 +124,44 @@
     border-radius: 4px; padding: 1px 5px;
   }
   .param-hint { font-size: 10.5px; color: var(--text-muted); margin-left: auto; }
+
+  /* ── tabs ── */
+  .tab-group { display: flex; gap: 2px; }
+  .tab-btn {
+    padding: 4px 12px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent;
+    cursor: pointer; font-size: 12px; color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+  .tab-btn:hover  { background: var(--bg-elevated); color: var(--text); }
+  .tab-btn.active { background: var(--bg-elevated); color: var(--text); border-color: var(--border); font-weight: 500; }
+
+  /* ── text view ── */
+  #text-view {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    overflow-y: auto; display: none; background: var(--bg);
+  }
+  #text-view.visible { display: block; }
+  .tv-inner { padding: 28px 40px; columns: 2; column-gap: 40px; }
+  @media (max-width: 900px) { .tv-inner { columns: 1; } }
+  .st-table { break-inside: avoid; margin-bottom: 28px; }
+  .st-name {
+    font-family: monospace; font-size: 13px; font-weight: 700;
+    color: var(--accent); padding-bottom: 5px;
+    border-bottom: 2px solid var(--accent); margin-bottom: 3px;
+  }
+  .st-col { display: flex; align-items: baseline; gap: 7px; padding: 2px 0; font-size: 11.5px; }
+  .st-colname { font-family: monospace; color: var(--text); min-width: 0; }
+  .st-coltype { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+  .st-fkref   { font-size: 10.5px; color: var(--blue); font-family: monospace; white-space: nowrap; }
+  .st-badge   { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; flex-shrink: 0; min-width: 22px; text-align: center; }
+  .st-badge.pk   { background: rgba(245,158,11,.18); color: #b45309; }
+  .st-badge.fk   { background: rgba(59,130,246,.16); color: #1d4ed8; }
+  .st-badge.none { background: transparent; }
+
+  /* ── copy button ── */
+  #btn-copy { display: none; }
+  #btn-copy.visible { display: inline-block; }
 </style>
 {% endblock %}
 
@@ -134,11 +172,19 @@
   <span class="db-name">{{ db_path.split('/')[-1] }}</span>
   <span class="sep">·</span>
   <span>{{ schema | length }} tables</span>
+  <span class="sep">·</span>
+  <div class="tab-group">
+    <button class="tab-btn active" id="tab-diagram">Diagram</button>
+    <button class="tab-btn"        id="tab-text">Text</button>
+  </div>
   <span class="spacer"></span>
-  <button id="btn-layout" class="primary">Auto-layout</button>
-  <button id="btn-grid">Grid</button>
-  <button id="btn-fit">Fit all</button>
-  <button id="btn-params">Params ▾</button>
+  <button id="btn-copy">Copy</button>
+  <span id="diagram-controls" style="display:contents">
+    <button id="btn-layout" class="primary">Auto-layout</button>
+    <button id="btn-grid">Grid</button>
+    <button id="btn-fit">Fit all</button>
+    <button id="btn-params">Params ▾</button>
+  </span>
   <span id="zoom-badge">100%</span>
 </div>
 
@@ -194,6 +240,10 @@
   </div>
 </div>
 
+<div id="text-view">
+  <div class="tv-inner" id="tv-inner"></div>
+</div>
+
 <div id="schema-legend">
   <div class="legend-row">
     <div class="legend-swatch" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4)"></div>Primary key
@@ -236,12 +286,14 @@
   const paramsPanel = document.getElementById('params-panel');
 
   function positionWrap() {
-    const navH    = (document.querySelector('nav') || {offsetHeight: 52}).offsetHeight;
-    const barH    = bar.offsetHeight;
-    const panelH  = paramsPanel.classList.contains('open') ? paramsPanel.offsetHeight : 0;
+    const navH   = (document.querySelector('nav') || {offsetHeight: 52}).offsetHeight;
+    const barH   = bar.offsetHeight;
+    const panelH = paramsPanel.classList.contains('open') ? paramsPanel.offsetHeight : 0;
     bar.style.top         = navH + 'px';
     paramsPanel.style.top = (navH + barH) + 'px';
-    wrap.style.top        = (navH + barH + panelH) + 'px';
+    const top = (navH + barH + panelH) + 'px';
+    wrap.style.top = top;
+    document.getElementById('text-view').style.top = top;
   }
   positionWrap();
   window.addEventListener('resize', positionWrap);
@@ -258,6 +310,7 @@
     clearTimeout(rerunTimer);
     rerunTimer = setTimeout(() => {
       const pos = computeForceLayout();
+      fitToPositions(pos);
       applyPositions(pos, true);
     }, 180);
   }
@@ -529,15 +582,14 @@
     applyTransform();
   }, { passive: false });
 
-  // ── fit all ───────────────────────────────────────────────────
-  document.getElementById('btn-fit').addEventListener('click', () => {
-    if (!TABLE_NAMES.length) return;
+  // ── fit to a given position set ───────────────────────────────
+  function fitToPositions(positions) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const name of TABLE_NAMES) {
-      const c = cards[name];
-      minX = Math.min(minX, c.x); minY = Math.min(minY, c.y);
-      maxX = Math.max(maxX, c.x + c.el.offsetWidth);
-      maxY = Math.max(maxY, c.y + c.el.offsetHeight);
+      const p = positions[name];
+      const h = cards[name].el.offsetHeight || 200;
+      minX = Math.min(minX, p.x);       minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + CARD_W); maxY = Math.max(maxY, p.y + h);
     }
     const pad = 48;
     scale = Math.max(0.15, Math.min(1.2, Math.min(
@@ -547,25 +599,107 @@
     panX = pad - minX * scale;
     panY = pad - minY * scale;
     applyTransform();
+  }
+
+  // ── fit all (current positions) ───────────────────────────────
+  document.getElementById('btn-fit').addEventListener('click', () => {
+    if (!TABLE_NAMES.length) return;
+    fitToPositions(Object.fromEntries(TABLE_NAMES.map(n => [n, cards[n]])));
   });
 
   // ── auto-layout button ────────────────────────────────────────
   const btnLayout = document.getElementById('btn-layout');
-  btnLayout.addEventListener('click', () => {
+  function runAutoLayout() {
     btnLayout.textContent = 'Computing…';
     btnLayout.disabled = true;
-    // yield to browser so the button text updates before the heavy sync loop
     setTimeout(() => {
       const pos = computeForceLayout();
+      fitToPositions(pos);
       applyPositions(pos, true);
       btnLayout.textContent = 'Auto-layout';
       btnLayout.disabled = false;
     }, 16);
-  });
+  }
+  btnLayout.addEventListener('click', runAutoLayout);
 
   // ── grid button ───────────────────────────────────────────────
   document.getElementById('btn-grid').addEventListener('click', () => {
-    applyPositions(gridLayout(), true);
+    const pos = gridLayout();
+    fitToPositions(pos);
+    applyPositions(pos, true);
+  });
+
+  // ── tabs ──────────────────────────────────────────────────────
+  function switchTab(tab) {
+    const isDiagram = tab === 'diagram';
+    document.getElementById('tab-diagram').classList.toggle('active', isDiagram);
+    document.getElementById('tab-text').classList.toggle('active', !isDiagram);
+    wrap.style.display                                       = isDiagram ? '' : 'none';
+    document.getElementById('schema-legend').style.display  = isDiagram ? '' : 'none';
+    document.getElementById('diagram-controls').style.display = isDiagram ? 'contents' : 'none';
+    document.getElementById('zoom-badge').style.display      = isDiagram ? '' : 'none';
+    document.getElementById('text-view').classList.toggle('visible', !isDiagram);
+    document.getElementById('btn-copy').classList.toggle('visible', !isDiagram);
+    if (!isDiagram && document.getElementById('tv-inner').children.length === 0)
+      buildTextView();
+  }
+  document.getElementById('tab-diagram').addEventListener('click', () => switchTab('diagram'));
+  document.getElementById('tab-text').addEventListener('click', () => switchTab('text'));
+
+  // ── text view content ─────────────────────────────────────────
+  function buildTextView() {
+    const fkMap = {};
+    for (const [tbl, list] of Object.entries(FKS)) {
+      fkMap[tbl] = {};
+      for (const fk of list) if (!fkMap[tbl][fk.from_col]) fkMap[tbl][fk.from_col] = fk;
+    }
+    let html = '';
+    for (const name of TABLE_NAMES) {
+      html += `<div class="st-table"><div class="st-name">${name}</div>`;
+      for (const col of SCHEMA[name]) {
+        const isPk = col.pk, isFk = (fkColSet[name] || new Set()).has(col.name);
+        const fk   = fkMap[name]?.[col.name];
+        const badge = isPk ? `<span class="st-badge pk">PK</span>`
+                    : isFk ? `<span class="st-badge fk">FK</span>`
+                    :         `<span class="st-badge none"></span>`;
+        const ref = fk ? `<span class="st-fkref">→&thinsp;${fk.to_table}.${fk.to_col}</span>` : '';
+        html += `<div class="st-col">${badge}<span class="st-colname">${col.name}</span><span class="st-coltype">${col.type}</span>${ref}</div>`;
+      }
+      html += `</div>`;
+    }
+    document.getElementById('tv-inner').innerHTML = html;
+  }
+
+  // ── copy button ───────────────────────────────────────────────
+  function buildPlainText() {
+    const fkMap = {};
+    for (const [tbl, list] of Object.entries(FKS)) {
+      fkMap[tbl] = {};
+      for (const fk of list) if (!fkMap[tbl][fk.from_col]) fkMap[tbl][fk.from_col] = fk;
+    }
+    const lines = [];
+    for (const name of TABLE_NAMES) {
+      lines.push(`── ${name}`);
+      for (const col of SCHEMA[name]) {
+        const isPk = col.pk, isFk = (fkColSet[name] || new Set()).has(col.name);
+        const fk   = fkMap[name]?.[col.name];
+        const tag  = isPk ? 'PK' : isFk ? 'FK' : '  ';
+        const ref  = fk ? `  → ${fk.to_table}.${fk.to_col}` : '';
+        lines.push(`  ${tag}  ${col.name.padEnd(30)}${col.type}${ref}`);
+      }
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+  const btnCopy = document.getElementById('btn-copy');
+  btnCopy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(buildPlainText());
+      btnCopy.textContent = 'Copied!';
+    } catch {
+      btnCopy.textContent = 'Failed';
+    }
+    setTimeout(() => { btnCopy.textContent = 'Copy'; }, 1800);
   });
 
   // ── arrow drawing ─────────────────────────────────────────────
@@ -625,16 +759,7 @@
   // 1. Create cards at grid positions so offsetHeight is measurable
   createCards(gridLayout());
   // 2. After first paint, run the force layout automatically
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    btnLayout.textContent = 'Computing…';
-    btnLayout.disabled = true;
-    setTimeout(() => {
-      const pos = computeForceLayout();
-      applyPositions(pos, true);
-      btnLayout.textContent = 'Auto-layout';
-      btnLayout.disabled = false;
-    }, 16);
-  }));
+  requestAnimationFrame(() => requestAnimationFrame(runAutoLayout));
 })();
 </script>
 {% endblock %}
