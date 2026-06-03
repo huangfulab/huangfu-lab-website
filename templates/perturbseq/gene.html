@@ -524,9 +524,9 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <button data-dir="down">↓ Down</button>
     <span class="filter-sep"></span>
     <span class="filter-label" id="sub-limit-label">Max shown:</span>
-    <input type="number" id="sub-max-slider" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 30]|min }}" step="1" style="width:4rem;font-size:0.72rem;padding:0.2rem 0.3rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text)">
+    <input type="number" id="sub-max-slider" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 10]|min }}" step="1" style="width:4rem;font-size:0.72rem;padding:0.2rem 0.3rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text)">
     <div class="bind-range-wrap">
-      <input type="range" id="sub-max-range" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 30]|min }}" step="1">
+      <input type="range" id="sub-max-range" min="1" max="{{ submodules_flat|length }}" value="{{ [submodules_flat|length, 10]|min }}" step="1">
     </div>
     <span class="filter-count" id="tf-sub-count"></span>
   </div>
@@ -618,6 +618,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <th class="sortable" data-key="link_type"  data-type="string">Link type</th>
     <th class="sortable" data-key="n_tfs"      data-type="number">TFs</th>
   </tr></thead>
+
   <tbody>
   {% for el in reg_elements %}
   <tr data-tss_dist="{{ el.tss_dist if el.tss_dist is not none else 9999999 }}"
@@ -652,6 +653,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   </tbody>
 </table>
 </div>
+<div id="reg-el-pag" class="table-pag" style="display:none"></div>
 {% endif %}
 
 <!-- ── TFs bound to regulatory elements ──────────────────────────────────── -->
@@ -752,7 +754,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <div style="display:flex;align-items:center;gap:8px">
     <label style="font-size:12px;color:var(--text-muted)">Rows:
       <select class="sst-select" id="reg-tf-per-page">
-        <option value="15" selected>15</option>
+        <option value="10" selected>10</option>
         <option value="25">25</option>
         <option value="50">50</option>
         <option value="100">100</option>
@@ -1101,7 +1103,7 @@ const cyInstances = {};
   if (!table || !SUBMODULES_FLAT.length) return;
   const headers = table.querySelectorAll('th.sortable');
   let sortKey = null, sortDir = 'asc', q = '';
-  let maxShown = Math.min(SUBMODULES_FLAT.length, 30);
+  let maxShown = Math.min(SUBMODULES_FLAT.length, 10);
   let evFilter = 'all', dirFilter = 'all';
   const maxSlider = document.getElementById('sub-max-slider');
   const maxRange = document.getElementById('sub-max-range');
@@ -1366,6 +1368,7 @@ requestAnimationFrame(() => {
       allThs.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
       th.classList.add(dir === 'desc' ? 'sort-desc' : 'sort-asc');
       dir = dir === 'desc' ? 'asc' : 'desc';
+      if (window._regElShowPage) window._regElShowPage(0);
     }
 
     th.addEventListener('click', sortByScore);
@@ -1373,13 +1376,34 @@ requestAnimationFrame(() => {
 })();
 
 
-// ── Reg-element table: data-key column sort ──────────────────────────────────
+// ── Reg-element table: data-key column sort + pagination (5 per page) ────────
 (function() {
   const table = document.getElementById('reg-el-table');
   if (!table) return;
+  const pagEl      = document.getElementById('reg-el-pag');
   const dataKeyThs = [...table.querySelectorAll('th.sortable[data-key]')];
   const allThs     = table.querySelectorAll('th.sortable');
   let sortKey = null, sortDir = 'asc';
+  const PAGE_SIZE  = 5;
+  let currentPage  = 0;
+
+  function showPage(p) {
+    currentPage = p;
+    const rows = [...table.querySelectorAll('tbody tr')];
+    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    currentPage = Math.min(currentPage, totalPages - 1);
+    rows.forEach((r, i) => { r.hidden = i < currentPage * PAGE_SIZE || i >= (currentPage + 1) * PAGE_SIZE; });
+    if (pagEl) {
+      pagEl.style.display = totalPages <= 1 ? 'none' : 'flex';
+      pagEl.innerHTML = '<button class="table-pag-btn"' + (currentPage === 0 ? ' disabled' : '') + '>← Prev</button>'
+        + '<span>' + (currentPage + 1) + ' / ' + totalPages + '</span>'
+        + '<button class="table-pag-btn"' + (currentPage >= totalPages - 1 ? ' disabled' : '') + '>Next →</button>';
+      pagEl.querySelectorAll('.table-pag-btn').forEach((btn, i) => {
+        btn.addEventListener('click', () => showPage(currentPage + (i === 0 ? -1 : 1)));
+      });
+    }
+  }
+  window._regElShowPage = showPage;
 
   function sortByKey(key, dir) {
     sortKey = key; sortDir = dir;
@@ -1400,6 +1424,7 @@ requestAnimationFrame(() => {
     rows.forEach(r => tbody.appendChild(r));
     allThs.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
     if (th) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    showPage(0);
   }
 
   dataKeyThs.forEach(th => {
@@ -1429,7 +1454,7 @@ requestAnimationFrame(() => {
   const elementSel = document.getElementById('reg-tf-element-sel');
 
   let sortKey = 'elements', sortDir = 'desc', q = '';
-  let page = 1, perPage = 15;
+  let page = 1, perPage = 10;
   // multi-select sets for evidence and link-type; single value for min-elements
   let evFilter  = new Set();   // 'chip', 'motif' — empty = no restriction
   let ltFilter  = new Set();   // link type keys — empty = no restriction
@@ -1803,13 +1828,13 @@ requestAnimationFrame(() => {
     return `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${m.color}22;color:${m.color};border:1px solid ${m.color}55;margin-right:3px;white-space:nowrap">${m.display}</span>`;
   }
 
-  let page = 1, perPage = 25, search = '', orderCol = 4, orderDir = 'asc';
+  let page = 1, perPage = 10, search = '', orderCol = 4, orderDir = 'asc';
   let debounce;
 
   wrapEl.innerHTML = `
     <div class="sst-bar top">
       <label>Show <select class="sst-select" id="lg-per-page">
-        <option>10</option><option selected>25</option><option>50</option><option>100</option>
+        <option selected>10</option><option>25</option><option>50</option><option>100</option>
       </select> entries</label>
       <div style="display:flex;align-items:center;gap:8px">
         <span id="lg-top-count" style="color:var(--text-muted);font-size:12px"></span>
@@ -2101,7 +2126,7 @@ requestAnimationFrame(() => {
               geneLinks(el.linked_genes),
             ]),
           },
-          perPage: 25, perPageSelect: [10, 25, 50, 100],
+          perPage: 10, perPageSelect: [10, 25, 50, 100],
           searchable: true, sortable: true,
           columns: [{ select: 2, sortable: false }],
         });
@@ -2113,13 +2138,13 @@ requestAnimationFrame(() => {
   function initServerSide() {
     setCount(TF_ELEMENT_COUNT);
 
-    let page = 1, perPage = 25, search = '', orderCol = 0, orderDir = 'asc';
+    let page = 1, perPage = 10, search = '', orderCol = 0, orderDir = 'asc';
     let debounce;
 
     wrapEl.innerHTML = `
       <div class="sst-bar top">
         <label>Show <select class="sst-select" id="sst-per-page">
-          <option>10</option><option selected>25</option><option>50</option><option>100</option>
+          <option selected>10</option><option>25</option><option>50</option><option>100</option>
         </select> entries</label>
         <input class="sst-search" id="sst-search" type="text" placeholder="Search element or gene…" autocomplete="off">
       </div>
@@ -2390,7 +2415,7 @@ requestAnimationFrame(() => {
     opts = typeof opts === 'boolean' ? { showEffect: opts } : (opts || {});
     const showEffect  = !!opts.showEffect;
     const isGeneLevel = !!opts.isGeneLevel;
-    let sortCol = 'coef', sortDir = 1, page = 1, perPage = 25, query = '';
+    let sortCol = 'coef', sortDir = 1, page = 1, perPage = 10, query = '';
 
     function getFiltered() {
       const q = query.toLowerCase();

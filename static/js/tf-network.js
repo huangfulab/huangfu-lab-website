@@ -155,6 +155,14 @@ window.TFNetwork = (function () {
     const headers = table.querySelectorAll('th.sortable');
     let sortKey = null, sortDir = 'asc';
     let evFilter = 'all', dirFilter = 'all', searchQ = '';
+    const PAGE_SIZE = opts.pageSize || 10;
+    let page = 0;
+
+    // Inject a pagination bar immediately after the table
+    const pagEl = document.createElement('div');
+    pagEl.className = 'table-pag';
+    pagEl.style.display = 'none';
+    table.parentNode.insertBefore(pagEl, table.nextSibling);
 
     // Auto-detect search key
     const searchKey = opts.searchKey || (allData[0] && 'tf' in allData[0] ? 'tf' : 'module');
@@ -192,7 +200,16 @@ window.TFNetwork = (function () {
       const s = sortData(f);
       const tb = table.querySelector('tbody');
       tb.innerHTML = '';
-      s.forEach(r => tb.appendChild(renderRow(r)));
+      const totalPages = Math.max(1, Math.ceil(s.length / PAGE_SIZE));
+      page = Math.min(page, totalPages - 1);
+      s.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(r => tb.appendChild(renderRow(r)));
+      pagEl.style.display = totalPages <= 1 ? 'none' : 'flex';
+      pagEl.innerHTML = '<button class="table-pag-btn"' + (page === 0 ? ' disabled' : '') + '>← Prev</button>'
+        + '<span>' + (page + 1) + ' / ' + totalPages + '</span>'
+        + '<button class="table-pag-btn"' + (page >= totalPages - 1 ? ' disabled' : '') + '>Next →</button>';
+      pagEl.querySelectorAll('.table-pag-btn').forEach((btn, i) => {
+        btn.addEventListener('click', () => { page += (i === 0 ? -1 : 1); refresh(); });
+      });
       if (opts.countId) {
         const el = document.getElementById(opts.countId);
         if (el) el.textContent = `${s.length} of ${allData.length}`;
@@ -207,7 +224,7 @@ window.TFNetwork = (function () {
       else { sortKey = key; sortDir = type === 'number' ? 'desc' : 'asc'; }
       headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
       th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      refresh();
+      page = 0; refresh();
     }));
 
     // Filter bar — supports two modes:
@@ -231,12 +248,12 @@ window.TFNetwork = (function () {
           }
           evBtns.forEach(btn => btn.addEventListener('click', () => {
             evBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active'); evFilter = btn.dataset.ev; syncDirDisabled(); refresh();
+            btn.classList.add('active'); evFilter = btn.dataset.ev; syncDirDisabled(); page = 0; refresh();
           }));
           dirBtns.forEach(btn => btn.addEventListener('click', () => {
             if (evFilter === 'binding') return;
             dirBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active'); dirFilter = btn.dataset.dir; refresh();
+            btn.classList.add('active'); dirFilter = btn.dataset.dir; page = 0; refresh();
           }));
         } else if (simpleBtns.length) {
           // Simple mode (tf.html, gene.html)
@@ -252,7 +269,7 @@ window.TFNetwork = (function () {
             else if (f === 'binding') { evFilter = 'binding'; dirFilter = 'all'; }
             else if (f === 'both') { evFilter = 'both'; dirFilter = 'all'; }
             else { evFilter = f; dirFilter = 'all'; }
-            refresh();
+            page = 0; refresh();
           }));
         }
       }
@@ -261,7 +278,7 @@ window.TFNetwork = (function () {
     // Search
     if (opts.searchId) {
       const el = document.getElementById(opts.searchId);
-      if (el) el.addEventListener('input', () => { searchQ = el.value.trim().toLowerCase(); refresh(); });
+      if (el) el.addEventListener('input', () => { searchQ = el.value.trim().toLowerCase(); page = 0; refresh(); });
     }
 
     refresh();
@@ -307,7 +324,7 @@ window.TFNetwork = (function () {
    */
   function makeEnrichTable(enrichTerms, opts) {
     opts = opts || {};
-    const PAGE_SIZE = opts.pageSize || 20;
+    const PAGE_SIZE = opts.pageSize || 10;
     const table = document.getElementById(opts.tableId || 'enrich-table');
     const emptyEl = document.getElementById(opts.emptyId || 'enrich-empty');
     const pagEl = document.getElementById(opts.pagId || 'enrich-pagination');

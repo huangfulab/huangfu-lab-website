@@ -965,7 +965,7 @@ const PROFILE     = {{ profile    | tojson }};
 // ── GC gene table ─────────────────────────────────────────────────────────────
 (function() {
   const data = {{ gc_gene_data | tojson }};
-  const PAGE = 25;
+  const PAGE = 10;
   let sKey = 'pubs', sDir = 'desc', q = '', page = 0;
   const countEl = document.getElementById('gc-gene-count');
   if (countEl) countEl.textContent = `(${data.length})`;
@@ -1200,7 +1200,7 @@ async function main() {
     submodule: geneSubmodule[g]?.id || '',
     submoduleColor: geneSubmodule[g]?.color || '',
   }));
-  const GENE_PAGE_SIZE = 25;
+  const GENE_PAGE_SIZE = 10;
   let geneSortKey = 'pubs', geneSortDir = 'desc', geneQ = '', genePage = 0;
   function geneRefresh() {
     let d = geneAllData;
@@ -1297,7 +1297,7 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
 
 // Member genes searchable table
 (function() {
-  const PAGE_SIZE = 25;
+  const PAGE_SIZE = 10;
   let sortKey = 'pubs', sortDir = 'desc', searchQ = '', page = 0;
   function filteredSorted() {
     let d = SUB_GENE_DATA;
