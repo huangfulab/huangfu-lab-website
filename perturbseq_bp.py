@@ -1315,6 +1315,15 @@ def gene_page(gene_name):
             })
         tc_reg_clusters.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
 
+        # Add expression sparkline paths for cluster node rendering
+        if tc_reg_clusters:
+            gc_expr = _all_modules_expr_map(db, 'mfuzz_k7')
+            for entry in tc_reg_clusters:
+                mfuzz_name = 'cluster_' + entry['cluster'].split('_')[2]
+                tp_dict = gc_expr.get(mfuzz_name, {})
+                vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+                entry['spark_line'], entry['spark_area'] = _spark_pts(vals, w=88, h=28, pad=3)
+
         # Submodule-level perturbation + binding flat list
         sub_pert = {r['module']: r for r in rows_to_dicts(db.execute(
             "SELECT module, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj "
@@ -1675,8 +1684,8 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                sub.module_name AS submodule,
                sup.module_name AS supermodule,
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
-               COUNT(DISTINCT td.cell_type_group) AS n_ctg,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
+               GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
                gdp.mean_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
@@ -1696,13 +1705,21 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
     data = []
     for r in rows:
         sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
+        # Parse datasets_str: "id|||name|||cell_type,..." — deduplicate by dataset_id
+        seen_ds = set()
+        datasets = []
+        for entry in (r['datasets_str'] or '').split(','):
+            parts = entry.split('|||')
+            if len(parts) == 4 and parts[0] not in seen_ds:
+                seen_ds.add(parts[0])
+                datasets.append({'id': parts[0], 'name': parts[1], 'cell_type': parts[2], 'source': parts[3]})
         data.append({
             'gene_name':   r['gene_name'],
             'submodule':   r['submodule'],
             'supermodule': r['supermodule'],
             'n_datasets':  r['n_datasets'],
-            'n_ctg':       r['n_ctg'],
             'sources':     sources,
+            'datasets':    datasets,
             'mean_coef':        r['mean_coef'],
             'de_pct_rank':      r['de_pct_rank'],
             'signed_pct_rank':  r['signed_pct_rank'],
@@ -1720,6 +1737,97 @@ def api_tf_linked_genes(tf_name):
     order_dir = request.args.get('order_dir', 'asc')
     result = _query_tf_linked_genes_paged(db, tf_name, start, length, q, order_col, order_dir)
     return jsonify(result)
+
+
+_gene_coef_cache: dict = {}   # tf_name → {gene_id: mean_coef}
+_coef_rug_cache:  dict = {}   # tf_name → linked_by_type payload
+
+
+def _get_gene_coef(db, tf_name: str) -> dict:
+    """Return {gene_id: mean_coef (2dp)} for all genes measured in the TF KD experiment."""
+    if tf_name in _gene_coef_cache:
+        return _gene_coef_cache[tf_name]
+    coef_rows = db.execute("""
+        SELECT dr.gene_id, AVG(dr.coef) AS mean_coef
+        FROM de_results dr
+        JOIN grna_table gr ON dr.grna_id = gr.grna_id
+        WHERE gr.gene_name = ?
+        GROUP BY dr.gene_id
+    """, (tf_name,)).fetchall()
+    gene_coef: dict = {r['gene_id']: round(r['mean_coef'], 2)
+                       for r in coef_rows if r['mean_coef'] is not None}
+    _gene_coef_cache[tf_name] = gene_coef
+    return gene_coef
+
+
+def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
+    """Return linked_by_type payload for rug plot.  Cached separately (slow for large TFs)."""
+    if tf_name in _coef_rug_cache:
+        return _coef_rug_cache[tf_name]
+
+    linked_rows = db.execute("""
+        SELECT DISTINCT
+            gr.gene_id,
+            gt.gene_name,
+            CASE
+                WHEN gr.gene_region_subtype = 'proximal'
+                    THEN 'tss_proximal_1kb'
+                WHEN gr.multiome_hicar_support IS NOT NULL
+                     AND gr.multiome_hicar_support != 'no_HiCAR_support'
+                    THEN 'distal_multiome_hicar'
+                WHEN gr.multiome_hicar_support = 'no_HiCAR_support'
+                    THEN 'distal_multiome'
+                ELSE 'tss_distal_10kb'
+            END AS link_type
+        FROM tf_dataset_table td
+        JOIN tf_peaks          tp  ON tp.dataset_id     = td.dataset_id
+        JOIN tf_gene_overlaps  tgo ON tgo.peak_id       = tp.peak_id
+        JOIN gene_region_table gr  ON gr.gene_region_id = tgo.gene_region_id
+        JOIN gene_table        gt  ON gt.gene_id        = gr.gene_id
+        WHERE td.tf_gene_name = ?
+    """, (tf_name,)).fetchall()
+
+    buckets: dict = {
+        'tss_proximal_1kb': {}, 'tss_distal_10kb': {},
+        'distal_multiome': {}, 'distal_multiome_hicar': {},
+    }
+    for r in linked_rows:
+        coef = gene_coef.get(r['gene_id'])
+        if coef is not None:
+            lt = r['link_type']
+            bucket = round(coef, 2)
+            if bucket not in buckets[lt]:
+                buckets[lt][bucket] = []
+            buckets[lt][bucket].append(r['gene_name'])
+
+    _MAX_GENES = 10
+    linked_by_type = {
+        k: [{'coef': c, 'genes': sorted(gs)[:_MAX_GENES], 'n': len(gs)}
+            for c, gs in sorted(v.items())]
+        for k, v in buckets.items()
+    }
+    _coef_rug_cache[tf_name] = linked_by_type
+    return linked_by_type
+
+
+@perturbseq_bp.route("/api/tf/<tf_name>/coef-density")
+def api_tf_coef_density(tf_name):
+    """Fast endpoint — returns all-gene mean_coefs for KDE (~2s even for large TFs)."""
+    db = get_db()
+    if not _tf_dataset_ids(db, tf_name):
+        return jsonify({'all_coefs': []})
+    gene_coef = _get_gene_coef(db, tf_name)
+    return jsonify({'all_coefs': list(gene_coef.values())})
+
+
+@perturbseq_bp.route("/api/tf/<tf_name>/coef-density/rug")
+def api_tf_coef_density_rug(tf_name):
+    """Slow endpoint — returns rug data (linked genes by type).  May take ~50s first call."""
+    db = get_db()
+    if not _tf_dataset_ids(db, tf_name):
+        return jsonify({'linked_by_type': {}})
+    gene_coef = _get_gene_coef(db, tf_name)
+    return jsonify({'linked_by_type': _get_linked_by_type(db, tf_name, gene_coef)})
 
 
 @perturbseq_bp.route("/api/gene/<gene_name>")

@@ -108,6 +108,25 @@
   .sst-page-btn:hover:not([disabled]) { background:var(--bg-elevated); }
   .sst-page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
   .sst-page-btn[disabled] { opacity:0.4; cursor:default; }
+  .lg-ds-count {
+    cursor:help;
+    display:inline-block;
+    padding:1px 7px;
+    border-radius:6px;
+    background:var(--bg-elevated);
+    border:1px solid var(--border);
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--text);
+  }
+  .mod-chart-card {
+    background:var(--bg-card); border:1px solid var(--border);
+    border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow);
+  }
+  .mod-chart-label {
+    font-size:11px; font-weight:600; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+  }
   table.data-table th.sst-sortable { cursor:pointer; }
   table.data-table th.sst-sortable::after { content:' ↕'; opacity:0.35; font-weight:400; }
   table.data-table th.sst-asc::after  { content:' ↑'; opacity:1; }
@@ -571,6 +590,14 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-linked-genes">Candidate Target Genes <span class="section-count" id="tf-lg-count"></span></h2>
 <p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> — open chromatin regions overlapping its ChIP-seq or motif footprint binding peaks. Showing only the top and bottom 5% of Perturb-seq DE responders (strongest up- or down-regulated genes upon TF knockdown).</p>
+<div id="tf-coef-density-wrap" style="margin-bottom:14px">
+  <div class="mod-chart-card" style="position:relative">
+    <div class="mod-chart-label" style="margin-bottom:4px">Perturbation coefficient distribution <span style="font-weight:400;font-size:10px;color:var(--text-muted)">(all measured genes · rug = bound targets by link type)</span></div>
+    <div id="tf-coef-density-loading" style="display:flex;align-items:center;gap:8px;padding:16px 4px;font-size:12px;color:var(--text-muted)"><div class="dt-spinner" style="width:14px;height:14px;flex-shrink:0"></div>Loading distribution…</div>
+    <svg id="tf-coef-density-svg" style="display:none;width:100%;overflow:visible"></svg>
+    <div id="cd-tooltip" style="display:none;position:fixed;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);padding:6px 10px;font-size:11px;line-height:1.7;max-width:220px;pointer-events:none"></div>
+  </div>
+</div>
 <div id="tf-lg-loading"><div class="dt-spinner"></div>Loading linked genes…</div>
 <div id="tf-lg-wrap" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:4px"></div>
 {% endif %}
@@ -1020,15 +1047,25 @@ const cyInstances = {};
   }
 
   const positions = Object.assign({ [GENE]: {x:0, y:0} },
-    placeFan(upCl,   180, 100, 160),
-    placeFan(downCl,   0, 100, 160),
-    placeFan(bindCl,  90, 100, 160)
+    placeFan(upCl,   180, 100, 200),
+    placeFan(downCl,   0, 100, 200),
+    placeFan(bindCl,  90, 100, 200)
   );
+
+  function makeClusterSparkSVG(sparkLine, sparkArea) {
+    if (!sparkLine || !sparkArea) return null;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="28" viewBox="0 0 88 28">` +
+      `<path d="${sparkArea}" fill="rgba(255,255,255,0.28)"/>` +
+      `<path d="${sparkLine}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `</svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
 
   const elements = [{ data:{ id:GENE, label:GENE, type:'tf' }, position:{x:0,y:0} }];
   TC_REG_CLUSTERS.forEach(r => {
     const cyDir = r.evidence === 'binding' ? 'bind' : (r.direction === 'Up' ? 'up' : 'down');
-    elements.push({ data:{ id:r.cluster, label:r.label, type:'cluster', color:r.color }, position:positions[r.cluster]||{x:0,y:0} });
+    const sparkImg = makeClusterSparkSVG(r.spark_line, r.spark_area);
+    elements.push({ data:{ id:r.cluster, label:r.label, type:'cluster', color:r.color, sparkImg }, position:positions[r.cluster]||{x:0,y:0} });
     elements.push({ data:{ id:`e_${r.cluster}`, source:GENE, target:r.cluster, direction:cyDir, evidence:r.evidence } });
   });
 
@@ -1038,7 +1075,7 @@ const cyInstances = {};
     minZoom: 0.2, wheelSensitivity: 0.25,
     style: [
       { selector:'node[type="tf"]',      style:{ 'background-color':CARD_COLOR, 'label':'data(label)', 'font-size':'12px', 'color':'#1e2448', 'text-valign':'bottom', 'text-margin-y':5, 'width':50, 'height':50, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.15)' }},
-      { selector:'node[type="cluster"]', style:{ 'background-color':'data(color)', 'label':'data(label)', 'font-size':'11px', 'color':'#fff', 'text-valign':'center', 'text-halign':'center', 'width':44, 'height':44, 'shape':'ellipse', 'border-width':1, 'border-color':'rgba(0,0,0,0.2)' }},
+      { selector:'node[type="cluster"]', style:{ 'background-color':'data(color)', 'background-image':'data(sparkImg)', 'background-width':'88px', 'background-height':'28px', 'background-position-x':'50%', 'background-position-y':'88%', 'background-clip':'node', 'label':'data(label)', 'font-size':'11px', 'font-weight':'600', 'color':'#fff', 'text-valign':'top', 'text-halign':'center', 'text-margin-y':7, 'width':100, 'height':56, 'shape':'round-rectangle', 'border-width':2, 'border-color':'rgba(0,0,0,0.15)' }},
       ...TFNetwork.EDGE_STYLES_FULL,
     ],
     layout: { name:'preset', animate:false }
@@ -1544,6 +1581,233 @@ requestAnimationFrame(() => {
 })();
 
 
+// ── Candidate Target Genes: coefficient density + rug plot ────────────────────
+(function() {
+  if (!IS_TF) return;
+  const svgEl      = document.getElementById('tf-coef-density-svg');
+  const wrap       = document.getElementById('tf-coef-density-wrap');
+  const loadingEl  = document.getElementById('tf-coef-density-loading');
+  const tooltip    = document.getElementById('cd-tooltip');
+  if (!svgEl || !wrap) return;
+
+  const LINK_TYPES = [
+    { key: 'tss_proximal_1kb',      label: '< 1 kb',          color: '#4a56b0' },
+    { key: 'tss_distal_10kb',       label: '< 10 kb',         color: '#f59e0b' },
+    { key: 'distal_multiome',       label: 'Multiome',         color: '#10b981' },
+    { key: 'distal_multiome_hicar', label: 'Multiome + HiCAR', color: '#ec4899' },
+  ];
+
+  function stddev(arr) {
+    const n = arr.length; if (!n) return 1;
+    const m = arr.reduce((a, b) => a + b, 0) / n;
+    return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / n) || 1;
+  }
+
+  function gaussianKDE(values, bw) {
+    const n = values.length;
+    const inv = 1 / (n * bw * Math.sqrt(2 * Math.PI));
+    return x => values.reduce((s, v) => {
+      const u = (x - v) / bw;
+      return s + Math.exp(-0.5 * u * u);
+    }, 0) * inv;
+  }
+
+  // Tooltip helpers
+  function showTooltip(evt, bucket, linkColor) {
+    if (!tooltip) return;
+    const { genes, coef, n } = bucket;
+    const shown = genes.slice(0, 8);
+    const extra = n - shown.length;
+    let html = shown.map(g =>
+      `<span style="display:block;color:${linkColor};font-weight:600">${g}</span>`
+    ).join('');
+    if (extra > 0) html += `<span style="color:var(--text-muted)">+${extra} more</span>`;
+    html += `<div style="margin-top:3px;color:var(--text-muted);font-size:10px">coef ≈ ${coef.toFixed(2)} · click to open</div>`;
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    positionTooltip(evt);
+  }
+
+  function positionTooltip(evt) {
+    if (!tooltip || tooltip.style.display === 'none') return;
+    const pad = 12;
+    let lft = evt.clientX + pad;
+    let top = evt.clientY + pad;
+    const tw = tooltip.offsetWidth || 220;
+    const th = tooltip.offsetHeight || 80;
+    if (lft + tw > window.innerWidth  - 8) lft = evt.clientX - tw - pad;
+    if (top + th > window.innerHeight - 8) top = evt.clientY - th - pad;
+    tooltip.style.left = lft + 'px';
+    tooltip.style.top  = top + 'px';
+  }
+
+  function hideTooltip() {
+    if (tooltip) tooltip.style.display = 'none';
+  }
+
+  // State shared between the two fetch phases
+  let _allCoefs = null;
+
+  function mk(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+    return el;
+  }
+
+  // Draw density curve + axes.  rugData = null → show "Loading rug…"; array → draw rug rows.
+  function render(allCoefs, rugData) {
+    if (!allCoefs || allCoefs.length < 2) { wrap.style.display = 'none'; return; }
+
+    const byType = {};
+    LINK_TYPES.forEach(lt => { byType[lt.key] = (rugData || {})[lt.key] || []; });
+    const activeTypes = rugData ? LINK_TYPES.filter(lt => byType[lt.key].length > 0) : [];
+    const rugPending  = rugData === null;
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    svgEl.style.display = 'block';
+
+    const margin   = { top: 12, right: 18, bottom: 42, left: 46 };
+    const rugRowH  = 16;
+    const densityH = 100;
+    const rugGap   = 6;
+    const pendingH = rugPending ? 18 : 0;
+    const totalH   = margin.top + densityH + rugGap + activeTypes.length * rugRowH + pendingH + margin.bottom;
+    const W        = svgEl.parentElement.clientWidth || 600;
+    const iW       = W - margin.left - margin.right;
+
+    svgEl.setAttribute('height', totalH);
+    svgEl.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const xMin = d3.min(allCoefs) - 0.05;
+    const xMax = d3.max(allCoefs) + 0.05;
+    const x    = d3.scaleLinear().domain([xMin, xMax]).range([0, iW]);
+
+    const bw   = 0.9 * stddev(allCoefs) * Math.pow(allCoefs.length, -0.2);
+    const kde  = gaussianKDE(allCoefs, bw);
+    const pts  = d3.range(200).map(i => {
+      const xi = xMin + (i / 199) * (xMax - xMin);
+      return [xi, kde(xi)];
+    });
+    const yMax = d3.max(pts, d => d[1]) * 1.1 || 1;
+    const y    = d3.scaleLinear().domain([0, yMax]).range([densityH, 0]);
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${margin.left},${margin.top})`);
+    svgEl.appendChild(g);
+
+    y.ticks(4).forEach(tv => {
+      g.appendChild(mk('line', { x1: 0, x2: iW, y1: y(tv), y2: y(tv), stroke: 'var(--border)', 'stroke-width': 1 }));
+    });
+
+    const areaPath = d3.area().x(d => x(d[0])).y0(densityH).y1(d => y(d[1])).curve(d3.curveCatmullRom.alpha(0.5));
+    const linePath = d3.line().x(d => x(d[0])).y(d => y(d[1])).curve(d3.curveCatmullRom.alpha(0.5));
+    g.appendChild(mk('path', { d: areaPath(pts), fill: 'var(--accent)', 'fill-opacity': '0.12' }));
+    g.appendChild(mk('path', { d: linePath(pts), fill: 'none', stroke: 'var(--accent)', 'stroke-width': '2', 'stroke-linecap': 'round' }));
+
+    if (xMin < 0 && xMax > 0) {
+      const zx = x(0);
+      g.appendChild(mk('line', { x1: zx, x2: zx, y1: 0, y2: densityH, stroke: 'var(--text-muted)', 'stroke-width': '1', 'stroke-dasharray': '3,3' }));
+    }
+
+    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.appendChild(yAxis);
+    y.ticks(3).forEach(tv => {
+      const tick = mk('text', { x: -6, y: y(tv), 'text-anchor': 'end', 'dominant-baseline': 'middle', 'font-size': '9', fill: 'var(--text-muted)' });
+      tick.textContent = tv.toFixed(2);
+      yAxis.appendChild(tick);
+    });
+    const yLabel = mk('text', { transform: `rotate(-90) translate(${-densityH/2}, ${-36})`, 'text-anchor': 'middle', 'font-size': '9', fill: 'var(--text-muted)' });
+    yLabel.textContent = 'Density';
+    g.appendChild(yLabel);
+
+    // x-axis sits below rug rows (or below density when rug is pending)
+    const xAxisY = densityH + rugGap + activeTypes.length * rugRowH + pendingH;
+    const xAxis  = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    xAxis.setAttribute('transform', `translate(0,${xAxisY})`);
+    g.appendChild(xAxis);
+    xAxis.appendChild(mk('line', { x1: 0, x2: iW, y1: 0, y2: 0, stroke: 'var(--border)', 'stroke-width': 1 }));
+    x.ticks(6).forEach(tv => {
+      const tx = x(tv);
+      xAxis.appendChild(mk('line', { x1: tx, x2: tx, y1: 0, y2: 4, stroke: 'var(--border)', 'stroke-width': 1 }));
+      const lbl = mk('text', { x: tx, y: 14, 'text-anchor': 'middle', 'font-size': '9', fill: 'var(--text-muted)' });
+      lbl.textContent = tv.toFixed(1);
+      xAxis.appendChild(lbl);
+    });
+    const axLabel = mk('text', { x: iW / 2, y: 28, 'text-anchor': 'middle', 'font-size': '9', fill: 'var(--text-muted)' });
+    axLabel.textContent = '← KD represses    coef    KD activates →';
+    xAxis.appendChild(axLabel);
+
+    if (rugPending) {
+      const loadRug = mk('text', { x: iW / 2, y: densityH + rugGap + 12, 'text-anchor': 'middle', 'font-size': '9', fill: 'var(--text-muted)' });
+      loadRug.textContent = 'Loading rug marks…';
+      g.appendChild(loadRug);
+    } else {
+      activeTypes.forEach((lt, i) => {
+        const rugY = densityH + rugGap + i * rugRowH;
+        const rowG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rowG.setAttribute('transform', `translate(0,${rugY})`);
+        g.appendChild(rowG);
+
+        const lbl = mk('text', { x: -6, y: rugRowH / 2 + 1, 'text-anchor': 'end', 'dominant-baseline': 'middle', 'font-size': '9', 'font-weight': '600', fill: lt.color });
+        lbl.textContent = lt.label;
+        rowG.appendChild(lbl);
+
+        const buckets = byType[lt.key];
+        const opacity = buckets.length > 150 ? '0.45' : buckets.length > 50 ? '0.6' : '0.8';
+
+        buckets.forEach(bucket => {
+          const cx  = x(bucket.coef);
+          const hit = mk('line', { x1: cx, x2: cx, y1: 0, y2: rugRowH, stroke: 'transparent', 'stroke-width': '7', style: 'cursor:pointer' });
+          const tick = mk('line', { x1: cx, x2: cx, y1: 1, y2: rugRowH - 1, stroke: lt.color, 'stroke-width': '1.5', 'stroke-opacity': opacity, 'pointer-events': 'none' });
+
+          hit.addEventListener('mousemove', evt => {
+            showTooltip(evt, bucket, lt.color);
+            tick.setAttribute('stroke-opacity', '1');
+            tick.setAttribute('stroke-width', '2.5');
+          });
+          hit.addEventListener('mouseleave', () => {
+            hideTooltip();
+            tick.setAttribute('stroke-opacity', opacity);
+            tick.setAttribute('stroke-width', '1.5');
+          });
+          hit.addEventListener('click', () => {
+            window.location.href = `/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(bucket.genes[0])}`;
+          });
+          rowG.appendChild(tick);
+          rowG.appendChild(hit);
+        });
+      });
+    }
+
+    svgEl.addEventListener('mouseleave', hideTooltip);
+    svgEl.addEventListener('mousemove', positionTooltip);
+  }
+
+  // Phase 1: density (fast, ~2s)
+  fetch(`/perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-density`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.all_coefs && data.all_coefs.length >= 2) {
+        _allCoefs = data.all_coefs;
+        render(_allCoefs, null);        // density immediately; rug pending
+      } else {
+        wrap.style.display = 'none';
+      }
+    })
+    .catch(err => { console.error('coef-density fetch failed:', err); wrap.style.display = 'none'; });
+
+  // Phase 2: rug (slow first call, cached after)
+  fetch(`/perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-density/rug`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.linked_by_type && _allCoefs) {
+        render(_allCoefs, data.linked_by_type);   // full re-render with rug
+      }
+    })
+    .catch(err => console.error('coef-density/rug fetch failed:', err));
+})();
+
 // ── Linked genes (TF binding targets) ────────────────────────────────────────
 (function() {
   if (!IS_TF) return;
@@ -1582,8 +1846,8 @@ requestAnimationFrame(() => {
           <th class="sst-sortable sst-asc" data-col="4" title="How extreme this gene's response to TF knockdown is, within the top/bottom 5% of DE responders">KD Effect</th>
           <th class="sst-sortable" data-col="5" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Computed as the average per-gRNA log-fold-change effect on this gene's expression. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
           <th class="sst-sortable" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene"># Datasets</th>
-          <th class="sst-sortable" data-col="3" title="Number of distinct cell-type groups with binding evidence"># Cell types</th>
           <th title="ChIP-seq and motif footprint data sources">Sources</th>
+          <th></th>
         </tr></thead>
         <tbody id="lg-tbody"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
       </table>
@@ -1636,7 +1900,9 @@ requestAnimationFrame(() => {
               const coefCell = coef == null
                 ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
                 : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
-              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}<td>${r.n_datasets}</td><td>${r.n_ctg}</td><td style="white-space:nowrap">${srcs}</td></tr>`;
+              const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets}</span></td>`;
+              const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">View link ›</a>`;
+              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${dsCell}<td style="white-space:nowrap">${srcs}</td><td style="white-space:nowrap">${linkPill}</td></tr>`;
             }).join('')
           : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
 
@@ -1701,6 +1967,110 @@ requestAnimationFrame(() => {
   });
 
   fetchPage();
+
+  // ── Dataset tooltip (hoverable, clickable) ──────────────────────────────────
+  const lgTip = document.createElement('div');
+  lgTip.id = 'lg-ds-tip';
+  lgTip.style.cssText = [
+    'display:none;position:fixed;z-index:400',
+    'background:var(--bg-card)',
+    'border:1px solid var(--border)',
+    'border-radius:10px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.18),0 1.5px 4px rgba(0,0,0,0.10)',
+    'padding:0',
+    'font-size:12px',
+    'max-width:380px;min-width:220px',
+    'max-height:340px',
+    'overflow:hidden',
+    'pointer-events:auto',
+    'transition:opacity 0.1s',
+  ].join(';');
+  document.body.appendChild(lgTip);
+
+  function dsLink(ds) {
+    const name = ds.name, src = ds.source || '';
+    if (src === 'encode_chipseq') {
+      return `<a href="https://www.encodeproject.org/search/?searchTerm=${encodeURIComponent(name.toLowerCase())}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+    }
+    if (src === 'remap_chipseq') {
+      const acc = name.split('.')[0];
+      if (/^GSE\d/i.test(acc)) {
+        return `<a href="https://www.ncbi.nlm.nih.gov/gds/?term=${encodeURIComponent(acc)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+      }
+      if (/^ENCSR/i.test(acc)) {
+        return `<a href="https://www.encodeproject.org/search/?searchTerm=${encodeURIComponent(acc.toLowerCase())}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+      }
+    }
+    return `<span style="font-weight:600;color:var(--text)">${name}</span>`;
+  }
+
+  function buildTipHtml(datasets) {
+    const srcLabel = { 'huangfu-tf_chipseq': 'Huangfu ChIP', 'encode_chipseq': 'ENCODE ChIP', 'remap_chipseq': 'ReMap ChIP', 'tobias': 'TOBIAS' };
+    const srcColor = { 'huangfu-tf_chipseq': '#6366f1', 'encode_chipseq': '#10b981', 'remap_chipseq': '#f59e0b', 'tobias': '#ec4899' };
+    // Group by source
+    const groups = {};
+    for (const d of datasets) {
+      (groups[d.source] = groups[d.source] || []).push(d);
+    }
+    let html = `<div style="overflow-y:auto;max-height:340px;padding:12px 16px 14px">`;
+    html += `<div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Binding datasets</div>`;
+    for (const [src, rows] of Object.entries(groups)) {
+      const col = srcColor[src] || '#9098b8';
+      const lbl = srcLabel[src] || src;
+      html += `<div style="margin-bottom:10px">`;
+      html += `<div style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:${col}22;color:${col};border:1px solid ${col}55;margin-bottom:5px">${lbl}</div>`;
+      for (const d of rows) {
+        html += `<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)">`;
+        html += `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dsLink(d)}</span>`;
+        html += `<span style="flex-shrink:0;font-size:10.5px;color:var(--text-muted);white-space:nowrap">${d.cell_type}</span>`;
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  let lgTipAnchor = null, lgHideTimer = null;
+
+  function showTip(span, datasets) {
+    clearTimeout(lgHideTimer);
+    lgTipAnchor = span;
+    lgTip.innerHTML = buildTipHtml(datasets);
+    lgTip.style.display = 'block';
+    lgTip.style.opacity = '1';
+    positionTip(span);
+  }
+
+  function positionTip(span) {
+    const r = span.getBoundingClientRect();
+    const tipW = lgTip.offsetWidth || 280, tipH = lgTip.offsetHeight || 200;
+    let left = r.left, top = r.bottom + 6;
+    if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+    if (top + tipH > window.innerHeight - 8) top = r.top - tipH - 6;
+    lgTip.style.left = Math.max(8, left) + 'px';
+    lgTip.style.top  = Math.max(8, top)  + 'px';
+  }
+
+  function schedulehide() {
+    lgHideTimer = setTimeout(() => {
+      lgTip.style.display = 'none';
+      lgTipAnchor = null;
+    }, 120);
+  }
+
+  wrapEl.addEventListener('mouseover', e => {
+    const span = e.target.closest('.lg-ds-count');
+    if (!span) return;
+    let datasets;
+    try { datasets = JSON.parse(decodeURIComponent(span.dataset.ds)); } catch(e) { return; }
+    showTip(span, datasets);
+  });
+  wrapEl.addEventListener('mouseout', e => {
+    if (e.target.closest('.lg-ds-count')) schedulehide();
+  });
+  lgTip.addEventListener('mouseenter', () => clearTimeout(lgHideTimer));
+  lgTip.addEventListener('mouseleave', () => schedulehide());
 })();
 
 // ── Regulatory elements bound by TF ─────────────────────────────────────────
