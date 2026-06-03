@@ -494,41 +494,18 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 
 <!-- Supermodule: perturbation/binding effects per supermodule -->
+{% set cols_tf_reg = [
+  {'key':'module',     'type':'string', 'label':'Module', 'title':''},
+  {'key':'direction',  'type':'string', 'label':'Dir',    'title':'Direction: effect of TF knockdown on this module'},
+  {'key':'mean_NES',   'type':'number', 'label':'NES',    'title':'Normalized Enrichment Score (positive = KD upregulates; negative = KD downregulates)'},
+  {'key':'n_sig_gRNA', 'type':'number', 'label':'#gRNA',  'title':''},
+  {'key':'padj',       'type':'number', 'label':'padj',   'title':''},
+  {'key':'binding',    'type':'string', 'label':'Bind',   'title':''},
+  {'key':'odds_ratio', 'type':'number', 'label':'OR',     'title':''},
+] %}
 <div id="view-tf-super" class="mod-view tf-view">
-  <div class="filter-bar" id="tf-reg-filter-bar">
-    <span class="filter-label">Evidence:</span>
-    <button class="active" data-ev="all">All</button>
-    <button data-ev="both">Perturbation + Binding</button>
-    <button data-ev="perturbation">Perturbation only</button>
-    <button data-ev="binding">Binding only</button>
-    <span class="filter-sep"></span>
-    <span class="filter-label" id="tf-reg-dir-label">Direction:</span>
-    <button class="active" data-dir="all">All</button>
-    <button data-dir="up">↑ Up</button>
-    <button data-dir="down">↓ Down</button>
-    <span class="filter-count" id="tf-reg-count"></span>
-  </div>
-  <div class="landing-split">
-    <div class="cy-wrap" style="position:relative">
-      <button id="tf-mod-cy-reset" style="position:absolute;top:6px;right:6px;z-index:10;padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer">Reset view</button>
-      {{ network_legend('full') }}
-      <div id="tf-mod-cy"></div>
-    </div>
-    <div class="side-table-wrap">
-      <table class="data-table" id="tf-reg-table">
-        <thead><tr>
-          <th class="sortable" data-key="module"     data-type="string">Module</th>
-          <th class="sortable" data-key="direction"  data-type="string" title="Direction: effect of TF knockdown on this module">Dir</th>
-          <th class="sortable" data-key="mean_NES"   data-type="number" title="Normalized Enrichment Score (positive = KD upregulates; negative = KD downregulates)">NES</th>
-          <th class="sortable" data-key="n_sig_gRNA" data-type="number">#gRNA</th>
-          <th class="sortable" data-key="padj"       data-type="number">padj</th>
-          <th class="sortable" data-key="binding"    data-type="string">Bind</th>
-          <th class="sortable" data-key="odds_ratio" data-type="number">OR</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
+  {{ filter_bar('tf-reg-filter-bar', dir_label_id='tf-reg-dir-label', count_id='tf-reg-count') }}
+  {{ landing_split('tf-mod-cy', 'tf-reg-table', cols_tf_reg, variant='full', reset_btn=True) }}
 </div>
 
 <!-- Submodule: perturbation effects per submodule -->
@@ -1838,7 +1815,10 @@ requestAnimationFrame(() => {
       <label>Show <select class="sst-select" id="lg-per-page">
         <option>10</option><option selected>25</option><option>50</option><option>100</option>
       </select> entries</label>
-      <input class="sst-search" id="lg-search" type="text" placeholder="Search gene or module…" autocomplete="off">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="lg-top-count" style="color:var(--text-muted);font-size:12px"></span>
+        <input class="sst-search" id="lg-search" type="text" placeholder="Search gene or module…" autocomplete="off">
+      </div>
     </div>
     <div style="overflow-x:auto">
       <table class="data-table">
@@ -1911,6 +1891,8 @@ requestAnimationFrame(() => {
         const total    = resp.total    || 0;
         const filtered = resp.filtered || 0;
         if (countEl && total > 0) countEl.textContent = `${total.toLocaleString()} genes`;
+        const topCount = document.getElementById('lg-top-count');
+        if (topCount && total > 0) topCount.textContent = `${total.toLocaleString()} genes`;
 
         const from = (page - 1) * perPage + 1;
         const to   = Math.min(from + (resp.data ? resp.data.length : 0) - 1, filtered);
