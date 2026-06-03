@@ -1718,12 +1718,21 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
 
     rows = db.execute(f"""
         {de_cte}
+        ,peak_counts AS (
+            SELECT gr.gene_id, COUNT(DISTINCT tp.peak_id) AS n_linked_peaks
+            FROM tf_peaks tp
+            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
+            JOIN gene_region_table gr ON tgo.gene_region_id = gr.gene_region_id
+            WHERE tp.dataset_id IN ({ds_ph})
+            GROUP BY gr.gene_id
+        )
         SELECT gt.gene_name,
                sub.module_name AS submodule,
                sup.module_name AS supermodule,
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
                GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
+               COALESCE(pc.n_linked_peaks, 0) AS n_linked_peaks,
                gdp.mean_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
@@ -1731,6 +1740,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         JOIN gene_table gt ON tgl.gene_id = gt.gene_id
         JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
         {sub_join}
+        LEFT JOIN peak_counts pc ON tgl.gene_id = pc.gene_id
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
         AND {de_filter}
@@ -1739,7 +1749,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         {having_clause}
         ORDER BY {order_by}
         LIMIT ? OFFSET ?
-    """, [tf_name] + ds_ids + src_params + q_params + [length, start]).fetchall()
+    """, [tf_name] + ds_ids + ds_ids + src_params + q_params + [length, start]).fetchall()
 
     data = []
     for r in rows:
@@ -1757,6 +1767,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
             'submodule':   r['submodule'],
             'supermodule': r['supermodule'],
             'n_datasets':  r['n_datasets'],
+            'n_linked_peaks': r['n_linked_peaks'],
             'sources':     sources,
             'datasets':    datasets,
             'mean_coef':        r['mean_coef'],
@@ -1804,6 +1815,44 @@ def api_tf_linked_genes_all(tf_name):
                    PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank,
                    PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
             FROM gene_de
+        ),
+        peak_raw AS (
+            SELECT
+                gr.gene_id,
+                tp.peak_id,
+                gr.gene_region_subtype,
+                MIN(ptd.distance) AS min_dist_measured
+            FROM tf_peaks tp
+            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
+            JOIN gene_region_table gr  ON tgo.gene_region_id = gr.gene_region_id
+            LEFT JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
+            LEFT JOIN peak_tss_distances ptd
+                   ON ato.atac_peak_id = ptd.atac_peak_id AND ptd.gene_id = gr.gene_id
+            WHERE tp.dataset_id IN ({ds_ph})
+            GROUP BY gr.gene_id, tp.peak_id, gr.gene_region_subtype
+        ),
+        peak_scores AS (
+            SELECT
+                gene_id,
+                COUNT(DISTINCT peak_id) AS n_peaks,
+                SUM(CASE WHEN gene_region_subtype = 'proximal'            THEN 1 ELSE 0 END) AS n_proximal,
+                SUM(CASE WHEN gene_region_subtype = 'distal'              THEN 1 ELSE 0 END) AS n_distal,
+                SUM(CASE WHEN gene_region_subtype LIKE '%multiome_peak'   THEN 1 ELSE 0 END) AS n_multiome,
+                SUM(
+                    CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
+                    * LOG(10) / LOG(
+                        COALESCE(
+                            min_dist_measured,
+                            CASE gene_region_subtype
+                                WHEN 'proximal' THEN 500
+                                WHEN 'distal'   THEN 5500
+                                ELSE 50000
+                            END
+                        ) + 10
+                    )
+                ) AS peak_score
+            FROM peak_raw
+            GROUP BY gene_id
         )
         SELECT gt.gene_name,
                sub.module_name AS submodule,
@@ -1811,6 +1860,11 @@ def api_tf_linked_genes_all(tf_name):
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
                GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
+               COALESCE(ps.peak_score,   0.0) AS peak_score,
+               COALESCE(ps.n_peaks,     0)   AS n_peaks,
+               COALESCE(ps.n_proximal,  0)   AS n_proximal,
+               COALESCE(ps.n_distal,    0)   AS n_distal,
+               COALESCE(ps.n_multiome,  0)   AS n_multiome,
                gdp.mean_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
@@ -1827,12 +1881,13 @@ def api_tf_linked_genes_all(tf_name):
             JOIN module_table mo ON gm.module_id = mo.module_id
             WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
         ) sup ON tgl.gene_id = sup.gene_id
+        LEFT JOIN peak_scores ps ON tgl.gene_id = ps.gene_id
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
         AND (gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)
         GROUP BY tgl.gene_id, gt.gene_name
         ORDER BY gdp.signed_pct_rank ASC
-    """, [tf_name] + ds_ids).fetchall()
+    """, [tf_name] + ds_ids + ds_ids).fetchall()
 
     data = []
     for r in rows:
@@ -1849,6 +1904,11 @@ def api_tf_linked_genes_all(tf_name):
             'submodule':        r['submodule'],
             'supermodule':      r['supermodule'],
             'n_datasets':       r['n_datasets'],
+            'peak_score':       r['peak_score'],
+            'n_peaks':          r['n_peaks'],
+            'n_proximal':       r['n_proximal'],
+            'n_distal':         r['n_distal'],
+            'n_multiome':       r['n_multiome'],
             'sources':          sources,
             'datasets':         datasets,
             'mean_coef':        r['mean_coef'],
