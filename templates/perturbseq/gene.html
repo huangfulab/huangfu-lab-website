@@ -321,17 +321,16 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     {% if is_tf %}
     <span class="sidebar-role sidebar-role--regulator">{{ gene }} as a Regulator</span>
     <a href="#sec-regulated-modules" class="sidebar-link indented">Regulated Modules</a>
-    <a href="#sec-linked-genes" class="sidebar-link indented">Target Genes</a>
-    <a href="#sec-tf-elements" class="sidebar-link indented">Bound Elements</a>
+    <a href="#sec-linked-genes" class="sidebar-link indented">Regulated Genes</a>
+    {% endif %}
     {% if reg_elements or reg_tfs %}
     <span class="sidebar-role sidebar-role--target">{{ gene }} as a Regulated Gene</span>
     {% endif %}
-    {% endif %}
     {% if reg_elements %}
-    <a href="#sec-reg-elements" class="sidebar-link{% if is_tf %} indented{% endif %}">Linked Elements</a>
+    <a href="#sec-reg-elements" class="sidebar-link indented">Linked Elements</a>
     {% endif %}
     {% if reg_tfs %}
-    <a href="#sec-reg-tfs" class="sidebar-link{% if is_tf %} indented{% endif %}">Upstream TFs</a>
+    <a href="#sec-reg-tfs" class="sidebar-link indented">Upstream TFs</a>
     {% endif %}
     <a href="#sec-grna-coefs" class="sidebar-link{% if is_tf %} indented{% endif %}" id="nav-grna-coefs" style="display:none">Perturbation Effects</a>
     {% if gene_locus %}
@@ -566,7 +565,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 <!-- ── Linked genes (TF binding targets) ─────────────────────────────── -->
 {% if is_tf %}
 <hr class="section-divider">
-<h2 class="section-h2" id="sec-linked-genes">Candidate Target Genes <span class="section-count" id="tf-lg-count"></span></h2>
+<h2 class="section-h2" id="sec-linked-genes">Regulated Genes <span class="section-count" id="tf-lg-count"></span></h2>
 <p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> — open chromatin regions overlapping its ChIP-seq or motif footprint binding peaks. Showing only the top and bottom 5% of Perturb-seq DE responders (strongest up- or down-regulated genes upon TF knockdown).</p>
 <div id="tf-coef-density-wrap" style="margin-bottom:14px">
   <div class="mod-chart-card" style="position:relative">
@@ -597,8 +596,8 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 {% endif %}
 
-<!-- ── Regulated-gene role banner (TF pages only) ─────────────────────── -->
-{% if is_tf and (reg_elements or reg_tfs) %}
+<!-- ── Regulated-gene role banner ─────────────────────────────────────── -->
+{% if reg_elements or reg_tfs %}
 <div class="role-banner role-banner--target">
   <span>{{ gene }} — as a Regulated Gene</span>
 </div>
@@ -606,7 +605,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 
 <!-- ── Regulatory elements ─────────────────────────────────────────────── -->
 {% if reg_elements %}
-{% if not is_tf %}<hr class="section-divider">{% endif %}
 <h2 class="section-h2" id="sec-reg-elements">Regulatory Elements linked to the gene</h2>
 <p class="section-desc">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
 <div style="overflow-x:auto">
@@ -2895,16 +2893,16 @@ requestAnimationFrame(() => {
 
     // ── Annotation labels at top (in margin above chart area) ───────────────
     g.append('text').attr('x', 3).attr('y', -27)
-      .attr('text-anchor', 'start').attr('font-size', '10.5px').attr('fill', '#3b82f6').attr('opacity', 0.85)
-      .text('← Perturbations that downregulate gene');
+      .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
+      .text(`← Perturbations that downregulate ${GENE}`);
     g.append('text').attr('x', 3).attr('y', -13)
-      .attr('text-anchor', 'start').attr('font-size', '10.5px').attr('fill', '#3b82f6').attr('opacity', 0.85)
+      .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
       .text('(Top 5%)');
     g.append('text').attr('x', W - 3).attr('y', -27)
-      .attr('text-anchor', 'end').attr('font-size', '10.5px').attr('fill', '#ec4899').attr('opacity', 0.85)
-      .text('Perturbations that upregulate gene →');
+      .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
+      .text(`Perturbations that upregulate ${GENE} →`);
     g.append('text').attr('x', W - 3).attr('y', -13)
-      .attr('text-anchor', 'end').attr('font-size', '10.5px').attr('fill', '#ec4899').attr('opacity', 0.85)
+      .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
       .text('(Top 5%)');
 
     // ── X-axis label ─────────────────────────────────────────────────────────

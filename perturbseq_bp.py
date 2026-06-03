@@ -2627,6 +2627,21 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
         """, [gene_id] + peak_ids).fetchall()
     }
 
+    # peak_tss_distances is incomplete for some distal peaks; compute fallback distances
+    # from gene_tss_table for any peaks that are missing.
+    missing_pids = [pid for pid in peak_ids if pid not in tss_dists]
+    if missing_pids:
+        tss_row = db.execute(
+            "SELECT tss_position FROM gene_tss_table WHERE gene_id=? ORDER BY tss_id LIMIT 1",
+            (gene_id,)
+        ).fetchone()
+        if tss_row:
+            tss_pos = tss_row["tss_position"]
+            peak_coords = {r["atac_peak_id"]: (r["start"], r["end"]) for r in rows}
+            for pid in missing_pids:
+                s, e = peak_coords[pid]
+                tss_dists[pid] = abs((s + e) // 2 - tss_pos)
+
     # Step 2: for each distinct element, count TFs via the atac_peak_id index.
     # This is a tiny correlated query per element (indexed on atac_peak_id).
     tf_counts = {
