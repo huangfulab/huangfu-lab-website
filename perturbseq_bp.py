@@ -1607,7 +1607,8 @@ def api_tf_elements(tf_name):
 
 
 def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
-                                  q: str, order_col: int, order_dir: str) -> dict:
+                                  q: str, order_col: int, order_dir: str,
+                                  direction: str = 'all', source: str = '') -> dict:
     safe_dir = 'DESC' if order_dir.upper() == 'DESC' else 'ASC'
     order_map = {
         0: f'gt.gene_name {safe_dir}',
@@ -1659,7 +1660,24 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
             FROM gene_de
         )
     """
-    de_filter = "(gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)"
+
+    if direction == 'up':
+        de_filter = "gdp.signed_pct_rank >= 0.95"
+    elif direction == 'down':
+        de_filter = "gdp.signed_pct_rank <= 0.05"
+    else:
+        de_filter = "(gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)"
+
+    if source:
+        source_clause = f"""AND tgl.gene_id IN (
+            SELECT DISTINCT tgl2.gene_id FROM tf_gene_links tgl2
+            JOIN tf_dataset_table td2 ON tgl2.dataset_id = td2.dataset_id
+            WHERE tgl2.dataset_id IN ({ds_ph}) AND td2.source = ?
+        )"""
+        src_params = ds_ids + [source]
+    else:
+        source_clause = ""
+        src_params = []
 
     total_row = db.execute(f"""
         {de_cte}
@@ -1668,13 +1686,14 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
         AND {de_filter}
-    """, [tf_name] + ds_ids).fetchone()
+        {source_clause}
+    """, [tf_name] + ds_ids + src_params).fetchone()
     total = total_row[0] if total_row else 0
 
     if q:
         like = f'%{q}%'
         having_clause = "HAVING (gt.gene_name LIKE ? OR sub.module_name LIKE ?)"
-        params = ds_ids + [like, like]
+        q_params = [like, like]
         count_row = db.execute(f"""
             {de_cte}
             SELECT COUNT(*) FROM (
@@ -1686,14 +1705,15 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                 JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
                 WHERE tgl.dataset_id IN ({ds_ph})
                 AND {de_filter}
+                {source_clause}
                 GROUP BY tgl.gene_id, gt.gene_name
                 {having_clause}
             )
-        """, [tf_name] + params).fetchone()
+        """, [tf_name] + ds_ids + src_params + q_params).fetchone()
         filtered = count_row[0] if count_row else 0
     else:
         having_clause = ""
-        params = ds_ids
+        q_params = []
         filtered = total
 
     rows = db.execute(f"""
@@ -1714,11 +1734,12 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE tgl.dataset_id IN ({ds_ph})
         AND {de_filter}
+        {source_clause}
         GROUP BY tgl.gene_id, gt.gene_name
         {having_clause}
         ORDER BY {order_by}
         LIMIT ? OFFSET ?
-    """, [tf_name] + params + [length, start]).fetchall()
+    """, [tf_name] + ds_ids + src_params + q_params + [length, start]).fetchall()
 
     data = []
     for r in rows:
@@ -1753,8 +1774,88 @@ def api_tf_linked_genes(tf_name):
     q         = request.args.get('q', '').strip()
     order_col = int(request.args.get('order_col', 4))
     order_dir = request.args.get('order_dir', 'asc')
-    result = _query_tf_linked_genes_paged(db, tf_name, start, length, q, order_col, order_dir)
+    direction = request.args.get('direction', 'all')
+    source    = request.args.get('source', '').strip()
+    result = _query_tf_linked_genes_paged(db, tf_name, start, length, q, order_col, order_dir, direction, source)
     return jsonify(result)
+
+
+@perturbseq_bp.route("/api/tf-linked-genes-all/<tf_name>")
+def api_tf_linked_genes_all(tf_name):
+    """Return all linked genes at once for client-side filtering/sorting."""
+    db = get_db()
+    ds_ids = _tf_dataset_ids(db, tf_name)
+    if not ds_ids:
+        return jsonify({'data': []})
+    ds_ph = ','.join('?' * len(ds_ids))
+
+    rows = db.execute(f"""
+        WITH tf_grnas AS (
+            SELECT grna_id FROM grna_table WHERE gene_name = ?
+        ),
+        gene_de AS (
+            SELECT dr.gene_id, AVG(dr.coef) AS mean_coef
+            FROM de_results dr
+            WHERE dr.grna_id IN (SELECT grna_id FROM tf_grnas)
+            GROUP BY dr.gene_id
+        ),
+        gene_de_pct AS (
+            SELECT gene_id, mean_coef,
+                   PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank,
+                   PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
+            FROM gene_de
+        )
+        SELECT gt.gene_name,
+               sub.module_name AS submodule,
+               sup.module_name AS supermodule,
+               COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
+               GROUP_CONCAT(DISTINCT td.source) AS sources_str,
+               GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
+               gdp.mean_coef,
+               gdp.de_pct_rank,
+               gdp.signed_pct_rank
+        FROM tf_gene_links tgl
+        JOIN gene_table gt ON tgl.gene_id = gt.gene_id
+        JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
+        LEFT JOIN (
+            SELECT gm.gene_id, mo.module_name FROM gene_module_table gm
+            JOIN module_table mo ON gm.module_id = mo.module_id
+            WHERE mo.source = 'hotspot_submodule' AND mo.module_name != 'unassigned'
+        ) sub ON tgl.gene_id = sub.gene_id
+        LEFT JOIN (
+            SELECT gm.gene_id, mo.module_name FROM gene_module_table gm
+            JOIN module_table mo ON gm.module_id = mo.module_id
+            WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
+        ) sup ON tgl.gene_id = sup.gene_id
+        JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
+        WHERE tgl.dataset_id IN ({ds_ph})
+        AND (gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)
+        GROUP BY tgl.gene_id, gt.gene_name
+        ORDER BY gdp.signed_pct_rank ASC
+    """, [tf_name] + ds_ids).fetchall()
+
+    data = []
+    for r in rows:
+        sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
+        seen_ds = set()
+        datasets = []
+        for entry in (r['datasets_str'] or '').split(','):
+            parts = entry.split('|||')
+            if len(parts) == 4 and parts[0] not in seen_ds:
+                seen_ds.add(parts[0])
+                datasets.append({'id': parts[0], 'name': parts[1], 'cell_type': parts[2], 'source': parts[3]})
+        data.append({
+            'gene_name':        r['gene_name'],
+            'submodule':        r['submodule'],
+            'supermodule':      r['supermodule'],
+            'n_datasets':       r['n_datasets'],
+            'sources':          sources,
+            'datasets':         datasets,
+            'mean_coef':        r['mean_coef'],
+            'de_pct_rank':      r['de_pct_rank'],
+            'signed_pct_rank':  r['signed_pct_rank'],
+        })
+    return jsonify({'data': data})
 
 
 _gene_coef_cache: dict = {}   # tf_name → {gene_id: mean_coef}

@@ -1811,28 +1811,45 @@ requestAnimationFrame(() => {
   if (!wrapEl) return;
 
   const SOURCE_META = {
-    'huangfu-tf_chipseq': { display: 'Huangfu ChIP', color: '#6366f1' },
-    'encode_chipseq':     { display: 'ENCODE ChIP',  color: '#10b981' },
-    'remap_chipseq':      { display: 'ReMap ChIP',   color: '#f59e0b' },
-    'tobias':             { display: 'TOBIAS',        color: '#ec4899' },
+    'huangfu-tf_chipseq': { display: 'Huangfu ChIP', color: '#6366f1', tooltip: 'Huangfu lab ChIP-seq — in-house experimental TF binding profiles' },
+    'encode_chipseq':     { display: 'ENCODE ChIP',  color: '#10b981', tooltip: 'ENCODE ChIP-seq — TF binding data from the ENCODE consortium' },
+    'remap_chipseq':      { display: 'ReMap ChIP',   color: '#f59e0b', tooltip: 'ReMap — large-scale integration of public ChIP-seq experiments across cell types' },
+    'tobias':             { display: 'TOBIAS',        color: '#ec4899', tooltip: 'TOBIAS — transcription factor occupancy inferred from ATAC-seq footprinting' },
   };
 
   function srcBadge(src) {
-    const m = SOURCE_META[src] || { display: src, color: '#9098b8' };
-    return `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${m.color}22;color:${m.color};border:1px solid ${m.color}55;margin-right:3px;white-space:nowrap">${m.display}</span>`;
+    const m = SOURCE_META[src] || { display: src, color: '#9098b8', tooltip: src };
+    return `<span data-src-tip="${m.tooltip}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${m.color}22;color:${m.color};border:1px solid ${m.color}55;margin-right:3px;white-space:nowrap;cursor:help">${m.display}</span>`;
   }
 
+  let allData = null;
   let page = 1, perPage = 10, search = '', orderCol = 4, orderDir = 'asc';
+  let filterDir = 'all', filterSrc = '';
   let debounce;
 
   wrapEl.innerHTML = `
-    <div class="sst-bar top">
-      <label>Show <select class="sst-select" id="lg-per-page">
-        <option selected>10</option><option>25</option><option>50</option><option>100</option>
-      </select> entries</label>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span id="lg-top-count" style="color:var(--text-muted);font-size:12px"></span>
-        <input class="sst-search" id="lg-search" type="text" placeholder="Search gene or module…" autocomplete="off">
+    <div class="sst-bar top" style="flex-direction:column;align-items:stretch;gap:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <label>Show <select class="sst-select" id="lg-per-page">
+          <option selected>10</option><option>25</option><option>50</option><option>100</option>
+        </select> entries</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="lg-top-count" style="color:var(--text-muted);font-size:12px"></span>
+          <input class="sst-search" id="lg-search" type="text" placeholder="Search gene or module…" autocomplete="off">
+        </div>
+      </div>
+      <div class="filter-bar" style="padding:7px 0 0;border:none;background:none;margin-top:7px;border-top:1px solid var(--border)">
+        <span class="filter-label">Effect:</span>
+        <button class="lg-dir-btn active" data-dir="all">All</button>
+        <button class="lg-dir-btn" data-dir="up">↑ Up</button>
+        <button class="lg-dir-btn" data-dir="down">↓ Down</button>
+        <span class="filter-sep"></span>
+        <span class="filter-label">Source:</span>
+        <button class="lg-src-btn active" data-src="">All</button>
+        <button class="lg-src-btn" data-src="huangfu-tf_chipseq">Huangfu ChIP</button>
+        <button class="lg-src-btn" data-src="encode_chipseq">ENCODE ChIP</button>
+        <button class="lg-src-btn" data-src="remap_chipseq">ReMap</button>
+        <button class="lg-src-btn" data-src="tobias">TOBIAS</button>
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -1856,75 +1873,98 @@ requestAnimationFrame(() => {
   if (loadingEl) loadingEl.style.display = 'none';
   wrapEl.style.display = '';
 
-  function fetchPage() {
-    const params = new URLSearchParams({ start: (page - 1) * perPage, length: perPage, q: search, order_col: orderCol, order_dir: orderDir });
-    fetch(`/perturbseq/api/tf-linked-genes/${encodeURIComponent(GENE)}?${params}`)
-      .then(r => r.json())
-      .then(resp => {
-        const tbody = document.getElementById('lg-tbody');
-        if (!tbody) return;
-        tbody.innerHTML = resp.data && resp.data.length
-          ? resp.data.map(r => {
-              const gLink = `<a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
-              let modLink = '';
-              if (r.supermodule || r.submodule) {
-                const mc = (window.MODULE_COLORS && window.MODULE_COLORS[r.supermodule]) || '#9098b8';
-                const superPill = r.supermodule
-                  ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
-                  : '';
-                const subPill = r.submodule
-                  ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
-                  : '';
-                modLink = superPill + subPill;
-              }
-              const srcs = (r.sources || []).map(srcBadge).join('');
-              let deCell;
-              if (r.signed_pct_rank == null) {
-                deCell = '<td style="color:var(--text-muted);font-size:12px">—</td>';
-              } else {
-                const signed   = r.signed_pct_rank;
-                const isUp     = signed >= 0.95;
-                const barColor = isUp ? '#ec4899' : '#3b82f6';
-                const label    = isUp ? 'upregulated' : 'downregulated';
-                const tailPct  = isUp ? Math.round((1 - signed) * 100) : Math.round(signed * 100);
-                const tailStr  = tailPct === 0 ? '<1' : tailPct;
-                deCell = `<td>` +
-                  `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${barColor}22;color:${barColor};border:1px solid ${barColor}55;white-space:nowrap">` +
-                  `top ${tailStr}% ${label}</span></td>`;
-              }
-              const coef = r.mean_coef != null ? r.mean_coef : null;
-              const coefColor = coef == null ? 'var(--text-muted)' : (coef > 0 ? '#ec4899' : '#3b82f6');
-              const coefCell = coef == null
-                ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
-                : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
-              const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets} source${r.n_datasets !== 1 ? 's' : ''}</span></td>`;
-              const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
-              return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${dsCell}<td style="white-space:nowrap">${srcs}</td><td style="white-space:nowrap">${linkPill}</td></tr>`;
-            }).join('')
-          : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+  function rowHtml(r) {
+    const gLink = `<a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
+    let modLink = '';
+    if (r.supermodule || r.submodule) {
+      const mc = (window.MODULE_COLORS && window.MODULE_COLORS[r.supermodule]) || '#9098b8';
+      const superPill = r.supermodule
+        ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
+        : '';
+      const subPill = r.submodule
+        ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
+        : '';
+      modLink = superPill + subPill;
+    }
+    const srcs = (r.sources || []).map(srcBadge).join('');
+    let deCell;
+    if (r.signed_pct_rank == null) {
+      deCell = '<td style="color:var(--text-muted);font-size:12px">—</td>';
+    } else {
+      const signed   = r.signed_pct_rank;
+      const isUp     = signed >= 0.95;
+      const barColor = isUp ? '#ec4899' : '#3b82f6';
+      const label    = isUp ? 'upregulated' : 'downregulated';
+      const tailPct  = isUp ? Math.round((1 - signed) * 100) : Math.round(signed * 100);
+      const tailStr  = tailPct === 0 ? '<1' : tailPct;
+      deCell = `<td><span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${barColor}22;color:${barColor};border:1px solid ${barColor}55;white-space:nowrap">top ${tailStr}% ${label}</span></td>`;
+    }
+    const coef = r.mean_coef != null ? r.mean_coef : null;
+    const coefColor = coef == null ? 'var(--text-muted)' : (coef > 0 ? '#ec4899' : '#3b82f6');
+    const coefCell = coef == null
+      ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
+      : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
+    const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets} source${r.n_datasets !== 1 ? 's' : ''}</span></td>`;
+    const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
+    return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${dsCell}<td style="white-space:nowrap">${srcs}</td><td style="white-space:nowrap">${linkPill}</td></tr>`;
+  }
 
-        const total    = resp.total    || 0;
-        const filtered = resp.filtered || 0;
-        if (countEl && total > 0) countEl.textContent = `${total.toLocaleString()} genes`;
-        const topCount = document.getElementById('lg-top-count');
-        if (topCount && total > 0) topCount.textContent = `${total.toLocaleString()} genes`;
+  function getFiltered() {
+    if (!allData) return [];
+    const q = search.toLowerCase();
+    return allData.filter(r => {
+      if (filterDir === 'up'   && r.signed_pct_rank < 0.95) return false;
+      if (filterDir === 'down' && r.signed_pct_rank > 0.05) return false;
+      if (filterSrc && !(r.sources || []).includes(filterSrc)) return false;
+      if (q && !r.gene_name.toLowerCase().includes(q) &&
+               !(r.submodule   || '').toLowerCase().includes(q) &&
+               !(r.supermodule || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
 
-        const from = (page - 1) * perPage + 1;
-        const to   = Math.min(from + (resp.data ? resp.data.length : 0) - 1, filtered);
-        const info = document.getElementById('lg-info');
-        if (info) {
-          if (filtered < total) {
-            info.textContent = `Showing ${from}–${to} of ${filtered.toLocaleString()} (filtered from ${total.toLocaleString()})`;
-          } else {
-            info.textContent = `Showing ${from}–${to} of ${total.toLocaleString()} genes`;
-          }
-        }
-        renderPages(Math.ceil(filtered / perPage));
-      })
-      .catch(() => {
-        const tbody = document.getElementById('lg-tbody');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
-      });
+  function getSorted(rows) {
+    const dir = orderDir === 'desc' ? -1 : 1;
+    const keyFn = ({
+      0: r => (r.gene_name    || '').toLowerCase(),
+      1: r => (r.submodule    || r.supermodule || '').toLowerCase(),
+      2: r => r.n_datasets    || 0,
+      4: r => r.signed_pct_rank != null ? r.signed_pct_rank : 0.5,
+      5: r => r.mean_coef       != null ? r.mean_coef       : 0,
+    })[orderCol] || (r => r.signed_pct_rank != null ? r.signed_pct_rank : 0.5);
+    return [...rows].sort((a, b) => {
+      const av = keyFn(a), bv = keyFn(b);
+      return dir * (typeof av === 'string' ? av.localeCompare(bv) : av - bv);
+    });
+  }
+
+  function render() {
+    const filtered = getFiltered();
+    const sorted   = getSorted(filtered);
+    const total    = allData ? allData.length : 0;
+    const from     = (page - 1) * perPage;
+    const pageRows = sorted.slice(from, from + perPage);
+
+    const tbody = document.getElementById('lg-tbody');
+    if (tbody) {
+      tbody.innerHTML = pageRows.length
+        ? pageRows.map(rowHtml).join('')
+        : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+    }
+
+    const topCount = document.getElementById('lg-top-count');
+    if (topCount && total > 0) topCount.textContent = `${total.toLocaleString()} genes`;
+    if (countEl   && total > 0) countEl.textContent  = `${total.toLocaleString()} genes`;
+
+    const to   = Math.min(from + pageRows.length, filtered.length);
+    const info = document.getElementById('lg-info');
+    if (info) {
+      info.textContent = filtered.length < total
+        ? `Showing ${from + 1}–${to} of ${filtered.length.toLocaleString()} (filtered from ${total.toLocaleString()})`
+        : `Showing ${from + 1}–${to} of ${total.toLocaleString()} genes`;
+    }
+
+    renderPages(Math.ceil(filtered.length / perPage));
   }
 
   function renderPages(totalPages) {
@@ -1943,29 +1983,47 @@ requestAnimationFrame(() => {
     add('»', totalPages, false, page === totalPages);
     el.innerHTML = btns.join('');
     el.querySelectorAll('.sst-page-btn:not([disabled])').forEach(btn =>
-      btn.addEventListener('click', () => { page = +btn.dataset.p; fetchPage(); }));
+      btn.addEventListener('click', () => { page = +btn.dataset.p; render(); }));
   }
 
   wrapEl.addEventListener('change', e => {
-    if (e.target.id === 'lg-per-page') { perPage = +e.target.value; page = 1; fetchPage(); }
+    if (e.target.id === 'lg-per-page') { perPage = +e.target.value; page = 1; render(); }
   });
   wrapEl.addEventListener('input', e => {
     if (e.target.id === 'lg-search') {
       clearTimeout(debounce);
-      debounce = setTimeout(() => { search = e.target.value.trim(); page = 1; fetchPage(); }, 300);
+      debounce = setTimeout(() => { search = e.target.value.trim(); page = 1; render(); }, 150);
     }
   });
   wrapEl.addEventListener('click', e => {
+    const dirBtn = e.target.closest('.lg-dir-btn');
+    if (dirBtn) {
+      filterDir = dirBtn.dataset.dir;
+      wrapEl.querySelectorAll('.lg-dir-btn').forEach(b => b.classList.toggle('active', b === dirBtn));
+      page = 1; render(); return;
+    }
+    const srcBtn = e.target.closest('.lg-src-btn');
+    if (srcBtn) {
+      filterSrc = srcBtn.dataset.src;
+      wrapEl.querySelectorAll('.lg-src-btn').forEach(b => b.classList.toggle('active', b === srcBtn));
+      page = 1; render(); return;
+    }
     const th = e.target.closest('th[data-col]');
     if (!th) return;
     const col = +th.dataset.col;
     if (col === orderCol) orderDir = orderDir === 'asc' ? 'desc' : 'asc';
     else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4 || col === 5) ? 'desc' : 'asc'; }
     wrapEl.querySelectorAll('th[data-col]').forEach(h => h.className = 'sst-sortable' + (h === th ? ` sst-${orderDir}` : ''));
-    page = 1; fetchPage();
+    page = 1; render();
   });
 
-  fetchPage();
+  fetch(`/perturbseq/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
+    .then(r => r.json())
+    .then(resp => { allData = resp.data || []; render(); })
+    .catch(() => {
+      const tbody = document.getElementById('lg-tbody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
+    });
 
   // ── Dataset tooltip (hoverable, clickable) ──────────────────────────────────
   const lgTip = document.createElement('div');
@@ -2075,6 +2133,38 @@ requestAnimationFrame(() => {
   });
   lgTip.addEventListener('mouseenter', () => clearTimeout(lgHideTimer));
   lgTip.addEventListener('mouseleave', () => schedulehide());
+
+  // ── Source-pill tooltip ─────────────────────────────────────────────────────
+  const lgSrcTip = document.createElement('div');
+  lgSrcTip.style.cssText = [
+    'display:none;position:fixed;z-index:401',
+    'background:var(--bg-card)',
+    'border:1px solid var(--border)',
+    'border-radius:10px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.18),0 1.5px 4px rgba(0,0,0,0.10)',
+    'padding:9px 13px',
+    'font-size:12px;line-height:1.5;color:var(--text)',
+    'max-width:280px',
+    'pointer-events:none',
+  ].join(';');
+  document.body.appendChild(lgSrcTip);
+
+  wrapEl.addEventListener('mouseover', e => {
+    const pill = e.target.closest('[data-src-tip]');
+    if (!pill) return;
+    lgSrcTip.textContent = pill.dataset.srcTip;
+    lgSrcTip.style.display = 'block';
+    const r = pill.getBoundingClientRect();
+    const tw = lgSrcTip.offsetWidth || 240, th = lgSrcTip.offsetHeight || 36;
+    let left = r.left, top = r.bottom + 6;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top + th > window.innerHeight - 8) top = r.top - th - 6;
+    lgSrcTip.style.left = Math.max(8, left) + 'px';
+    lgSrcTip.style.top  = Math.max(8, top)  + 'px';
+  });
+  wrapEl.addEventListener('mouseout', e => {
+    if (e.target.closest('[data-src-tip]')) lgSrcTip.style.display = 'none';
+  });
 })();
 
 // ── Regulatory elements bound by TF ─────────────────────────────────────────
