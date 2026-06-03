@@ -1880,11 +1880,25 @@ def _get_gene_coef(db, tf_name: str) -> dict:
 
 
 def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
-    """Return linked_by_type payload for rug plot.  Cached separately (slow for large TFs)."""
+    """Return linked_by_type payload for rug plot (only top/bottom 5% DE responders)."""
     if tf_name in _coef_rug_cache:
         return _coef_rug_cache[tf_name]
 
-    linked_rows = db.execute("""
+    empty = {'tss_proximal_1kb': [], 'tss_distal_10kb': [], 'distal_multiome': [], 'distal_multiome_hicar': []}
+    if not gene_coef:
+        return empty
+
+    coefs_sorted = sorted(gene_coef.items(), key=lambda kv: kv[1])
+    n = len(coefs_sorted)
+    lo_ids = {gid for gid, _ in coefs_sorted[:max(1, int(n * 0.05))]}
+    hi_ids = {gid for gid, _ in coefs_sorted[max(0, int(n * 0.95)):]}
+    extreme_ids = list(lo_ids | hi_ids)
+    if not extreme_ids:
+        _coef_rug_cache[tf_name] = empty
+        return empty
+    ex_ph = ','.join('?' * len(extreme_ids))
+
+    linked_rows = db.execute(f"""
         SELECT DISTINCT
             gr.gene_id,
             gt.gene_name,
@@ -1904,7 +1918,8 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
         JOIN gene_region_table gr  ON gr.gene_region_id = tgo.gene_region_id
         JOIN gene_table        gt  ON gt.gene_id        = gr.gene_id
         WHERE td.tf_gene_name = ?
-    """, (tf_name,)).fetchall()
+        AND gr.gene_id IN ({ex_ph})
+    """, (tf_name, *extreme_ids)).fetchall()
 
     buckets: dict = {
         'tss_proximal_1kb': {}, 'tss_distal_10kb': {},
@@ -1933,10 +1948,22 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
 def api_tf_coef_density(tf_name):
     """Fast endpoint — returns all-gene mean_coefs for KDE (~2s even for large TFs)."""
     db = get_db()
-    if not _tf_dataset_ids(db, tf_name):
-        return jsonify({'all_coefs': []})
+    ds_ids = _tf_dataset_ids(db, tf_name)
+    if not ds_ids:
+        return jsonify({'all_coefs': [], 'bound_coefs': []})
     gene_coef = _get_gene_coef(db, tf_name)
-    return jsonify({'all_coefs': list(gene_coef.values())})
+    ds_ph = ','.join('?' * len(ds_ids))
+    bound_rows = db.execute(
+        f"""SELECT DISTINCT tgl.gene_id, gt.gene_name
+            FROM tf_gene_links tgl
+            JOIN gene_table gt ON tgl.gene_id = gt.gene_id
+            WHERE tgl.dataset_id IN ({ds_ph})""",
+        ds_ids).fetchall()
+    bound_id_to_name = {r['gene_id']: r['gene_name'] for r in bound_rows}
+    bound_genes = [{'gene_name': bound_id_to_name[gid], 'coef': coef}
+                   for gid, coef in gene_coef.items()
+                   if gid in bound_id_to_name]
+    return jsonify({'all_coefs': list(gene_coef.values()), 'bound_genes': bound_genes})
 
 
 @perturbseq_bp.route("/api/tf/<tf_name>/coef-density/rug")
