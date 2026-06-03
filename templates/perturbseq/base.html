@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}TF–Module Network{% endblock %}</title>
+    <title>{% block title %}DE TF-PerturbSeq Browser{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/perturbseq.css') }}">
     <script>window.MODULE_COLORS = {{ module_colors | tojson }};</script>
     <script src="{{ url_for('static', filename='cytoscape.min.js') }}"></script>
@@ -15,7 +15,7 @@
 <body>
 <nav>
     <a href="/">← Home</a>
-    <a class="brand" href="{{ url_for('perturbseq.index') }}">TF–Module Network</a>
+    <a class="brand" href="{{ url_for('perturbseq.index') }}">DE TF-PerturbSeq Browser</a>
     <span class="nav-search-wrap">
         <input type="text" id="nav-search" placeholder="Search gene, TF, module or GO term…" autocomplete="off" spellcheck="false">
         <div class="nav-ac" id="nav-ac"></div>

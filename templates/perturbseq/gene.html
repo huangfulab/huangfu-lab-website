@@ -788,7 +788,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 
 <!-- ── Perturbation Effects (all genes) ───────────────────────────────── -->
 <hr class="section-divider" id="grna-coef-divider" style="display:none">
-<h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects <span class="section-count" id="grna-coef-count"></span></h2>
+<h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects</h2>
 <p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients across all gRNAs (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Highlighted rows are the top and bottom 5% most extreme gRNAs.</p>
 <div id="grna-coef-loading" style="display:none"><div class="dt-spinner"></div> Loading…</div>
 <div id="grna-coef-wrap" style="display:none"></div>
@@ -1052,11 +1052,12 @@ const cyInstances = {};
     placeFan(bindCl,  90, 100, 200)
   );
 
-  function makeClusterSparkSVG(sparkLine, sparkArea) {
+  function makeClusterSparkSVG(sparkLine, sparkArea, color) {
     if (!sparkLine || !sparkArea) return null;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="28" viewBox="0 0 88 28">` +
-      `<path d="${sparkArea}" fill="rgba(255,255,255,0.28)"/>` +
-      `<path d="${sparkLine}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+    const c = color || '#4a56b0';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="44" viewBox="0 0 88 28" preserveAspectRatio="none">` +
+      `<path d="${sparkArea}" fill="${c}" fill-opacity="0.18"/>` +
+      `<path d="${sparkLine}" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
       `</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
@@ -1064,7 +1065,7 @@ const cyInstances = {};
   const elements = [{ data:{ id:GENE, label:GENE, type:'tf' }, position:{x:0,y:0} }];
   TC_REG_CLUSTERS.forEach(r => {
     const cyDir = r.evidence === 'binding' ? 'bind' : (r.direction === 'Up' ? 'up' : 'down');
-    const sparkImg = makeClusterSparkSVG(r.spark_line, r.spark_area);
+    const sparkImg = makeClusterSparkSVG(r.spark_line, r.spark_area, r.color);
     elements.push({ data:{ id:r.cluster, label:r.label, type:'cluster', color:r.color, sparkImg }, position:positions[r.cluster]||{x:0,y:0} });
     elements.push({ data:{ id:`e_${r.cluster}`, source:GENE, target:r.cluster, direction:cyDir, evidence:r.evidence } });
   });
@@ -1075,7 +1076,7 @@ const cyInstances = {};
     minZoom: 0.2, wheelSensitivity: 0.25,
     style: [
       { selector:'node[type="tf"]',      style:{ 'background-color':CARD_COLOR, 'label':'data(label)', 'font-size':'12px', 'color':'#1e2448', 'text-valign':'bottom', 'text-margin-y':5, 'width':50, 'height':50, 'shape':'round-rectangle', 'border-width':1, 'border-color':'rgba(0,0,0,0.15)' }},
-      { selector:'node[type="cluster"]', style:{ 'background-color':'data(color)', 'background-image':'data(sparkImg)', 'background-width':'88px', 'background-height':'28px', 'background-position-x':'50%', 'background-position-y':'88%', 'background-clip':'node', 'label':'data(label)', 'font-size':'11px', 'font-weight':'600', 'color':'#fff', 'text-valign':'top', 'text-halign':'center', 'text-margin-y':7, 'width':100, 'height':56, 'shape':'round-rectangle', 'border-width':2, 'border-color':'rgba(0,0,0,0.15)' }},
+      { selector:'node[type="cluster"]', style:{ 'background-color':'#ffffff', 'background-image':'data(sparkImg)', 'background-width':'100%', 'background-height':'100%', 'background-position-x':'50%', 'background-position-y':'50%', 'background-clip':'node', 'label':'data(label)', 'font-size':'11px', 'font-weight':'600', 'color':'#1e2448', 'text-valign':'bottom', 'text-halign':'center', 'text-margin-y':4, 'width':100, 'height':44, 'shape':'round-rectangle', 'border-width':2, 'border-color':'data(color)' }},
       ...TFNetwork.EDGE_STYLES_FULL,
     ],
     layout: { name:'preset', animate:false }
@@ -2382,7 +2383,6 @@ requestAnimationFrame(() => {
 (function () {
   const loadingEl = document.getElementById('grna-coef-loading');
   const wrapEl    = document.getElementById('grna-coef-wrap');
-  const countEl   = document.getElementById('grna-coef-count');
   const divider   = document.getElementById('grna-coef-divider');
   const heading   = document.getElementById('sec-grna-coefs');
   const desc      = document.getElementById('grna-coef-desc');
@@ -2523,7 +2523,8 @@ requestAnimationFrame(() => {
     const n    = vals.length;
     const RUG  = 10;
     const margin = { top: 42, right: 20, bottom: 48, left: 20 };
-    const fullW  = Math.max(container.clientWidth || 500, 300);
+    const _pageMain = document.querySelector('.page-main') || document.body;
+    const fullW  = Math.max((_pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
     const W = fullW - margin.left - margin.right;
     const H = 150;
     const totalH = H + RUG + 6;
@@ -2707,6 +2708,14 @@ requestAnimationFrame(() => {
       .attr('stroke-width', 1.8)
       .attr('opacity', d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35)
       .attr('stroke-linecap', 'round')
+      .attr('pointer-events', 'none');
+
+    // Wide transparent hit targets for easier hovering
+    const rugHits = clipG.selectAll('line.rug-hit').data(coefs).join('line')
+      .attr('class', 'rug-hit')
+      .attr('y1', rugY).attr('y2', rugY + RUG)
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', 7)
       .style('cursor', 'pointer');
 
     // ── geom_label_repel for top/bottom 3 ────────────────────────────────────
@@ -2884,7 +2893,7 @@ requestAnimationFrame(() => {
     rugTip.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:11px;font-family:"SF Mono","Fira Code",monospace;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap';
     document.body.appendChild(rugTip);
 
-    rugTicks
+    rugHits
       .on('mouseover', function(event, d) {
         const color = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
         rugTip.innerHTML = `<span style="color:${color};font-weight:600">${d.grna_name}</span> <span style="color:var(--text-muted)">${d.coef > 0 ? '+' : ''}${d.coef.toFixed(3)}</span>`;
@@ -2916,6 +2925,7 @@ requestAnimationFrame(() => {
       hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
 
       rugTicks.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+      rugHits.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
 
       drawRepelLabels(xsc);
       if (onTargetVisible) drawOnTargetLabels(xsc);
@@ -2998,7 +3008,6 @@ requestAnimationFrame(() => {
       if (!coefs.length) return;
 
       show(divider); show(heading); show(desc); show(navLink);
-      if (countEl) countEl.textContent = `${coefs.length} gRNAs`;
 
       const highlighted = coefs.filter(d => d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05);
 
