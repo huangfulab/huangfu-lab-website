@@ -326,11 +326,11 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     {% if reg_elements or reg_tfs %}
     <span class="sidebar-role sidebar-role--target">{{ gene }} as a Regulated Gene</span>
     {% endif %}
-    {% if reg_elements %}
-    <a href="#sec-reg-elements" class="sidebar-link indented">Elements linked to {{ gene }}</a>
-    {% endif %}
     {% if reg_tfs %}
     <a href="#sec-reg-tfs" class="sidebar-link indented">TFs regulating {{ gene }}</a>
+    {% endif %}
+    {% if reg_elements %}
+    <a href="#sec-reg-elements" class="sidebar-link indented">Elements linked to {{ gene }}</a>
     {% endif %}
     {% if gene_locus %}
     <a href="#sec-genome-browser" class="sidebar-link">Genome Browser</a>
@@ -602,57 +602,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 {% endif %}
 
-<!-- ── Regulatory elements ─────────────────────────────────────────────── -->
-{% if reg_elements %}
-<h2 class="section-h2" id="sec-reg-elements">Elements linked to {{ gene }}</h2>
-<p class="section-desc">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
-<div style="overflow-x:auto">
-<table class="data-table" id="reg-el-table">
-  <thead><tr>
-    <th class="sortable" style="width:106px;min-width:106px;cursor:pointer" title="Sort by temporal opening (Pearson r with timepoint index)">Accessibility</th>
-    <th class="sortable" data-key="coord"      data-type="string">Element</th>
-    <th class="sortable" data-key="tss_dist"   data-type="number" title="Distance from element to nearest TSS">Dist. to TSS</th>
-    <th class="sortable" data-key="link_type"  data-type="string">Link type</th>
-    <th class="sortable" data-key="n_tfs"      data-type="number">TFs</th>
-  </tr></thead>
-
-  <tbody>
-  {% for el in reg_elements %}
-  <tr data-tss_dist="{{ el.tss_dist if el.tss_dist is not none else 9999999 }}"
-      data-coord="{{ el.chr }}:{{ el.start }}-{{ el.end }}"
-      data-size="{{ el.end - el.start }}"
-      data-link_type="{{ el.link_type }}"
-      data-n_tfs="{{ el.n_tfs }}">
-    <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
-    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
-           style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"
-           >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
-    <td>{{ el.tss_dist_label if el.tss_dist_label else '—' }}</td>
-    <td style="white-space:nowrap">
-      {% if el.tss_dist is not none and el.tss_dist == 0 %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)">At TSS</span>
-      {% elif (el.tss_dist is not none and el.tss_dist <= 10000) or el.link_type in ['tss_proximal_1kb', 'tss_distal_10kb'] %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)">Proximal (&lt;10kb)</span>
-      {% else %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#6b7280;border-color:#d1d5db;background:rgba(107,114,128,0.06)">Distal (&gt;10kb)</span>
-      {% endif %}
-      {% if el.link_type in ['distal_multiome', 'distal_multiome_hicar'] %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)">Multiome</span>
-      {% endif %}
-      {% if el.link_type == 'distal_multiome_hicar' %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)">HiCAR</span>
-      {% endif %}
-    </td>
-    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}#tf-binding-panel"
-           style="font-weight:600;color:var(--accent);text-decoration:none">{{ el.n_tfs }}</a></td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
-<div id="reg-el-pag" class="table-pag" style="display:none"></div>
-{% endif %}
-
 <!-- ── TFs bound to regulatory elements ──────────────────────────────────── -->
 {% if reg_tfs %}
 {% set lt_styles = {
@@ -667,8 +616,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   'distal_multiome':       'Multiome',
   'distal_multiome_hicar': 'HiCAR',
 } %}
-<hr class="section-divider">
-<h2 class="section-h2" id="sec-reg-tfs">TFs regulating {{ gene }} <span class="section-count" id="reg-tf-count">{{ reg_tfs | length }} TF{{ 's' if reg_tfs | length != 1 else '' }}{% if reg_tfs | length == 200 %} (top 200){% endif %}</span></h2>
+<h2 class="section-h2" id="sec-reg-tfs">TFs regulating {{ gene }} <span class="section-count" id="reg-tf-count">{{ reg_tfs | length }} TF{{ 's' if reg_tfs | length != 1 else '' }}</span></h2>
 <p class="section-desc">Transcription factors with ChIP-seq or motif footprint binding peaks overlapping open chromatin elements linked to <strong>{{ gene }}</strong>. The <strong>Mean coef</strong> column shows the average Perturb-seq regression coefficient across all gRNAs for that TF (positive = {{ gene }} upregulated upon KD; negative = downregulated).</p>
 <div id="grna-coef-loading" style="display:none;margin-bottom:10px"><div class="dt-spinner" style="display:inline-block;vertical-align:middle;margin-right:6px"></div><span style="font-size:12px;color:var(--text-muted)">Loading perturbation data…</span></div>
 <div id="grna-coef-wrap" style="display:none;margin-bottom:20px"></div>
@@ -768,6 +716,57 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 </div>
 {% endif %}
 
+<!-- ── Regulatory elements ─────────────────────────────────────────────── -->
+{% if reg_elements %}
+<hr class="section-divider">
+<h2 class="section-h2" id="sec-reg-elements">Elements linked to {{ gene }}</h2>
+<p class="section-desc">Open chromatin peaks (ATAC-seq) in the genomic neighbourhood of <strong>{{ gene }}</strong>, linked by TSS proximity or chromatin conformation (Multiome / HiCAR). Each element overlaps at least one TF ChIP-seq binding site — the <strong>TFs</strong> column shows how many distinct TFs bind that element.</p>
+<div style="overflow-x:auto">
+<table class="data-table" id="reg-el-table">
+  <thead><tr>
+    <th class="sortable" style="width:106px;min-width:106px;cursor:pointer" title="Sort by temporal opening (Pearson r with timepoint index)">Accessibility</th>
+    <th class="sortable" data-key="coord"      data-type="string">Element</th>
+    <th class="sortable" data-key="tss_dist"   data-type="number" title="Distance from element to nearest TSS">Dist. to TSS</th>
+    <th class="sortable" data-key="link_type"  data-type="string">Link type</th>
+    <th class="sortable" data-key="n_tfs"      data-type="number">TFs</th>
+  </tr></thead>
+
+  <tbody>
+  {% for el in reg_elements %}
+  <tr data-tss_dist="{{ el.tss_dist if el.tss_dist is not none else 9999999 }}"
+      data-coord="{{ el.chr }}:{{ el.start }}-{{ el.end }}"
+      data-size="{{ el.end - el.start }}"
+      data-link_type="{{ el.link_type }}"
+      data-n_tfs="{{ el.n_tfs }}">
+    <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
+    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
+           style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"
+           >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
+    <td>{{ el.tss_dist_label if el.tss_dist_label else '—' }}</td>
+    <td style="white-space:nowrap">
+      {% if el.tss_dist is not none and el.tss_dist == 0 %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)">At TSS</span>
+      {% elif (el.tss_dist is not none and el.tss_dist <= 10000) or el.link_type in ['tss_proximal_1kb', 'tss_distal_10kb'] %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)">Proximal (&lt;10kb)</span>
+      {% else %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#6b7280;border-color:#d1d5db;background:rgba(107,114,128,0.06)">Distal (&gt;10kb)</span>
+      {% endif %}
+      {% if el.link_type in ['distal_multiome', 'distal_multiome_hicar'] %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)">Multiome</span>
+      {% endif %}
+      {% if el.link_type == 'distal_multiome_hicar' %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)">HiCAR</span>
+      {% endif %}
+    </td>
+    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}#tf-binding-panel"
+           style="font-weight:600;color:var(--accent);text-decoration:none">{{ el.n_tfs }}</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div id="reg-el-pag" class="table-pag" style="display:none"></div>
+{% endif %}
 
 {% if gene_locus %}
 <!-- ── Gene locus RNA-seq browser ───────────────────────────────────────── -->
@@ -1547,10 +1546,9 @@ requestAnimationFrame(() => {
 
     if (countEl) {
       const total = allRows.length;
-      const suffix = total === 200 ? ' (top 200)' : '';
       countEl.textContent = filtered.length === total
-        ? `${total} TF${total !== 1 ? 's' : ''}${suffix}`
-        : `${filtered.length} of ${total} TF${total !== 1 ? 's' : ''}${suffix}`;
+        ? `${total} TF${total !== 1 ? 's' : ''}`
+        : `${filtered.length} of ${total} TF${total !== 1 ? 's' : ''}`;
     }
     if (infoEl) {
       const end = Math.min(start + perPage, filtered.length);
@@ -1844,9 +1842,9 @@ requestAnimationFrame(() => {
           <th class="sst-sortable" data-col="1">Module</th>
           <th class="sst-sortable sst-asc" data-col="4" title="How extreme this gene's response to TF knockdown is, within the top/bottom 5% of DE responders">KD Effect</th>
           <th class="sst-sortable" data-col="5" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Computed as the average per-gRNA log-fold-change effect on this gene's expression. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
-          <th class="sst-sortable" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene"># Datasets</th>
+          <th class="sst-sortable" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene">Binding support</th>
           <th title="ChIP-seq and motif footprint data sources">Sources</th>
-          <th></th>
+          <th>TF→Gene link</th>
         </tr></thead>
         <tbody id="lg-tbody"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
       </table>
@@ -1899,8 +1897,8 @@ requestAnimationFrame(() => {
               const coefCell = coef == null
                 ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
                 : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
-              const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets}</span></td>`;
-              const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">View link ›</a>`;
+              const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets} source${r.n_datasets !== 1 ? 's' : ''}</span></td>`;
+              const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
               return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${dsCell}<td style="white-space:nowrap">${srcs}</td><td style="white-space:nowrap">${linkPill}</td></tr>`;
             }).join('')
           : `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
