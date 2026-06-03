@@ -129,12 +129,12 @@ def resolve_gene(db, name: str) -> dict | None:
     Used as the entry point for all new-schema gene lookups.
     """
     row = db.execute(
-        'SELECT gene_id, gene_name, chr, start, "end" FROM gene_table WHERE gene_name=? LIMIT 1',
+        'SELECT gene_id, gene_name, chr, "start", "end" FROM gene_table WHERE gene_name=? LIMIT 1',
         (name,)
     ).fetchone()
     if not row:
         row = db.execute(
-            'SELECT g.gene_id, g.gene_name, g.chr, g.start, g."end" '
+            'SELECT g.gene_id, g.gene_name, g.chr, g."start", g."end" '
             'FROM gene_synonym s JOIN gene_table g USING(gene_id) WHERE s.synonym=? LIMIT 1',
             (name,)
         ).fetchone()
@@ -1150,7 +1150,7 @@ def _query_tf_elements(db, tf_name: str) -> list:
     ds_ph = ','.join('?' * len(ds_ids))
     rows = db.execute(f"""
         SELECT DISTINCT
-            ap.atac_peak_id, ap.chr, ap.start, ap.end,
+            ap.atac_peak_id, ap.chr, ap."start", ap."end",
             gt.gene_name
         FROM tf_peaks          tp
         JOIN atac_tf_overlaps  ato ON tp.peak_id         = ato.peak_id
@@ -1159,7 +1159,7 @@ def _query_tf_elements(db, tf_name: str) -> list:
         JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
         JOIN gene_table             gt  ON gr.gene_id         = gt.gene_id
         WHERE tp.dataset_id IN ({ds_ph})
-        ORDER BY ap.chr, ap.start, gt.gene_name
+        ORDER BY ap.chr, ap."start", gt.gene_name
     """, ds_ids).fetchall()
     elements: dict = {}
     for r in rows:
@@ -1387,9 +1387,9 @@ def gene_page(gene_name):
     reg_tfs          = _query_gene_reg_tfs(db, gene_id) if reg_elements else []
     tf_element_count = _count_tf_elements(db, gene_name) if is_tf else 0
     _locus_row = db.execute(
-        "SELECT chr, MIN(start) AS locus_start, MAX(end) AS locus_end "
+        'SELECT chr, MIN("start") AS locus_start, MAX("end") AS locus_end '
         "FROM gene_region_table WHERE gene_id=? AND gene_region_subtype IN ('proximal','distal') "
-        "GROUP BY chr ORDER BY (MAX(end)-MIN(start)) DESC LIMIT 1",
+        'GROUP BY chr ORDER BY (MAX("end")-MIN("start")) DESC LIMIT 1',
         (gene_id,)).fetchone()
     gene_locus = dict(_locus_row) if _locus_row else None
     if gene_locus:
@@ -1456,10 +1456,10 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
     """Paginated + filtered TF elements."""
     safe_dir = 'DESC' if order_dir.upper() == 'DESC' else 'ASC'
     order_map = {
-        0: f'ap.chr {safe_dir}, ap.start {safe_dir}',
-        1: f'(ap.end - ap.start) {safe_dir}',
+        0: f'ap.chr {safe_dir}, ap."start" {safe_dir}',
+        1: f'(ap."end" - ap."start") {safe_dir}',
     }
-    order_by = order_map.get(order_col, f'ap.chr {safe_dir}, ap.start {safe_dir}')
+    order_by = order_map.get(order_col, f'ap.chr {safe_dir}, ap."start" {safe_dir}')
 
     # Pre-fetch dataset_ids once — used for all subsequent queries
     ds_ids = _tf_dataset_ids(db, tf_name)
@@ -1486,7 +1486,7 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
         ).fetchone()
         filtered_count = count_row[0] if count_row else 0
         rows = db.execute(f"""
-            SELECT ap.atac_peak_id, ap.chr, ap.start, ap.end,
+            SELECT ap.atac_peak_id, ap.chr, ap."start", ap."end",
                    GROUP_CONCAT(DISTINCT gt.gene_name) AS genes_str
             {base_from}
             ORDER BY {order_by}
@@ -1519,7 +1519,7 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
     order_clause   = f"ORDER BY {explicit_order}" if explicit_order else ""
 
     page_rows = db.execute(f"""
-        SELECT DISTINCT ap.atac_peak_id, ap.chr, ap.start, ap.end
+        SELECT DISTINCT ap.atac_peak_id, ap.chr, ap."start", ap."end"
         FROM tf_peaks          tp
         JOIN atac_tf_overlaps  ato ON tp.peak_id       = ato.peak_id
         JOIN atac_peak_table        ap  ON ato.atac_peak_id = ap.atac_peak_id
@@ -2158,11 +2158,11 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
         return []
     rows = db.execute("""
         SELECT
-            ap.atac_peak_id, ap.chr, ap.start, ap.end,
+            ap.atac_peak_id, ap.chr, ap."start", ap."end",
             tp.source  AS peak_source,
             td.dataset_id, td.dataset, td.cell_type,
             gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.start AS gr_start, gr.end AS gr_end
+            gr."start" AS gr_start, gr."end" AS gr_end
         FROM tf_dataset_table td
         JOIN tf_peaks          tp  ON td.dataset_id      = tp.dataset_id
         JOIN tf_gene_overlaps  tgo ON tp.peak_id         = tgo.peak_id
@@ -2242,7 +2242,7 @@ def _query_tf_binding_peaks(db, tf: str, gene: str) -> list:
         return []
     rows = db.execute("""
         SELECT DISTINCT
-            tp.chr, tp.start, tp.end, tp.tf_peak_name,
+            tp.chr, tp."start", tp."end", tp.tf_peak_name,
             tp.source, td.dataset, td.cell_type, td.dataset_id
         FROM tf_dataset_table td
         JOIN tf_peaks          tp  ON td.dataset_id      = tp.dataset_id
@@ -2269,7 +2269,7 @@ def _query_element_tfs(db, atac_peak_id: int) -> list:
         SELECT DISTINCT
             td.tf_gene_name, td.dataset_id, td.cell_type, td.source AS ds_source,
             td.dataset, tp.source AS peak_source,
-            tp.chr, tp.start AS tf_start, tp.end AS tf_end,
+            tp.chr, tp."start" AS tf_start, tp."end" AS tf_end,
             ato.overlap_bp
         FROM atac_tf_overlaps ato
         JOIN tf_peaks    tp ON ato.peak_id    = tp.peak_id
@@ -2299,15 +2299,15 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
     rows = db.execute("""
         SELECT DISTINCT
             gtt.gene_name, gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.chr AS gr_chr, gr.start AS gr_start, gr.end AS gr_end,
+            gr.chr AS gr_chr, gr."start" AS gr_start, gr."end" AS gr_end,
             td.tf_gene_name,
-            (ap.start + ap.end) / 2 AS peak_mid,
+            (ap."start" + ap."end") / 2 AS peak_mid,
             (
-                SELECT (tss.start + tss.end) / 2
+                SELECT (tss."start" + tss."end") / 2
                 FROM gene_region_table tss
                 WHERE tss.gene_id = gr.gene_id
                   AND tss.gene_region_subtype = 'proximal'
-                ORDER BY ABS((tss.start + tss.end) / 2 - (ap.start + ap.end) / 2)
+                ORDER BY ABS((tss."start" + tss."end") / 2 - (ap."start" + ap."end") / 2)
                 LIMIT 1
             ) AS tss
         FROM atac_tf_overlaps  ato
@@ -2445,16 +2445,16 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
     # lets SQLite's hash early-terminate once it has seen each unique atac_peak_id).
     rows = db.execute("""
         SELECT DISTINCT
-            ap.atac_peak_id, ap.chr, ap.start, ap.end,
+            ap.atac_peak_id, ap.chr, ap."start", ap."end",
             gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.start AS gr_start, gr.end AS gr_end
+            gr."start" AS gr_start, gr."end" AS gr_end
         FROM gene_region_table      gr
         JOIN tf_gene_overlaps  tgo ON gr.gene_region_id = tgo.gene_region_id
         JOIN tf_peaks          tp  ON tgo.peak_id       = tp.peak_id
         JOIN atac_tf_overlaps  ato ON tp.peak_id        = ato.peak_id
         JOIN atac_peak_table        ap  ON ato.atac_peak_id  = ap.atac_peak_id
         WHERE gr.gene_id = ?
-        ORDER BY ap.chr, ap.start
+        ORDER BY ap.chr, ap."start"
     """, (gene_id,)).fetchall()
 
     if not rows:
@@ -2790,7 +2790,7 @@ def _build_element_description(peak: dict, genes: list, tfs: list) -> str:
 def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
     """Return TF-mediated link details for a specific (element, gene) pair."""
     peak_row = db.execute(
-        "SELECT atac_peak_id, chr, start, end FROM atac_peak_table WHERE atac_peak_id=?",
+        'SELECT atac_peak_id, chr, "start", "end" FROM atac_peak_table WHERE atac_peak_id=?',
         (atac_peak_id,)
     ).fetchone()
     if peak_row is None:
@@ -2809,7 +2809,7 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
             td.dataset_id, td.cell_type, td.dataset,
             tp.source AS peak_source,
             gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.start AS gr_start, gr.end AS gr_end,
+            gr."start" AS gr_start, gr."end" AS gr_end,
             ato.overlap_bp
         FROM atac_tf_overlaps  ato
         JOIN tf_peaks          tp  ON ato.peak_id          = tp.peak_id
@@ -2882,7 +2882,7 @@ def element_gene_link_page(atac_peak_id, gene):
 def element_page(atac_peak_id):
     db = get_db()
     row = db.execute(
-        "SELECT atac_peak_id, chr, start, end, atac_peak_name FROM atac_peak_table WHERE atac_peak_id=?",
+        'SELECT atac_peak_id, chr, "start", "end", atac_peak_name FROM atac_peak_table WHERE atac_peak_id=?',
         (atac_peak_id,)
     ).fetchone()
     if row is None:
@@ -2912,10 +2912,10 @@ def element_page(atac_peak_id):
     # Nearby ATAC peaks for the "other elements" IGV track (±500 kb window)
     mid = (peak["start"] + peak["end"]) // 2
     nearby_rows = db.execute(
-        """SELECT chr, start, end, atac_peak_name
+        """SELECT chr, "start", "end", atac_peak_name
            FROM atac_peak_table
-           WHERE chr = ? AND start >= ? AND end <= ? AND atac_peak_id != ?
-           ORDER BY start""",
+           WHERE chr = ? AND "start" >= ? AND "end" <= ? AND atac_peak_id != ?
+           ORDER BY "start\"""",
         (str(peak["chr"]).lstrip("chr"), mid - 500000, mid + 500000, atac_peak_id)
     ).fetchall()
     nearby_peaks = [
@@ -3015,7 +3015,7 @@ def dataset_page(dataset_id):
         (dataset_id,)))
 
     element_rows = rows_to_dicts(db.execute("""
-        SELECT ap.atac_peak_id, ap.chr, ap.start, ap.end,
+        SELECT ap.atac_peak_id, ap.chr, ap."start", ap."end",
                MAX(ato.overlap_bp) AS overlap_bp,
                COUNT(DISTINCT tgo.gene_region_id) AS gene_count
         FROM atac_tf_overlaps ato
@@ -3024,7 +3024,7 @@ def dataset_page(dataset_id):
         LEFT JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
         WHERE tp.dataset_id=?
         GROUP BY ap.atac_peak_id
-        ORDER BY ap.chr, ap.start
+        ORDER BY ap.chr, ap."start"
     """, (dataset_id,)))
     for r in element_rows:
         r["chr"] = _norm_chr(str(r["chr"]))
