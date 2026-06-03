@@ -2154,7 +2154,7 @@ def api_gene_grna_coefs(gene_name):
         return jsonify({'coefs': []})
 
     rows = db.execute("""
-        SELECT gr.gene_name AS tf_name, gr.grna_name, dr.coef,
+        SELECT gr.gene_name AS tf_name, gr.grna_name, gr.active, dr.coef,
                PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank
         FROM de_results dr
         JOIN grna_table gr ON dr.grna_id = gr.grna_id
@@ -2163,7 +2163,7 @@ def api_gene_grna_coefs(gene_name):
     """, (gene_row['gene_id'],)).fetchall()
 
     return jsonify({'coefs': [
-        {'tf_name': r['tf_name'], 'grna_name': r['grna_name'],
+        {'tf_name': r['tf_name'], 'grna_name': r['grna_name'], 'active': r['active'],
          'coef': r['coef'], 'signed_pct_rank': r['signed_pct_rank']}
         for r in rows
     ]})

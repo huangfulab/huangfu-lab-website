@@ -316,14 +316,15 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <button class="sidebar-toggle" aria-label="Toggle sidebar"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8,2 4,6 8,10"/></svg></button>
   </div>
   <nav class="sidebar-nav">
+    <span class="sidebar-role" style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0">{{ gene }}</span>
     <a href="#sec-overview" class="sidebar-link">Overview</a>
     {% if is_tf %}
-    <span class="sidebar-role sidebar-role--regulator">As a Regulator</span>
+    <span class="sidebar-role sidebar-role--regulator">{{ gene }} as a Regulator</span>
     <a href="#sec-regulated-modules" class="sidebar-link indented">Regulated Modules</a>
     <a href="#sec-linked-genes" class="sidebar-link indented">Target Genes</a>
     <a href="#sec-tf-elements" class="sidebar-link indented">Bound Elements</a>
     {% if reg_elements or reg_tfs %}
-    <span class="sidebar-role sidebar-role--target">As a Regulated Gene</span>
+    <span class="sidebar-role sidebar-role--target">{{ gene }} as a Regulated Gene</span>
     {% endif %}
     {% endif %}
     {% if reg_elements %}
@@ -789,7 +790,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 <!-- ── Perturbation Effects (all genes) ───────────────────────────────── -->
 <hr class="section-divider" id="grna-coef-divider" style="display:none">
 <h2 class="section-h2" id="sec-grna-coefs" style="display:none">Perturbation Effects</h2>
-<p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients across all gRNAs (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Highlighted rows are the top and bottom 5% most extreme gRNAs.</p>
+<p class="section-desc" id="grna-coef-desc" style="display:none">Distribution of Perturb-seq regression coefficients (from all TF knockdown experiments) on <strong>{{ gene }}</strong>'s expression. Positive = upregulated upon knockdown; negative = downregulated. Switch between gRNA-level (all guides) and gene-level (mean per TF).</p>
 <div id="grna-coef-loading" style="display:none"><div class="dt-spinner"></div> Loading…</div>
 <div id="grna-coef-wrap" style="display:none"></div>
 
@@ -2407,7 +2408,10 @@ requestAnimationFrame(() => {
   }
 
   // Sortable table — re-renders tbody in place on header click
-  function renderSortableTable(rows, container, showEffect) {
+  function renderSortableTable(rows, container, opts) {
+    opts = typeof opts === 'boolean' ? { showEffect: opts } : (opts || {});
+    const showEffect  = !!opts.showEffect;
+    const isGeneLevel = !!opts.isGeneLevel;
     let sortCol = 'coef', sortDir = 1, page = 1, perPage = 25, query = '';
 
     function getFiltered() {
@@ -2446,19 +2450,32 @@ requestAnimationFrame(() => {
       if (page > totalPages) page = totalPages;
       const pageRows = filtered.slice((page - 1) * perPage, page * perPage);
 
-      const colDef = [
-        { key: 'tf_name',   label: 'TF' },
-        { key: 'grna_name', label: 'gRNA' },
-        { key: 'coef',      label: 'Coefficient' },
-        ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
-      ];
+      const noun = isGeneLevel ? 'TF genes' : 'gRNAs';
+      const colDef = isGeneLevel
+        ? [
+            { key: 'tf_name',  label: 'TF' },
+            { key: 'coef',     label: 'Mean Coef' },
+            ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
+            { key: 'n_grnas',  label: '# gRNAs' },
+          ]
+        : [
+            { key: 'tf_name',   label: 'TF' },
+            { key: 'grna_name', label: 'gRNA' },
+            { key: 'coef',      label: 'Coefficient' },
+            ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
+          ];
 
       const ths = colDef.map(c => {
         const sortable = c.key !== '_effect';
         return `<th${sortable ? ` class="sst-sortable${c.key === sortCol ? (sortDir > 0 ? ' sst-asc' : ' sst-desc') : ''}" data-grna-col="${c.key}"` : ''}>${c.label}</th>`;
       }).join('');
 
-      const trs = pageRows.map(d => `<tr>
+      const trs = pageRows.map(d => isGeneLevel ? `<tr>
+        <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
+        <td>${coefSpan(d.coef)}</td>
+        ${showEffect ? `<td>${effectPill(d)}</td>` : ''}
+        <td style="color:var(--text-muted);font-size:11px">${d.n_grnas}</td>
+      </tr>` : `<tr>
         <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
         <td style="font-family:'SF Mono','Fira Code',monospace;font-size:11px">${d.grna_name}</td>
         <td>${coefSpan(d.coef)}</td>
@@ -2468,19 +2485,19 @@ requestAnimationFrame(() => {
       const start = filtered.length ? (page - 1) * perPage + 1 : 0;
       const end   = Math.min(page * perPage, filtered.length);
       const info  = filtered.length
-        ? `${start}–${end} of ${filtered.length}${query ? ' matching' : ''} gRNAs`
-        : 'No matching gRNAs';
+        ? `${start}–${end} of ${filtered.length}${query ? ' matching' : ''} ${noun}`
+        : `No matching ${noun}`;
 
       container.innerHTML = `
         <div class="sst-bar top">
           <label>Show <select class="sst-select">
             ${[10, 25, 50, 100].map(n => `<option${n === perPage ? ' selected' : ''}>${n}</option>`).join('')}
           </select> entries</label>
-          <input class="sst-search" type="text" placeholder="Search TF or gRNA…" value="${query.replace(/"/g, '&quot;')}" autocomplete="off">
+          <input class="sst-search" type="text" placeholder="Search TF${isGeneLevel ? '' : ' or gRNA'}…" value="${query.replace(/"/g, '&quot;')}" autocomplete="off">
         </div>
         <div style="overflow-x:auto"><table class="data-table">
           <thead><tr>${ths}</tr></thead>
-          <tbody>${trs || `<tr><td colspan="${colDef.length}" style="text-align:center;color:var(--text-muted);padding:20px">No matching gRNAs</td></tr>`}</tbody>
+          <tbody>${trs || `<tr><td colspan="${colDef.length}" style="text-align:center;color:var(--text-muted);padding:20px">No matching ${noun}</td></tr>`}</tbody>
         </table></div>
         <div class="sst-bar bottom">
           <span>${info}</span>
@@ -2517,8 +2534,13 @@ requestAnimationFrame(() => {
     doRender();
   }
 
+  let _densityIdSeq = 0;
+
   // Density plot using Epanechnikov KDE + Silverman bandwidth, with hoverable rug
-  function renderDensity(coefs, container) {
+  function renderDensity(coefs, container, opts) {
+    opts = opts || {};
+    const isGeneLevel = !!opts.isGeneLevel;
+    const _uid = ++_densityIdSeq;
     const vals = coefs.map(d => d.coef);
     const n    = vals.length;
     const RUG  = 10;
@@ -2670,12 +2692,12 @@ requestAnimationFrame(() => {
     const defs = svg.append('defs');
 
     // Clip path that keeps chart content inside the plot area
-    defs.append('clipPath').attr('id', 'grna-chart-clip').append('rect')
+    defs.append('clipPath').attr('id', `grna-chart-clip-${_uid}`).append('rect')
       .attr('x', 0).attr('y', -2).attr('width', W).attr('height', H + RUG + 10);
 
     // Updateable tail-shade clip rects
-    const loClipRect = defs.append('clipPath').attr('id', 'grna-clip-lo').append('rect').attr('y', 0).attr('height', H);
-    const hiClipRect = defs.append('clipPath').attr('id', 'grna-clip-hi').append('rect').attr('y', 0).attr('height', H);
+    const loClipRect = defs.append('clipPath').attr('id', `grna-clip-lo-${_uid}`).append('rect').attr('y', 0).attr('height', H);
+    const hiClipRect = defs.append('clipPath').attr('id', `grna-clip-hi-${_uid}`).append('rect').attr('y', 0).attr('height', H);
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -2684,11 +2706,11 @@ requestAnimationFrame(() => {
       .attr('fill', 'none').attr('pointer-events', 'all');
 
     // Inner group — clipped; all zoom-affected elements go here
-    const clipG = g.append('g').attr('clip-path', 'url(#grna-chart-clip)');
+    const clipG = g.append('g').attr('clip-path', `url(#grna-chart-clip-${_uid})`);
 
     const basePath    = clipG.append('path').attr('fill', 'rgba(100,116,139,0.10)');
-    const loPath      = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', 'url(#grna-clip-lo)');
-    const hiPath      = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', 'url(#grna-clip-hi)');
+    const loPath      = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', `url(#grna-clip-lo-${_uid})`);
+    const hiPath      = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', `url(#grna-clip-hi-${_uid})`);
     const outlinePath = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
     const zeroLine    = clipG.append('line').attr('y1', 0).attr('y2', H)
       .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.4);
@@ -2888,22 +2910,89 @@ requestAnimationFrame(() => {
       .attr('fill', 'var(--text-muted)').attr('opacity', 0.8)
       .text('Perturb-seq regression coefficients');
 
-    // ── Rug tooltip ──────────────────────────────────────────────────────────
+    // ── Rug tooltip — static popover with caret, anchored below the rug strip ──
     const rugTip = document.createElement('div');
-    rugTip.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:11px;font-family:"SF Mono","Fira Code",monospace;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap';
-    document.body.appendChild(rugTip);
+    rugTip.style.cssText = 'position:fixed;z-index:9999;display:none;background:var(--bg-card);' +
+      'border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11.5px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.14);min-width:180px;line-height:1.6';
+    // Upward-pointing caret (border + fill to match card bg)
+    const rugCaret = document.createElement('div');
+    rugCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;' +
+      'border-left:7px solid transparent;border-right:7px solid transparent;' +
+      'border-bottom:7px solid var(--border)';
+    const rugCaretInner = document.createElement('div');
+    rugCaretInner.style.cssText = 'position:absolute;top:1.5px;left:-6px;width:0;height:0;' +
+      'border-left:6px solid transparent;border-right:6px solid transparent;' +
+      'border-bottom:6px solid var(--bg-card)';
+    rugCaret.appendChild(rugCaretInner);
+    rugTip.appendChild(rugCaret);
+    container.appendChild(rugTip);
+
+    const LINK_S = 'display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;' +
+      'padding:2px 8px;border-radius:10px;text-decoration:none;white-space:nowrap;';
+
+    let _rugHideTimer = null;
+
+    function _showRugTip(d) {
+      clearTimeout(_rugHideTimer);
+      const color   = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
+      const coefStr = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
+      const tfEnc   = encodeURIComponent(d.tf_name);
+      const geneEnc = encodeURIComponent(GENE);
+      const nGrnas  = isGeneLevel
+        ? `<span style="color:var(--text-muted);font-size:10.5px"> (${d.n_grnas} gRNA${d.n_grnas !== 1 ? 's' : ''})</span>`
+        : '';
+      const nameRow = isGeneLevel
+        ? `<div><span style="font-weight:700;color:${color}">${d.tf_name}</span>` +
+          `<span style="color:var(--text-muted)"> ${coefStr}</span>${nGrnas}</div>`
+        : `<div><span style="font-weight:700">${d.tf_name}</span>` +
+          `<span style="font-family:'SF Mono','Fira Code',monospace;font-size:10.5px;color:var(--text-muted)"> ${d.grna_name}</span></div>` +
+          `<div style="color:${color};font-weight:600">${coefStr}</div>`;
+
+      // Replace all content after the caret
+      while (rugTip.children.length > 1) rugTip.removeChild(rugTip.lastChild);
+      const body = document.createElement('div');
+      body.innerHTML = nameRow +
+        `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
+          `<a href="/perturbseq/gene/${tfEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
+            ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.tf_name} ↗</a>` +
+          `<a href="/perturbseq/link/${tfEnc}/${geneEnc}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
+            ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${d.tf_name}→${GENE} ↗</a>` +
+        `</div>`;
+      rugTip.appendChild(body);
+      rugTip.style.display = 'block';
+
+      // Anchor tooltip below the rug tick in viewport coords
+      const svgNode = svgSel.node();
+      const xsc = d3.zoomTransform(svgNode).rescaleX(x0);
+      const pt  = svgNode.createSVGPoint();
+      pt.x = xsc(d.coef) + margin.left;
+      pt.y = rugY + RUG + margin.top;
+      const sc  = pt.matrixTransform(svgNode.getScreenCTM());
+
+      const tipW = rugTip.offsetWidth;
+      const CARET_H = 7;
+      let left = sc.x - tipW / 2;
+      const top  = sc.y + CARET_H; // tooltip body starts right below caret tip
+      left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+
+      // Shift caret to point at the actual rug tick x
+      const caretLeft = Math.max(8, Math.min(tipW - 22, sc.x - left - 7));
+      rugCaret.style.left = caretLeft + 'px';
+
+      rugTip.style.left = left + 'px';
+      rugTip.style.top  = top  + 'px';
+    }
+
+    function _hideRugTip() { _rugHideTimer = setTimeout(() => { rugTip.style.display = 'none'; }, 150); }
+
+    rugTip.addEventListener('mouseenter', () => clearTimeout(_rugHideTimer));
+    rugTip.addEventListener('mouseleave', _hideRugTip);
 
     rugHits
-      .on('mouseover', function(event, d) {
-        const color = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
-        rugTip.innerHTML = `<span style="color:${color};font-weight:600">${d.grna_name}</span> <span style="color:var(--text-muted)">${d.coef > 0 ? '+' : ''}${d.coef.toFixed(3)}</span>`;
-        rugTip.style.display = 'block';
-      })
-      .on('mousemove', function(event) {
-        rugTip.style.left = (event.clientX + 12) + 'px';
-        rugTip.style.top  = (event.clientY - 10) + 'px';
-      })
-      .on('mouseout', function() { rugTip.style.display = 'none'; });
+      .on('mouseover', function(event, d) { _showRugTip(d); })
+      .on('mousemove', function()         {})
+      .on('mouseout',  function()         { _hideRugTip(); });
 
     // ── Update function (called on every zoom event) ──────────────────────────
     function update(xsc) {
@@ -2999,6 +3088,25 @@ requestAnimationFrame(() => {
     container.appendChild(svg.node());
   }
 
+  // Recompute signed_pct_rank on a sorted array (needed after client-side filtering)
+  function rerank(sorted) {
+    const n = sorted.length;
+    sorted.forEach((d, i) => { d.signed_pct_rank = n > 1 ? i / (n - 1) : 0.5; });
+    return sorted;
+  }
+
+  // Mean coef per TF across provided gRNA rows, with fresh rank
+  function computeGeneLevel(grnaCoefs) {
+    const byTF = {};
+    grnaCoefs.forEach(d => { (byTF[d.tf_name] = byTF[d.tf_name] || []).push(d.coef); });
+    const gc = Object.entries(byTF).map(([tf_name, vals]) => ({
+      tf_name, grna_name: tf_name,
+      coef: vals.reduce((a, b) => a + b, 0) / vals.length,
+      n_grnas: vals.length,
+    }));
+    return rerank(gc.sort((a, b) => a.coef - b.coef));
+  }
+
   show(loadingEl);
   fetch(`/perturbseq/api/gene/${encodeURIComponent(GENE)}/grna-coefs`)
     .then(r => r.json())
@@ -3009,38 +3117,133 @@ requestAnimationFrame(() => {
 
       show(divider); show(heading); show(desc); show(navLink);
 
-      const highlighted = coefs.filter(d => d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05);
+      const CARD = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)';
 
-      const histWrap = document.createElement('div');
-      histWrap.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px;margin-top:4px';
+      function mkTabBtn(label, active) {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.cssText = `padding:7px 18px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;` +
+          `border-bottom:2px solid ${active ? 'var(--accent,#6366f1)' : 'transparent'};` +
+          `color:${active ? 'var(--accent,#6366f1)' : 'var(--text-muted)'};margin-bottom:-1px;transition:color 0.15s,border-color 0.15s`;
+        return btn;
+      }
 
-      const tblLabel = document.createElement('h3');
-      tblLabel.style.cssText = 'font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--text)';
-      tblLabel.textContent = `Top & bottom 5% gRNAs (${highlighted.length})`;
+      // Tab bar
+      const tabBar = document.createElement('div');
+      tabBar.style.cssText = 'display:flex;border-bottom:1px solid var(--border);margin-top:4px';
+      const tabGrna = mkTabBtn('gRNA level', true);
+      const tabGene = mkTabBtn('Gene level', false);
+      tabBar.append(tabGrna, tabGene);
 
-      const tblWrap = document.createElement('div');
-      tblWrap.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:4px';
+      // Build a panel. allRawCoefs is always the raw gRNA-level data so filtering
+      // can be applied before computing gene-level averages.
+      function buildPanel(allRawCoefs, isGeneLevel) {
+        const noun = isGeneLevel ? 'TF genes' : 'gRNAs';
+        const panel = document.createElement('div');
+        panel.style.cssText = 'padding-top:12px';
 
-      const toggle = document.createElement('button');
-      toggle.style.cssText = 'font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 0;margin-top:10px';
-      toggle.textContent = `▶ Show all ${coefs.length} gRNAs`;
+        // ── Guide filter pill buttons ────────────────────────────────────────
+        const guideBar = document.createElement('div');
+        guideBar.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:10px';
+        const gLbl = document.createElement('span');
+        gLbl.textContent = 'Guides:';
+        gLbl.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em';
 
-      const allWrap = document.createElement('div');
-      allWrap.style.cssText = 'display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-top:6px';
+        function mkPill(label, on) {
+          const b = document.createElement('button');
+          b.textContent = label;
+          b.style.cssText = `padding:3px 11px;font-size:11px;font-weight:600;border-radius:20px;cursor:pointer;transition:all 0.15s;` +
+            `border:1px solid ${on ? 'var(--accent,#6366f1)' : 'var(--border)'};` +
+            `background:${on ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)'};` +
+            `color:${on ? 'var(--accent,#6366f1)' : 'var(--text-muted)'}`;
+          return b;
+        }
+        const pillAll    = mkPill('All guides',  true);
+        const pillActive = mkPill('Active only', false);
+        guideBar.append(gLbl, pillAll, pillActive);
 
-      wrapEl.append(histWrap, tblLabel, tblWrap, toggle, allWrap);
+        // ── Content elements ─────────────────────────────────────────────────
+        const histWrap = document.createElement('div');
+        histWrap.style.cssText = `${CARD};padding:16px 16px 8px`;
 
-      renderDensity(coefs, histWrap);
-      renderSortableTable(highlighted, tblWrap, true);
+        const tblLabel = document.createElement('h3');
+        tblLabel.style.cssText = 'font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--text)';
 
-      let allRendered = false;
-      toggle.addEventListener('click', () => {
-        const open = allWrap.style.display !== 'none';
-        allWrap.style.display = open ? 'none' : '';
-        toggle.textContent = open ? `▶ Show all ${coefs.length} gRNAs` : `▼ Hide all gRNAs`;
-        if (!allRendered) { renderSortableTable(coefs, allWrap, false); allRendered = true; }
-      });
+        const tblWrap = document.createElement('div');
+        tblWrap.style.cssText = `${CARD};overflow:hidden;margin-top:4px`;
 
+        const toggle = document.createElement('button');
+        toggle.style.cssText = 'font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 0;margin-top:10px';
+
+        const allWrap = document.createElement('div');
+        allWrap.style.cssText = `display:none;${CARD};overflow:hidden;margin-top:6px`;
+
+        panel.append(guideBar, histWrap, tblLabel, tblWrap, toggle, allWrap);
+
+        // ── Render function — re-runs on guide filter change ─────────────────
+        function render(panelCoefs) {
+          const highlighted = panelCoefs.filter(d => d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05);
+          tblLabel.textContent = `Top & bottom 5% ${noun} (${highlighted.length})`;
+          toggle.textContent = `▶ Show all ${panelCoefs.length} ${noun}`;
+          allWrap.style.display = 'none';
+
+          histWrap.innerHTML = '';
+          renderDensity(panelCoefs, histWrap, { isGeneLevel });
+          renderSortableTable(highlighted, tblWrap, { showEffect: true, isGeneLevel });
+
+          toggle.onclick = () => {
+            const open = allWrap.style.display !== 'none';
+            allWrap.style.display = open ? 'none' : '';
+            toggle.textContent = open ? `▶ Show all ${panelCoefs.length} ${noun}` : `▼ Hide all ${noun}`;
+            if (allWrap.style.display !== 'none' && !allWrap.dataset.rendered) {
+              renderSortableTable(panelCoefs, allWrap, { isGeneLevel });
+              allWrap.dataset.rendered = '1';
+            }
+          };
+          allWrap.dataset.rendered = '';
+        }
+
+        // ── Guide filter logic ───────────────────────────────────────────────
+        function applyFilter(activeOnly) {
+          [pillAll, pillActive].forEach(b => {
+            const on = activeOnly ? b === pillActive : b === pillAll;
+            b.style.borderColor = on ? 'var(--accent,#6366f1)' : 'var(--border)';
+            b.style.background  = on ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)';
+            b.style.color       = on ? 'var(--accent,#6366f1)' : 'var(--text-muted)';
+          });
+          let filtered = activeOnly ? allRawCoefs.filter(d => d.active) : allRawCoefs;
+          if (isGeneLevel) {
+            filtered = computeGeneLevel(filtered);
+          } else if (activeOnly) {
+            filtered = rerank([...filtered].sort((a, b) => a.coef - b.coef));
+          }
+          render(filtered);
+        }
+
+        pillAll.addEventListener('click',    () => applyFilter(false));
+        pillActive.addEventListener('click', () => applyFilter(true));
+
+        // Initial render (all guides)
+        applyFilter(false);
+        return panel;
+      }
+
+      const grnaPanel = buildPanel(coefs, false);
+      const genePanel = buildPanel(coefs, true);
+      genePanel.style.display = 'none';
+
+      function activateTab(idx) {
+        grnaPanel.style.display = idx === 0 ? '' : 'none';
+        genePanel.style.display = idx === 1 ? '' : 'none';
+        [tabGrna, tabGene].forEach((btn, i) => {
+          btn.style.borderBottomColor = i === idx ? 'var(--accent,#6366f1)' : 'transparent';
+          btn.style.color = i === idx ? 'var(--accent,#6366f1)' : 'var(--text-muted)';
+        });
+      }
+      tabGrna.addEventListener('click', () => activateTab(0));
+      tabGene.addEventListener('click', () => activateTab(1));
+
+      wrapEl.append(tabBar, grnaPanel, genePanel);
       show(wrapEl);
     })
     .catch(() => { loadingEl.style.display = 'none'; });
