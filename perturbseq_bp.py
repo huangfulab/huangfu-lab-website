@@ -434,11 +434,7 @@ def _all_modules_expr_map(db, source: str) -> dict:
 @perturbseq_bp.route("/")
 def index():
     db = get_db()
-    tfs = [r[0] for r in db.execute(
-        "SELECT gene_name FROM gene_table WHERE in_perturbation_library=1 ORDER BY gene_name")]
-    modules = [r[0] for r in db.execute(
-        "SELECT module_name FROM module_table "
-        "WHERE source='hotspot_supermodule' AND module_name != 'unassigned' ORDER BY module_name")]
+    tfs, modules = _nav_lists(db)
     return render_template("perturbseq/index.html", tfs=tfs, modules=modules)
 
 
@@ -759,6 +755,44 @@ def _nav_lists(db):
     return tfs, modules
 
 
+def _get_module_genes(db, module_id: int, ordered: bool = True) -> list:
+    sql = ("SELECT gt.gene_name FROM gene_module_table gm "
+           "JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=?")
+    if ordered:
+        sql += " ORDER BY gt.gene_name"
+    return [r[0] for r in db.execute(sql, (module_id,)).fetchall()]
+
+
+def _get_module_description(db, module_id: int) -> dict | None:
+    row = db.execute(
+        "SELECT title, standard FROM module_description WHERE module_id=?",
+        (module_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _get_module_go_highlights(db, module_id: int, limit: int = 5) -> list:
+    return [r[0] for r in db.execute(
+        "SELECT term_name FROM go_module_enrichment "
+        "WHERE module_id=? AND source='GO:BP' ORDER BY p_value LIMIT ?",
+        (module_id, limit)).fetchall()]
+
+
+def _get_gene_membership(db, gene_id) -> dict:
+    """Return {'submodule': str|None, 'supermodule': str|None}, normalising 'unassigned' to None."""
+    rows = db.execute("""
+        SELECT m.module_name, m.source
+        FROM gene_module_table gm JOIN module_table m ON gm.module_id = m.module_id
+        WHERE gm.gene_id=?
+    """, (gene_id,)).fetchall()
+    sub = next((r['module_name'] for r in rows if r['source'] == 'hotspot_submodule'), None)
+    sup = next((r['module_name'] for r in rows if r['source'] == 'hotspot_supermodule'), None)
+    if sub == 'unassigned': sub = None
+    if sup == 'unassigned': sup = None
+    if sub and not sup:
+        sup = sub.rsplit('.', 1)[0] if '.' in sub else None
+    return {'submodule': sub, 'supermodule': sup}
+
+
 def _super_page(mod_name):
     db = get_db()
     mod_row = db.execute(
@@ -771,10 +805,7 @@ def _super_page(mod_name):
     expr = _module_expr_by_timepoint(db, module_id)
     timepoints = [r['timepoint'] for r in expr]
 
-    genes_list = [r[0] for r in db.execute(
-        "SELECT gt.gene_name FROM gene_module_table gm "
-        "JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=?",
-        (module_id,))]
+    genes_list = _get_module_genes(db, module_id, ordered=False)
     expr_z = _compute_mean_zscore_profile(db, genes_list, timepoints)
 
     # Submodule list with top genes
@@ -825,13 +856,8 @@ def _super_page(mod_name):
     top_tfs.sort(key=lambda r: abs(r['mean_NES'] or 0), reverse=True)
 
     notable = _top_genes_by_pub(genes_list)
-    mod_desc_row = db.execute(
-        "SELECT title, standard FROM module_description WHERE module_id=?",
-        (module_id,)).fetchone()
-    highlight_terms = [r[0] for r in db.execute(
-        "SELECT term_name FROM go_module_enrichment "
-        "WHERE module_id=? AND source = 'GO:BP'"
-        "ORDER BY p_value LIMIT 5", (module_id,)).fetchall()]
+    mod_desc_row = _get_module_description(db, module_id)
+    highlight_terms = _get_module_go_highlights(db, module_id, limit=5)
     top_tf_names = [r['tf'] for r in top_tfs[:5] if r.get('tf')]
     desc = {
         'title': (mod_desc_row['title'] if mod_desc_row else None) or mod_name,
@@ -889,32 +915,19 @@ def _sub_page(name):
     module_id = node['module_id']
     supermodule = name.rsplit('.', 1)[0] if '.' in name else ''
 
-    genes = [r[0] for r in db.execute(
-        "SELECT gt.gene_name FROM gene_module_table gm "
-        "JOIN gene_table gt ON gm.gene_id = gt.gene_id "
-        "WHERE gm.module_id=? ORDER BY gt.gene_name",
-        (module_id,))]
+    genes = _get_module_genes(db, module_id)
     pub_counts = _load_gene_pub_counts()
     lambert   = _load_lambert_tfs()
     perturbed = _load_perturbed_tfs()
-    sub_gene_data = []
-    for g in genes:
-        if g in perturbed:
-            tf_status = 'Active TF'
-        elif g in lambert:
-            tf_status = 'TF'
-        else:
-            tf_status = 'Gene'
-        sub_gene_data.append({'name': g, 'pubs': pub_counts.get(g, 0), 'tf_status': tf_status})
+    sub_gene_data = _build_gene_data_list(
+        genes, pub_counts, lambert, perturbed,
+        name_key='name', pub_key='pubs', empty_status='Gene')
 
     expr = _module_expr_by_timepoint(db, module_id)
     timepoints = [r['timepoint'] for r in expr]
     expr_z = _compute_mean_zscore_profile(db, genes, timepoints)
 
-    highlight_terms = [r[0] for r in db.execute(
-        "SELECT term_name FROM go_module_enrichment "
-        "WHERE module_id=? AND source = 'GO:BP'"
-        "ORDER BY p_value LIMIT 4", (module_id,)).fetchall()]
+    highlight_terms = _get_module_go_highlights(db, module_id, limit=4)
     tf_rows = db.execute(
         "SELECT gene_name AS tf, direction FROM gsea_tf_table "
         "WHERE module=? AND module_collection='hotspot_submodule' "
@@ -933,9 +946,7 @@ def _sub_page(name):
         )
         summary_parts.append(f"Top TF regulators: {tf_str}.")
 
-    mod_desc_row = db.execute(
-        "SELECT md.title, md.standard FROM module_description md WHERE md.module_id=?",
-        (module_id,)).fetchone()
+    mod_desc_row = _get_module_description(db, module_id)
     desc = {
         'title': (mod_desc_row['title'] if mod_desc_row else None) or (highlight_terms[0] if highlight_terms else name),
         'summary': (mod_desc_row['standard'] if mod_desc_row else None) or (' '.join(summary_parts) or None),
@@ -1009,37 +1020,21 @@ def _gc_page(name):
                 'binding': '✓', 'odds_ratio': or_val, 'evidence': 'binding',
             })
     top_tfs.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
-    genes = [r[0] for r in db.execute("""
-        SELECT gt.gene_name FROM gene_module_table gmt
-        JOIN module_table mt ON gmt.module_id = mt.module_id
-        JOIN gene_table gt ON gmt.gene_id = gt.gene_id
-        WHERE mt.module_name=? AND mt.source='mfuzz_k7'
-    """, (mfuzz_name,)).fetchall()]
+    genes = _get_module_genes(db, mod_row['module_id']) if mod_row else []
     pub_counts = _load_gene_pub_counts()
     lambert    = _load_lambert_tfs()
     perturbed  = _load_perturbed_tfs()
-    gc_gene_data = []
-    for g in genes:
-        if g in perturbed:
-            tf_status = 'Active TF'
-        elif g in lambert:
-            tf_status = 'TF'
-        else:
-            tf_status = 'Gene'
-        gc_gene_data.append({'name': g, 'pubs': pub_counts.get(g, 0), 'tf_status': tf_status})
+    gc_gene_data = _build_gene_data_list(
+        genes, pub_counts, lambert, perturbed,
+        name_key='name', pub_key='pubs', empty_status='Gene')
     timepoints = [r['timepoint'] for r in profile]
     expr_z = _compute_mean_zscore_profile(db, genes, timepoints)
     expr = _compute_mean_tpm_profile(db, genes, timepoints)
     desc = None
     if mod_row:
-        gc_desc_row = db.execute(
-            "SELECT title, standard FROM module_description WHERE module_id=?",
-            (mod_row['module_id'],)).fetchone()
+        gc_desc_row = _get_module_description(db, mod_row['module_id'])
         if gc_desc_row:
-            highlight_terms = [r[0] for r in db.execute(
-                "SELECT term_name FROM go_module_enrichment "
-                "WHERE module_id=? AND source = 'GO:BP'"
-                "ORDER BY p_value LIMIT 5", (mod_row['module_id'],)).fetchall()]
+            highlight_terms = _get_module_go_highlights(db, mod_row['module_id'], limit=5)
             desc = {
                 'title': gc_desc_row['title'] or name,
                 'summary': gc_desc_row['standard'],
@@ -1229,19 +1224,10 @@ def gene_page(gene_name):
         pass
 
     # Module membership
-    mem_rows = db.execute("""
-        SELECT m.module_name, m.source
-        FROM gene_module_table gm JOIN module_table m ON gm.module_id = m.module_id
-        WHERE gm.gene_id=?
-    """, (gene_id,)).fetchall()
-    _raw_sub = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_submodule'), None)
-    _raw_sup = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_supermodule'), None)
-    submodule = _raw_sub if _raw_sub and _raw_sub != 'unassigned' else None
-    supermodule = _raw_sup if _raw_sup and _raw_sup != 'unassigned' else None
-    # Derive supermodule from submodule name if not directly found (e.g. DE-1.5 → DE-1)
-    if submodule and not supermodule:
-        supermodule = submodule.rsplit('.', 1)[0] if '.' in submodule else None
-    membership = {'submodule': submodule, 'supermodule': supermodule} if (submodule or supermodule) else None
+    _mem = _get_gene_membership(db, gene_id)
+    submodule = _mem['submodule']
+    supermodule = _mem['supermodule']
+    membership = _mem if (submodule or supermodule) else None
 
     # Developmental cluster membership from consolidated DB (mfuzz_k7 modules)
     tc_clusters = []
@@ -1869,14 +1855,7 @@ def api_gene(gene_name):
     if not gene_row:
         return jsonify({"error": "not found"}), 404
     expr = _gene_expr_by_timepoint(db, gene_row['gene_id'])
-    mem_rows = db.execute("""
-        SELECT m.module_name, m.source
-        FROM gene_module_table gm JOIN module_table m ON gm.module_id = m.module_id
-        WHERE gm.gene_id=?
-    """, (gene_row['gene_id'],)).fetchall()
-    submodule = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_submodule'), None)
-    supermodule = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_supermodule'), None)
-    membership = {'submodule': submodule, 'supermodule': supermodule}
+    membership = _get_gene_membership(db, gene_row['gene_id'])
     return jsonify({"gene": gene_name, "expr": expr, "membership": membership})
 
 
@@ -1891,9 +1870,7 @@ def api_submodule(name):
     node = dict(node_row)
     node['color'] = MODULE_COLORS.get(name.rsplit('.', 1)[0] if '.' in name else '', '#4a56b0')
     node['within_mean_z'] = 0.0
-    genes = [r[0] for r in db.execute(
-        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
-        (node['module_id'],))]
+    genes = _get_module_genes(db, node['module_id'])
     return jsonify({"node": node, "genes": genes, "neighbors": []})
 
 
@@ -2030,21 +2007,15 @@ def api_module_detail(mod_name):
         "SELECT term_id, source, term_name, p_value, term_size, intersection_size "
         "FROM go_module_enrichment WHERE module_id=? AND source IN ('GO:BP','GO:CC','GO:MF')",
         (module_id,)).fetchall())
-    genes = [r[0] for r in db.execute(
-        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
-        (module_id,)).fetchall()]
+    genes = _get_module_genes(db, module_id)
     pub_counts = _load_gene_pub_counts()
     gene_pubs = {g: pub_counts.get(g, 0) for g in genes}
     lambert   = _load_lambert_tfs()
     perturbed = _load_perturbed_tfs()
-    gene_tf_status = {}
-    for g in genes:
-        if g in perturbed:
-            gene_tf_status[g] = 'Active TF'
-        elif g in lambert:
-            gene_tf_status[g] = 'TF'
-        else:
-            gene_tf_status[g] = 'Gene'
+    gene_tf_status = {
+        row['gene']: row['tf_status']
+        for row in _build_gene_data_list(genes, pub_counts, lambert, perturbed, empty_status='Gene')
+    }
     # Map genes to their submodule (if any)
     sub_rows = db.execute(
         "SELECT module_id AS sub_id, module_name FROM module_table "
@@ -2070,9 +2041,7 @@ def api_module_genes(mod_name):
         "SELECT module_id FROM module_table WHERE module_name=?", (mod_name,)).fetchone()
     if not mod_row:
         return jsonify([])
-    genes = [r[0] for r in db.execute(
-        "SELECT gt.gene_name FROM gene_module_table gm JOIN gene_table gt ON gm.gene_id = gt.gene_id WHERE gm.module_id=? ORDER BY gt.gene_name",
-        (mod_row['module_id'],)).fetchall()]
+    genes = _get_module_genes(db, mod_row['module_id'])
     return jsonify(genes)
 
 
@@ -2085,9 +2054,7 @@ def api_module_tooltip(mod_name):
         "SELECT module_id FROM module_table WHERE module_name=?", (lookup,)).fetchone()
     if not mod_row:
         return jsonify({'title': None, 'desc': None})
-    desc_row = db.execute(
-        "SELECT title, standard FROM module_description WHERE module_id=?",
-        (mod_row['module_id'],)).fetchone()
+    desc_row = _get_module_description(db, mod_row['module_id'])
     result = {
         'title': desc_row['title'] if desc_row else None,
         'desc':  desc_row['standard'] if desc_row else None,
@@ -2120,17 +2087,9 @@ def api_gene_tooltip(gene_name):
     gene_name_full = (desc_row['description'] or None) if desc_row else None
     summary        = (desc_row['Summary']     or None) if desc_row else None
 
-    mem_rows = db.execute("""
-        SELECT m.module_name, m.source
-        FROM gene_module_table gm JOIN module_table m ON gm.module_id = m.module_id
-        WHERE gm.gene_id=?
-    """, (gene_row['gene_id'],)).fetchall()
-    submodule   = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_submodule'),   None)
-    supermodule = next((r['module_name'] for r in mem_rows if r['source'] == 'hotspot_supermodule'), None)
-    if submodule   == 'unassigned': submodule   = None
-    if supermodule == 'unassigned': supermodule = None
-    if submodule and not supermodule:
-        supermodule = submodule.rsplit('.', 1)[0] if '.' in submodule else None
+    _mem = _get_gene_membership(db, gene_row['gene_id'])
+    submodule   = _mem['submodule']
+    supermodule = _mem['supermodule']
 
     is_tf = bool(db.execute(
         "SELECT 1 FROM gsea_tf_table WHERE gene_name=? AND gene_set_collection='DE-hotspot_modules' LIMIT 1",
