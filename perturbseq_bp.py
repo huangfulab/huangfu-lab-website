@@ -3,13 +3,45 @@ import json
 import math
 import re
 import sqlite3
+import subprocess
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, render_template, jsonify, request, g, redirect, url_for, abort, send_from_directory
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
 DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v3.db")
+
+def _last_commit_ts() -> int | None:
+    try:
+        out = subprocess.check_output(
+            ['git', 'log', '-1', '--format=%ct'],
+            cwd=str(Path(__file__).resolve().parent),
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        return int(out) if out else None
+    except Exception:
+        return None
+
+def _fmt_time_ago(ts: int | None) -> str | None:
+    if ts is None:
+        return None
+    diff = int(datetime.now(timezone.utc).timestamp()) - ts
+    if diff < 60:
+        n = diff
+        return f"{n} second{'s' if n != 1 else ''} ago"
+    if diff < 3600:
+        n = diff // 60
+        return f"{n} minute{'s' if n != 1 else ''} ago"
+    if diff < 86400:
+        n = diff // 3600
+        return f"{n} hour{'s' if n != 1 else ''} ago"
+    if diff < 172800:
+        return "yesterday"
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%-d %b %Y")
+
+_LAST_COMMIT_TS: int | None = _last_commit_ts()
 BW_DIR       = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
 BW_EXTRA_DIR = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
 BW_RNA_DIR   = str(Path(__file__).resolve().parent / "data" / "bw" / "rna")
@@ -321,7 +353,7 @@ def get_db():
 
 @perturbseq_bp.context_processor
 def inject_globals():
-    return {'module_colors': MODULE_COLORS}
+    return {'module_colors': MODULE_COLORS, 'last_updated': _fmt_time_ago(_LAST_COMMIT_TS)}
 
 
 @perturbseq_bp.teardown_request

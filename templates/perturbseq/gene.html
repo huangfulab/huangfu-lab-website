@@ -1989,13 +1989,18 @@ requestAnimationFrame(() => {
 
   function dsLink(ds) {
     const name = ds.name, src = ds.source || '';
+    if (src === 'tobias') {
+      const parts = name.split('_');
+      const motifId = parts[parts.length - 1];
+      return `<a href="https://jaspar.elixir.no/matrix/${motifId}/" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+    }
     if (src === 'encode_chipseq') {
-      return `<a href="https://www.encodeproject.org/search/?searchTerm=${encodeURIComponent(name.toLowerCase())}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+      return `<a href="https://www.encodeproject.org/files/${name}/" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
     }
     if (src === 'remap_chipseq') {
       const acc = name.split('.')[0];
       if (/^GSE\d/i.test(acc)) {
-        return `<a href="https://www.ncbi.nlm.nih.gov/gds/?term=${encodeURIComponent(acc)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
+        return `<a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${acc}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;
       }
       if (/^ENCSR/i.test(acc)) {
         return `<a href="https://www.encodeproject.org/search/?searchTerm=${encodeURIComponent(acc.toLowerCase())}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${name} ↗</a>`;

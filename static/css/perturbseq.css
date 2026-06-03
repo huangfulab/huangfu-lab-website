@@ -56,6 +56,12 @@ nav .brand {
     letter-spacing: -0.4px;
     margin-right: auto;
 }
+.nav-updated {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    opacity: 0.7;
+}
 
 /* Layout */
 .container {
