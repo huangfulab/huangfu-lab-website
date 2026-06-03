@@ -3185,3 +3185,26 @@ def dataset_page(dataset_id):
         element_rows=element_rows,
         related=related,
     )
+
+
+@perturbseq_bp.route("/db-schema")
+def db_schema():
+    db = get_db()
+    tables = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).fetchall()
+    schema = {}
+    fks = {}
+    for t in tables:
+        name = t["name"]
+        cols = db.execute(f"PRAGMA table_info({name})").fetchall()
+        schema[name] = [
+            {"cid": c["cid"], "name": c["name"], "type": c["type"], "pk": bool(c["pk"])}
+            for c in cols
+        ]
+        fk_rows = db.execute(f"PRAGMA foreign_key_list({name})").fetchall()
+        fks[name] = [
+            {"from_col": f["from"], "to_table": f["table"], "to_col": f["to"]}
+            for f in fk_rows
+        ]
+    return render_template("perturbseq/db_schema.html", schema=schema, fks=fks, db_path=DB_PATH)

@@ -1,0 +1,640 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}DB Schema · {{ db_path.split('/')[-1] }}{% endblock %}
+
+{% block extra_style %}
+<style>
+  html, body { overflow: hidden; }
+  .container { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+
+  /* ── toolbar ── */
+  #schema-bar {
+    position: fixed; left: 0; right: 0; z-index: 150;
+    height: 42px; background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 16px;
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  #schema-bar .sep   { color: var(--border); }
+  #schema-bar .db-name { font-family: monospace; font-size: 12px; color: var(--text); }
+  #schema-bar .spacer  { flex: 1; }
+  #schema-bar button {
+    padding: 4px 11px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    cursor: pointer; font-size: 12px; color: var(--text-muted);
+    transition: background .15s, color .15s, opacity .15s;
+  }
+  #schema-bar button:hover:not(:disabled) { background: var(--bg-elevated); color: var(--text); }
+  #schema-bar button:disabled { opacity: .45; cursor: default; }
+  #schema-bar button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  #schema-bar button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  #zoom-badge {
+    font-size: 11.5px; color: var(--text-muted); min-width: 40px;
+    text-align: right; font-feature-settings: "tnum";
+  }
+
+  /* ── canvas ── */
+  #canvas-wrap {
+    position: fixed; left: 0; right: 0; bottom: 0; overflow: hidden;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--border) 1.2px, transparent 1.2px);
+    background-size: 22px 22px;
+  }
+  #canvas { position: absolute; transform-origin: 0 0; will-change: transform; }
+  #arrows { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+
+  /* ── table cards ── */
+  .tbl-card {
+    position: absolute; width: 230px;
+    background: var(--bg-card); border-radius: var(--radius);
+    box-shadow: var(--shadow); border: 1.5px solid var(--border);
+    user-select: none; cursor: grab;
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .tbl-card.animating { transition: left .55s cubic-bezier(.4,0,.2,1), top .55s cubic-bezier(.4,0,.2,1), box-shadow .15s, border-color .15s; }
+  .tbl-card:hover  { border-color: var(--accent); box-shadow: var(--shadow-lg); }
+  .tbl-card.dragging { cursor: grabbing; z-index: 1000; box-shadow: 0 8px 32px rgba(0,0,0,.16); border-color: var(--accent); }
+
+  .tbl-header {
+    padding: 7px 10px 7px 12px;
+    background: var(--accent);
+    border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+    color: #fff; font-weight: 600; font-size: 12.5px;
+    letter-spacing: .01em; display: flex; align-items: center;
+  }
+
+  .col-list { font-size: 11.5px; }
+  .col-row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 3.5px 10px 3.5px 12px;
+    border-bottom: 1px solid var(--border); color: var(--text);
+  }
+  .col-row:last-child { border-bottom: none; border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px); }
+  .col-row:nth-child(even) { background: var(--bg); }
+  .col-row.pk      { background: rgba(245,158,11,.07) !important; }
+  .col-row.fk      { background: rgba(59,130,246,.07) !important; }
+  .col-row.pk.fk   { background: rgba(139,92,246,.08) !important; }
+  .col-name { flex: 1; font-family: monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .col-type { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .badge { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: .04em; flex-shrink: 0; }
+  .badge-pk { background: rgba(245,158,11,.18); color: #b45309; }
+  .badge-fk { background: rgba(59,130,246,.16); color: #1d4ed8; }
+
+  /* ── FK arrows ── */
+  .fk-path {
+    fill: none; stroke: #6366f1; stroke-width: 1.5; stroke-opacity: .38;
+    transition: stroke-opacity .15s, stroke-width .15s;
+    pointer-events: stroke;
+    cursor: default;
+  }
+  .fk-path:hover { stroke-opacity: .9; stroke-width: 2; }
+  .fk-dot { fill: #6366f1; fill-opacity: .45; pointer-events: none; }
+
+  /* ── legend ── */
+  #schema-legend {
+    position: fixed; bottom: 14px; right: 14px; z-index: 150;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px;
+    font-size: 11px; color: var(--text-muted);
+    display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow);
+  }
+  .legend-row { display: flex; align-items: center; gap: 8px; }
+  .legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; }
+  .legend-hint { margin-top: 2px; font-size: 10px; line-height: 1.6; color: var(--text-muted); }
+
+  /* ── params panel ── */
+  #params-panel {
+    position: fixed; left: 0; right: 0; z-index: 140;
+    background: var(--bg-card); border-bottom: 1px solid var(--border);
+    padding: 10px 20px; display: none;
+    gap: 28px; align-items: center; flex-wrap: wrap;
+  }
+  #params-panel.open { display: flex; }
+  .param-group { display: flex; align-items: center; gap: 10px; }
+  .param-group label { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+  .param-group input[type=range] {
+    width: 130px; accent-color: var(--accent); cursor: pointer;
+    height: 4px; vertical-align: middle;
+  }
+  .param-val {
+    font-size: 11px; font-family: monospace; font-feature-settings: "tnum";
+    color: var(--text); min-width: 36px; text-align: right;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .param-hint { font-size: 10.5px; color: var(--text-muted); margin-left: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="schema-bar">
+  <span>Schema</span>
+  <span class="sep">·</span>
+  <span class="db-name">{{ db_path.split('/')[-1] }}</span>
+  <span class="sep">·</span>
+  <span>{{ schema | length }} tables</span>
+  <span class="spacer"></span>
+  <button id="btn-layout" class="primary">Auto-layout</button>
+  <button id="btn-grid">Grid</button>
+  <button id="btn-fit">Fit all</button>
+  <button id="btn-params">Params ▾</button>
+  <span id="zoom-badge">100%</span>
+</div>
+
+<div id="params-panel">
+  <div class="param-group">
+    <label for="sl-k">Spacing</label>
+    <input type="range" id="sl-k" min="150" max="600" step="10" value="340">
+    <span class="param-val" id="val-k">340</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-repulse">Repulsion</label>
+    <input type="range" id="sl-repulse" min="0.3" max="3.0" step="0.1" value="1.0">
+    <span class="param-val" id="val-repulse">1.0×</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-attract">Attraction</label>
+    <input type="range" id="sl-attract" min="0.1" max="3.0" step="0.1" value="1.0">
+    <span class="param-val" id="val-attract">1.0×</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-gravity">Gravity</label>
+    <input type="range" id="sl-gravity" min="0" max="50" step="1" value="12">
+    <span class="param-val" id="val-gravity">0.012</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-iter">Iterations</label>
+    <input type="range" id="sl-iter" min="50" max="600" step="25" value="280">
+    <span class="param-val" id="val-iter">280</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-temp">Temperature</label>
+    <input type="range" id="sl-temp" min="50" max="500" step="10" value="220">
+    <span class="param-val" id="val-temp">220</span>
+  </div>
+  <div class="param-group">
+    <label for="sl-zoom">Zoom speed</label>
+    <input type="range" id="sl-zoom" min="1.02" max="1.5" step="0.01" value="1.1">
+    <span class="param-val" id="val-zoom">1.10×</span>
+  </div>
+  <span class="param-hint">Changes auto-apply</span>
+</div>
+
+<div id="canvas-wrap">
+  <div id="canvas">
+    <svg id="arrows">
+      <defs>
+        <marker id="arrowhead" markerWidth="7" markerHeight="5"
+                refX="6" refY="2.5" orient="auto" markerUnits="strokeWidth">
+          <polygon points="0 0, 7 2.5, 0 5" fill="#6366f1" fill-opacity=".6"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</div>
+
+<div id="schema-legend">
+  <div class="legend-row">
+    <div class="legend-swatch" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4)"></div>Primary key
+  </div>
+  <div class="legend-row">
+    <div class="legend-swatch" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35)"></div>Foreign key
+  </div>
+  <div class="legend-row">
+    <div class="legend-swatch" style="background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.35)"></div>PK + FK
+  </div>
+  <div class="legend-row">
+    <svg width="30" height="10" style="flex-shrink:0">
+      <line x1="2" y1="5" x2="22" y2="5" stroke="#6366f1" stroke-width="1.5" stroke-opacity=".55"/>
+      <polygon points="22,2.5 30,5 22,7.5" fill="#6366f1" fill-opacity=".6"/>
+    </svg>FK reference
+  </div>
+  <div class="legend-hint">Scroll to zoom · drag to pan<br>Hover edges for details</div>
+</div>
+
+<script>
+(function () {
+  const SCHEMA = {{ schema | tojson }};
+  const FKS    = {{ fks | tojson }};
+  const CARD_W = 230;
+
+  // ── mutable FR parameters (driven by sliders) ─────────────────
+  const FR = { k: 340, repulse: 1.0, attract: 1.0, gravity: 0.012, iter: 280, temp: 220 };
+  let zoomSpeed = 1.1; // scroll zoom multiplier per wheel tick
+
+  // ── FK column sets ────────────────────────────────────────────
+  const fkColSet = {};
+  for (const [tbl, list] of Object.entries(FKS))
+    fkColSet[tbl] = new Set(list.map(f => f.from_col));
+
+  // ── DOM ───────────────────────────────────────────────────────
+  const wrap        = document.getElementById('canvas-wrap');
+  const canvas      = document.getElementById('canvas');
+  const svg         = document.getElementById('arrows');
+  const bar         = document.getElementById('schema-bar');
+  const paramsPanel = document.getElementById('params-panel');
+
+  function positionWrap() {
+    const navH    = (document.querySelector('nav') || {offsetHeight: 52}).offsetHeight;
+    const barH    = bar.offsetHeight;
+    const panelH  = paramsPanel.classList.contains('open') ? paramsPanel.offsetHeight : 0;
+    bar.style.top         = navH + 'px';
+    paramsPanel.style.top = (navH + barH) + 'px';
+    wrap.style.top        = (navH + barH + panelH) + 'px';
+  }
+  positionWrap();
+  window.addEventListener('resize', positionWrap);
+
+  // ── params panel toggle + sliders ────────────────────────────
+  document.getElementById('btn-params').addEventListener('click', () => {
+    const open = paramsPanel.classList.toggle('open');
+    document.getElementById('btn-params').textContent = open ? 'Params ▴' : 'Params ▾';
+    positionWrap();
+  });
+
+  let rerunTimer = null;
+  function scheduleRerun() {
+    clearTimeout(rerunTimer);
+    rerunTimer = setTimeout(() => {
+      const pos = computeForceLayout();
+      applyPositions(pos, true);
+    }, 180);
+  }
+
+  function bindSlider(id, valId, readFn, displayFn, onChange) {
+    const sl = document.getElementById(id);
+    const vl = document.getElementById(valId);
+    sl.addEventListener('input', () => {
+      onChange(readFn(sl.value));
+      vl.textContent = displayFn(sl.value);
+      scheduleRerun();
+    });
+  }
+
+  bindSlider('sl-k',       'val-k',       v => +v,         v => v + 'px',  v => { FR.k       = +v; });
+  bindSlider('sl-repulse', 'val-repulse', v => +v,         v => (+v).toFixed(1) + '×', v => { FR.repulse = +v; });
+  bindSlider('sl-attract', 'val-attract', v => +v,         v => (+v).toFixed(1) + '×', v => { FR.attract = +v; });
+  bindSlider('sl-gravity', 'val-gravity', v => +v / 1000,  v => (+v / 1000).toFixed(3), v => { FR.gravity = +v / 1000; });
+  bindSlider('sl-iter',    'val-iter',    v => +v,         v => v,          v => { FR.iter    = +v; });
+  bindSlider('sl-temp',    'val-temp',    v => +v,         v => v,          v => { FR.temp    = +v; });
+
+  // zoom speed — takes effect immediately, no relayout needed
+  const slZoom = document.getElementById('sl-zoom');
+  const valZoom = document.getElementById('val-zoom');
+  slZoom.addEventListener('input', () => {
+    zoomSpeed = +slZoom.value;
+    valZoom.textContent = zoomSpeed.toFixed(2) + '×';
+  });
+
+  // ── canvas transform ──────────────────────────────────────────
+  let scale = 1, panX = 40, panY = 40;
+  function applyTransform() {
+    canvas.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+    document.getElementById('zoom-badge').textContent = Math.round(scale * 100) + '%';
+  }
+  applyTransform();
+
+  // ── card state ────────────────────────────────────────────────
+  const TABLE_NAMES = Object.keys(SCHEMA);
+  const cards = {}; // name -> {el, x, y}
+
+  // ── grid layout ───────────────────────────────────────────────
+  function gridLayout() {
+    const COLS = 5, GAP_X = 264, GAP_Y = 56;
+    const pos = {};
+    let col = 0, x = 0, y = 0, rowMaxH = 0;
+    for (const name of TABLE_NAMES) {
+      pos[name] = { x, y };
+      rowMaxH = Math.max(rowMaxH, (cards[name]?.el.offsetHeight || 200));
+      col++;
+      x += GAP_X;
+      if (col >= COLS) { col = 0; x = 0; y += rowMaxH + GAP_Y; rowMaxH = 0; }
+    }
+    return pos;
+  }
+
+  // ── Fruchterman-Reingold force layout ─────────────────────────
+  // Runs synchronously to convergence, then cards animate via CSS transition.
+  function computeForceLayout() {
+    const n      = TABLE_NAMES.length;
+    const k      = FR.k;
+    const k2     = k * k;
+    const MAX_ITER = FR.iter;
+
+    // Build deduplicated edge list (directed: from → to)
+    const edges = [];
+    {
+      const seen = new Set();
+      for (const [from, fkList] of Object.entries(FKS)) {
+        for (const fk of fkList) {
+          const key = `${from}\x00${fk.to_table}`;
+          if (!seen.has(key) && cards[fk.to_table]) {
+            seen.add(key);
+            edges.push({ from, to: fk.to_table });
+          }
+        }
+      }
+    }
+
+    // Working positions — start from current card positions
+    const pos = {};
+    for (const name of TABLE_NAMES)
+      pos[name] = { x: cards[name].x + CARD_W / 2, y: cards[name].y + (cards[name].el.offsetHeight || 200) / 2 };
+
+    // Linear cooling schedule
+    let temp = FR.temp;
+    const dTemp = temp / (MAX_ITER + 1);
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      const disp = {};
+      for (const name of TABLE_NAMES) disp[name] = { x: 0, y: 0 };
+
+      // Repulsive forces — all pairs (O(n²), fine for n≈30)
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = TABLE_NAMES[i], b = TABLE_NAMES[j];
+          const dx = pos[a].x - pos[b].x;
+          const dy = pos[a].y - pos[b].y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          const f = (k2 / dist) * FR.repulse;
+          const ux = dx / dist, uy = dy / dist;
+          disp[a].x += ux * f;  disp[a].y += uy * f;
+          disp[b].x -= ux * f;  disp[b].y -= uy * f;
+        }
+      }
+
+      // Attractive forces — FK edges only
+      for (const { from, to } of edges) {
+        const dx = pos[from].x - pos[to].x;
+        const dy = pos[from].y - pos[to].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+        const f = (dist * dist / k) * FR.attract;
+        const ux = dx / dist, uy = dy / dist;
+        disp[from].x -= ux * f;  disp[from].y -= uy * f;
+        disp[to].x   += ux * f;  disp[to].y   += uy * f;
+      }
+
+      // Weak gravity toward a centre point (prevents drift)
+      const cx = 900, cy = 700;
+      for (const name of TABLE_NAMES) {
+        disp[name].x += (cx - pos[name].x) * FR.gravity;
+        disp[name].y += (cy - pos[name].y) * FR.gravity;
+      }
+
+      // Apply displacement, capped by temperature
+      for (const name of TABLE_NAMES) {
+        const d = Math.sqrt(disp[name].x ** 2 + disp[name].y ** 2) || 0.1;
+        const cap = Math.min(d, temp);
+        pos[name].x += (disp[name].x / d) * cap;
+        pos[name].y += (disp[name].y / d) * cap;
+      }
+
+      temp -= dTemp;
+    }
+
+    // Convert centre-positions back to top-left, then normalise to (20, 20)
+    let minX = Infinity, minY = Infinity;
+    for (const name of TABLE_NAMES) {
+      const h = cards[name].el.offsetHeight || 200;
+      pos[name].x -= CARD_W / 2;
+      pos[name].y -= h / 2;
+      minX = Math.min(minX, pos[name].x);
+      minY = Math.min(minY, pos[name].y);
+    }
+    for (const name of TABLE_NAMES) {
+      pos[name].x -= minX - 20;
+      pos[name].y -= minY - 20;
+    }
+    return pos;
+  }
+
+  // ── apply positions (with optional CSS animation) ─────────────
+  function applyPositions(positions, animate) {
+    const DURATION = 560; // ms
+    if (animate) {
+      for (const name of TABLE_NAMES) cards[name].el.classList.add('animating');
+    }
+    for (const name of TABLE_NAMES) {
+      cards[name].x = positions[name].x;
+      cards[name].y = positions[name].y;
+      cards[name].el.style.left = positions[name].x + 'px';
+      cards[name].el.style.top  = positions[name].y + 'px';
+    }
+    // Redraw arrows throughout the transition
+    const t0 = performance.now();
+    function arrowTick() {
+      drawArrows();
+      if (animate && performance.now() - t0 < DURATION + 50) {
+        requestAnimationFrame(arrowTick);
+      } else {
+        for (const name of TABLE_NAMES) cards[name].el.classList.remove('animating');
+        drawArrows();
+      }
+    }
+    requestAnimationFrame(arrowTick);
+  }
+
+  // ── create cards ──────────────────────────────────────────────
+  function createCards(positions) {
+    for (const name of TABLE_NAMES) { if (cards[name]) { cards[name].el.remove(); } }
+
+    for (const name of TABLE_NAMES) {
+      const { x, y } = positions[name];
+      const fkSet = fkColSet[name] || new Set();
+
+      const el = document.createElement('div');
+      el.className = 'tbl-card';
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'tbl-header';
+      hdr.textContent = name;
+      el.appendChild(hdr);
+
+      const list = document.createElement('div');
+      list.className = 'col-list';
+      for (const col of SCHEMA[name]) {
+        const isPk = col.pk, isFk = fkSet.has(col.name);
+        const row = document.createElement('div');
+        row.className = 'col-row' + (isPk ? ' pk' : '') + (isFk ? ' fk' : '');
+        row.dataset.col = col.name;
+
+        if (isPk) { const b = document.createElement('span'); b.className = 'badge badge-pk'; b.textContent = 'PK'; row.appendChild(b); }
+        if (isFk) { const b = document.createElement('span'); b.className = 'badge badge-fk'; b.textContent = 'FK'; row.appendChild(b); }
+
+        const cn = document.createElement('span'); cn.className = 'col-name'; cn.textContent = col.name; cn.title = col.name; row.appendChild(cn);
+        const ct = document.createElement('span'); ct.className = 'col-type'; ct.textContent = col.type; row.appendChild(ct);
+        list.appendChild(row);
+      }
+      el.appendChild(list);
+      canvas.appendChild(el);
+
+      cards[name] = { el, x, y };
+      makeDraggable(name, el);
+    }
+  }
+
+  // ── drag ──────────────────────────────────────────────────────
+  function makeDraggable(name, el) {
+    let startMX, startMY, origX, origY;
+    el.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      el.classList.add('dragging');
+      startMX = e.clientX; startMY = e.clientY;
+      origX = cards[name].x; origY = cards[name].y;
+      const onMove = e => {
+        cards[name].x = origX + (e.clientX - startMX) / scale;
+        cards[name].y = origY + (e.clientY - startMY) / scale;
+        el.style.left = cards[name].x + 'px';
+        el.style.top  = cards[name].y + 'px';
+        drawArrows();
+      };
+      const onUp = () => {
+        el.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  // ── pan ───────────────────────────────────────────────────────
+  let panAnchor = null;
+  wrap.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    panAnchor = { mx: e.clientX, my: e.clientY, px: panX, py: panY };
+    wrap.style.cursor = 'grabbing';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!panAnchor) return;
+    panX = panAnchor.px + (e.clientX - panAnchor.mx);
+    panY = panAnchor.py + (e.clientY - panAnchor.my);
+    applyTransform();
+  });
+  document.addEventListener('mouseup', () => { panAnchor = null; wrap.style.cursor = ''; });
+
+  // ── zoom ──────────────────────────────────────────────────────
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? zoomSpeed : 1 / zoomSpeed;
+    const rect  = wrap.getBoundingClientRect();
+    const wx = (e.clientX - rect.left - panX) / scale;
+    const wy = (e.clientY - rect.top  - panY) / scale;
+    scale = Math.max(0.15, Math.min(3, scale * delta));
+    panX  = e.clientX - rect.left - wx * scale;
+    panY  = e.clientY - rect.top  - wy * scale;
+    applyTransform();
+  }, { passive: false });
+
+  // ── fit all ───────────────────────────────────────────────────
+  document.getElementById('btn-fit').addEventListener('click', () => {
+    if (!TABLE_NAMES.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const name of TABLE_NAMES) {
+      const c = cards[name];
+      minX = Math.min(minX, c.x); minY = Math.min(minY, c.y);
+      maxX = Math.max(maxX, c.x + c.el.offsetWidth);
+      maxY = Math.max(maxY, c.y + c.el.offsetHeight);
+    }
+    const pad = 48;
+    scale = Math.max(0.15, Math.min(1.2, Math.min(
+      (wrap.offsetWidth  - pad * 2) / (maxX - minX || 1),
+      (wrap.offsetHeight - pad * 2) / (maxY - minY || 1)
+    )));
+    panX = pad - minX * scale;
+    panY = pad - minY * scale;
+    applyTransform();
+  });
+
+  // ── auto-layout button ────────────────────────────────────────
+  const btnLayout = document.getElementById('btn-layout');
+  btnLayout.addEventListener('click', () => {
+    btnLayout.textContent = 'Computing…';
+    btnLayout.disabled = true;
+    // yield to browser so the button text updates before the heavy sync loop
+    setTimeout(() => {
+      const pos = computeForceLayout();
+      applyPositions(pos, true);
+      btnLayout.textContent = 'Auto-layout';
+      btnLayout.disabled = false;
+    }, 16);
+  });
+
+  // ── grid button ───────────────────────────────────────────────
+  document.getElementById('btn-grid').addEventListener('click', () => {
+    applyPositions(gridLayout(), true);
+  });
+
+  // ── arrow drawing ─────────────────────────────────────────────
+  function colMidY(tableName, colName) {
+    const card = cards[tableName];
+    if (!card) return null;
+    for (const row of card.el.querySelectorAll('[data-col]')) {
+      if (row.dataset.col === colName)
+        return card.y + row.offsetTop + row.offsetHeight / 2;
+    }
+    return null;
+  }
+
+  function drawArrows() {
+    while (svg.lastChild && svg.lastChild.nodeName !== 'defs') svg.removeChild(svg.lastChild);
+
+    for (const [fromTbl, fkList] of Object.entries(FKS)) {
+      for (const fk of fkList) {
+        const from = cards[fromTbl], to = cards[fk.to_table];
+        if (!from || !to) continue;
+
+        const y1 = colMidY(fromTbl, fk.from_col);
+        const y2 = colMidY(fk.to_table, fk.to_col);
+        if (y1 === null || y2 === null) continue;
+
+        const fromW = from.el.offsetWidth, toW = to.el.offsetWidth;
+        let x1, x2;
+        if (from.x + fromW / 2 <= to.x + toW / 2) { x1 = from.x + fromW; x2 = to.x; }
+        else                                        { x1 = from.x;         x2 = to.x + toW; }
+
+        const bend = Math.min(Math.abs(x2 - x1) * 0.55 + 48, 190);
+        const cx1  = x1 + (x2 > x1 ?  bend : -bend);
+        const cx2  = x2 + (x2 > x1 ? -bend :  bend);
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'fk-path');
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+        path.setAttribute('d', `M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`);
+        const label = `${fromTbl}.${fk.from_col} → ${fk.to_table}.${fk.to_col}`;
+        path.setAttribute('title', label);
+        // tooltip via <title> child
+        const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        titleEl.textContent = label;
+        path.appendChild(titleEl);
+        svg.appendChild(path);
+
+        // small dot at FK origin
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('class', 'fk-dot');
+        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', 2.5);
+        svg.appendChild(dot);
+      }
+    }
+  }
+
+  // ── init ─────────────────────────────────────────────────────
+  // 1. Create cards at grid positions so offsetHeight is measurable
+  createCards(gridLayout());
+  // 2. After first paint, run the force layout automatically
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    btnLayout.textContent = 'Computing…';
+    btnLayout.disabled = true;
+    setTimeout(() => {
+      const pos = computeForceLayout();
+      applyPositions(pos, true);
+      btnLayout.textContent = 'Auto-layout';
+      btnLayout.disabled = false;
+    }, 16);
+  }));
+})();
+</script>
+{% endblock %}
