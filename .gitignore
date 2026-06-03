@@ -7,3 +7,4 @@ archive
 data_copy.sh
 data
 *.tar.gz
+pkg_versions.py
