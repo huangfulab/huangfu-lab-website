@@ -2,7 +2,7 @@ from flask import Flask, render_template, jsonify
 import os
 import pandas as pd
 from pathlib import Path
-from perturbseq_bp import perturbseq_bp
+from perturbseq_bp import perturbseq_bp, _fmt_time_ago, _LAST_COMMIT_TS
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
@@ -45,7 +45,7 @@ def load_network(level):
 
 @app.route("/")
 def landing():
-    return render_template("landing.html")
+    return render_template("landing.html", last_updated=_fmt_time_ago(_LAST_COMMIT_TS))
 
 
 @app.route("/modules")
