@@ -884,7 +884,7 @@ details.submod-accordion > summary:hover { background: var(--bg-elevated); borde
 /* ── Page-with-sidebar shared layout ────────────────────────────────────── */
 .page-with-sidebar {
     display: grid;
-    grid-template-columns: 192px 1fr;
+    grid-template-columns: max-content 1fr;
     gap: 0 32px;
     align-items: start;
 }
@@ -915,7 +915,8 @@ details.submod-accordion > summary:hover { background: var(--bg-elevated); borde
 .sidebar-toggle:hover { background: var(--bg-elevated); color: var(--text); }
 .sidebar-role {
     font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.07em; padding: 8px 6px 2px 4px; display: block;
+    letter-spacing: 0.07em; padding: 15px 6px 2px 4px; display: block;
+    white-space: nowrap;
 }
 .sidebar-role--regulator { color: #4a56b0; }
 .sidebar-role--target    { color: #059669; }
@@ -930,7 +931,7 @@ details.submod-accordion > summary:hover { background: var(--bg-elevated); borde
     text-decoration: none; border-radius: 6px;
     border-left: 2px solid transparent;
     transition: color 0.12s, background 0.12s, border-color 0.12s;
-    line-height: 1.4;
+    line-height: 1.4; white-space: nowrap;
 }
 .sidebar-link.indented { padding-left: 12px; }
 .sidebar-link:hover { color: var(--text); background: var(--bg-elevated); }
