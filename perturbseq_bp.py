@@ -2436,18 +2436,24 @@ def _query_element_tfs(db, atac_peak_id: int) -> list:
 
 
 def _query_element_genes(db, atac_peak_id: int) -> list:
+    # CTE avoids referencing outer-query alias (ap) inside a subquery ORDER BY,
+    # which is not supported by all SQLite versions.
     rows = db.execute("""
+        WITH peak_pos AS (
+            SELECT (chrom_start + chrom_end) / 2 AS mid
+            FROM atac_peak_table WHERE atac_peak_id = ?
+        )
         SELECT DISTINCT
             gtt.gene_name, gr.gene_region_subtype, gr.multiome_hicar_support,
             gr.chr AS gr_chr, gr.chrom_start AS gr_start, gr.chrom_end AS gr_end,
             td.tf_gene_name,
-            (ap.chrom_start + ap.chrom_end) / 2 AS peak_mid,
+            (SELECT mid FROM peak_pos) AS peak_mid,
             (
                 SELECT (tss.chrom_start + tss.chrom_end) / 2
                 FROM gene_region_table tss
                 WHERE tss.gene_id = gr.gene_id
                   AND tss.gene_region_subtype = 'proximal'
-                ORDER BY ABS((tss.chrom_start + tss.chrom_end) / 2 - (ap.chrom_start + ap.chrom_end) / 2)
+                ORDER BY ABS((tss.chrom_start + tss.chrom_end) / 2 - (SELECT mid FROM peak_pos))
                 LIMIT 1
             ) AS tss
         FROM atac_tf_overlaps  ato
@@ -2458,7 +2464,7 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
         JOIN gene_region_table      gr  ON tgo.gene_region_id   = gr.gene_region_id
         JOIN gene_table             gtt ON gr.gene_id            = gtt.gene_id
         WHERE ato.atac_peak_id = ?
-    """, (atac_peak_id,)).fetchall()
+    """, (atac_peak_id, atac_peak_id)).fetchall()
     groups: dict = {}
     for r in rows:
         g = r["gene_name"]
