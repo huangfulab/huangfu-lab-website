@@ -3659,6 +3659,10 @@ function initTfCoefScatter() {
         const allWrap = document.createElement('div');
         allWrap.style.cssText = `display:none;${CARD};overflow:hidden;margin-top:6px`;
 
+        if (isGeneLevel) {
+          tblLabel.style.display = 'none';
+          tblWrap.style.display = 'none';
+        }
         panel.append(histWrap, tblLabel, tblWrap, toggle, allWrap);
 
         // ── Render function ──────────────────────────────────────────────────
