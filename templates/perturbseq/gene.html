@@ -2063,8 +2063,8 @@ function initTfCoefScatter() {
       const scatterTip = document.createElement('div');
       scatterTip.style.cssText = 'position:fixed;z-index:9999;display:none;background:var(--bg-card);' +
         'border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11.5px;' +
-        'box-shadow:0 4px 16px rgba(0,0,0,.14);min-width:200px;line-height:1.6;pointer-events:auto';
-      
+        'box-shadow:0 4px 16px rgba(0,0,0,.14);width:340px;line-height:1.6;pointer-events:auto';
+
       // Downward-pointing caret (at bottom by default for tooltip above point)
       const scatterCaret = document.createElement('div');
       scatterCaret.style.cssText = 'position:absolute;bottom:-7px;width:0;height:0;' +
@@ -2082,44 +2082,17 @@ function initTfCoefScatter() {
         'padding:2px 8px;border-radius:10px;text-decoration:none;white-space:nowrap;';
 
       let _scatterHideTimer = null;
+      let _scatterPtX = 0, _scatterPtY = 0;
 
-      function _showScatterTip(d, ptX, ptY) {
-        clearTimeout(_scatterHideTimer);
-        const color = d.mean_coef >= 0 ? '#ec4899' : '#3b82f6';
-        const tfEnc = encodeURIComponent(GENE);
-        const geneEnc = encodeURIComponent(d.gene_name);
-
-        // Clear caret and old content
-        while (scatterTip.children.length > 1) scatterTip.removeChild(scatterTip.lastChild);
-
-        const body = document.createElement('div');
-        body.innerHTML =
-          `<div><span style="font-weight:700;color:${color}">${d.gene_name}</span></div>` +
-          `<div style="color:var(--text-muted)">coef ${d.mean_coef >= 0 ? '+' : ''}${d.mean_coef.toFixed(3)}</div>` +
-          `<div style="color:var(--text-muted)">binding score ${d.peak_score.toFixed(2)}</div>` +
-          `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
-            `<a href="/perturbseq/gene/${geneEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
-              ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.gene_name} ↗</a>` +
-            `<a href="/perturbseq/link/${tfEnc}/${geneEnc}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
-              ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${GENE}→${d.gene_name} ↗</a>` +
-          `</div>`;
-        scatterTip.appendChild(body);
-        scatterTip.style.display = 'block';
-
-        // Position tooltip above point with caret pointing down
+      function _positionScatterTip() {
+        const ptX = _scatterPtX, ptY = _scatterPtY;
         const tipW = scatterTip.offsetWidth;
         const tipH = scatterTip.offsetHeight;
-        const CARET_H = 7;
-        const GAP = 6;
-
+        const CARET_H = 7, GAP = 6;
         let left = ptX - tipW / 2;
-        let top = ptY - tipH - CARET_H - GAP;
-
-        // Constrain horizontally
+        let top  = ptY - tipH - CARET_H - GAP;
         if (left < 8) left = 8;
         if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
-
-        // If tooltip would go off-screen above, position below instead (caret at top pointing up)
         if (top < 8) {
           top = ptY + CARET_H + GAP;
           scatterCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;' +
@@ -2129,7 +2102,6 @@ function initTfCoefScatter() {
             'border-left:6px solid transparent;border-right:6px solid transparent;' +
             'border-bottom:6px solid var(--bg-card)';
         } else {
-          // Normal case: caret at bottom pointing down
           scatterCaret.style.cssText = 'position:absolute;bottom:-7px;width:0;height:0;' +
             'border-left:7px solid transparent;border-right:7px solid transparent;' +
             'border-top:7px solid var(--border)';
@@ -2137,17 +2109,61 @@ function initTfCoefScatter() {
             'border-left:6px solid transparent;border-right:6px solid transparent;' +
             'border-top:6px solid var(--bg-card)';
         }
-
-        // Position caret horizontally within tooltip
-        const caretX = ptX - left;
-        scatterCaret.style.left = (caretX - 7) + 'px';
-
+        scatterCaret.style.left = (ptX - left - 7) + 'px';
         scatterTip.style.left = left + 'px';
-        scatterTip.style.top = top + 'px';
+        scatterTip.style.top  = top  + 'px';
+      }
+
+      function _showScatterTip(d, ptX, ptY) {
+        clearTimeout(_scatterHideTimer);
+        _scatterPtX = ptX; _scatterPtY = ptY;
+        const color   = d.mean_coef >= 0 ? '#ec4899' : '#3b82f6';
+        const tfEnc   = encodeURIComponent(GENE);
+        const geneEnc = encodeURIComponent(d.gene_name);
+
+        // Clear all children except caret
+        while (scatterTip.children.length > 1) scatterTip.removeChild(scatterTip.lastChild);
+
+        const body = document.createElement('div');
+        body.innerHTML =
+          `<div><span style="font-weight:700;color:${color}">${d.gene_name}</span></div>` +
+          `<div class="st-desc" style="font-size:11px;color:var(--text-muted);font-style:italic;margin:3px 0 5px;line-height:1.45"></div>` +
+          `<div style="color:var(--text-muted)">coef ${d.mean_coef >= 0 ? '+' : ''}${d.mean_coef.toFixed(3)}</div>` +
+          `<div style="color:var(--text-muted)">binding score ${d.peak_score.toFixed(2)}</div>` +
+          `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
+            `<a href="/perturbseq/gene/${geneEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
+              ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.gene_name} ↗</a>` +
+            `<a href="/perturbseq/link/${tfEnc}/${geneEnc}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
+              ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${GENE}→${d.gene_name} ↗</a>` +
+          `</div>`;
+        scatterTip.appendChild(body);
+
+        // Populate description (async, uses shared cache from gene tooltip)
+        const descEl = body.querySelector('.st-desc');
+        if (window._getGeneTip) {
+          window._getGeneTip(d.gene_name, info => {
+            if (!descEl.isConnected) return;
+            const txt = info.summary || '';
+            descEl.textContent = txt.length > 150 ? txt.slice(0, 150).trimEnd() + '…' : txt;
+            if (txt) _positionScatterTip();
+          });
+        }
+
+        // Expression charts below a divider
+        if (window._renderLinkCharts) {
+          const chartsDiv = document.createElement('div');
+          chartsDiv.style.cssText = 'margin-top:9px;padding-top:8px;border-top:1px solid var(--border,#eee)';
+          scatterTip.appendChild(chartsDiv);
+          window._renderLinkCharts(GENE, d.gene_name, chartsDiv, _positionScatterTip);
+        }
+
+        scatterTip.style.display = 'block';
+        window._tooltipLocked = true;
+        _positionScatterTip();
       }
 
       function _hideScatterTip() {
-        _scatterHideTimer = setTimeout(() => { scatterTip.style.display = 'none'; }, 150);
+        _scatterHideTimer = setTimeout(() => { scatterTip.style.display = 'none'; window._tooltipLocked = false; }, 150);
       }
 
       scatterTip.addEventListener('mouseenter', () => clearTimeout(_scatterHideTimer));
@@ -2228,7 +2244,7 @@ function initTfCoefScatter() {
 
   let allData = null;
   let page = 1, perPage = 10, search = '', orderCol = 4, orderDir = 'asc';
-  let filterDir = 'all', filterSrc = '';
+  let filterDir = 'all';
   let debounce;
 
   wrapEl.innerHTML = `
@@ -2247,13 +2263,6 @@ function initTfCoefScatter() {
         <button class="lg-dir-btn active" data-dir="all">All</button>
         <button class="lg-dir-btn" data-dir="up">↑ Up</button>
         <button class="lg-dir-btn" data-dir="down">↓ Down</button>
-        <span class="filter-sep"></span>
-        <span class="filter-label">Source:</span>
-        <button class="lg-src-btn active" data-src="">All</button>
-        <button class="lg-src-btn" data-src="huangfu-tf_chipseq">Huangfu ChIP</button>
-        <button class="lg-src-btn" data-src="encode_chipseq">ENCODE ChIP</button>
-        <button class="lg-src-btn" data-src="remap_chipseq">ReMap</button>
-        <button class="lg-src-btn" data-src="tobias">TOBIAS</button>
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -2263,12 +2272,10 @@ function initTfCoefScatter() {
           <th class="sst-sortable" data-col="1">Module</th>
           <th class="sst-sortable sst-asc" data-col="4" title="How extreme this gene's response to TF knockdown is, within the top/bottom 5% of DE responders">KD Effect</th>
           <th class="sst-sortable" data-col="5" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Computed as the average per-gRNA log-fold-change effect on this gene's expression. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
-          <th class="sst-sortable" data-col="2" title="Number of ChIP-seq/footprint datasets linking this gene">Binding support</th>
           <th class="sst-sortable" data-col="6" title="Weighted TF binding score: each linked peak contributes 1/log₁₀(distance+10), with multiome peaks boosted 3×">Binding score</th>
-          <th title="ChIP-seq and motif footprint data sources">Sources</th>
           <th>TF→Gene link</th>
         </tr></thead>
-        <tbody id="lg-tbody"><tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+        <tbody id="lg-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
       </table>
     </div>
     <div class="sst-bar bottom">
@@ -2291,7 +2298,6 @@ function initTfCoefScatter() {
         : '';
       modLink = superPill + subPill;
     }
-    const srcs = (r.sources || []).map(srcBadge).join('');
     let deCell;
     if (r.signed_pct_rank == null) {
       deCell = '<td style="color:var(--text-muted);font-size:12px">—</td>';
@@ -2309,13 +2315,12 @@ function initTfCoefScatter() {
     const coefCell = coef == null
       ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
       : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
-    const dsCell = `<td><span class="lg-ds-count" data-ds="${encodeURIComponent(JSON.stringify(r.datasets||[]))}">${r.n_datasets} source${r.n_datasets !== 1 ? 's' : ''}</span></td>`;
-    const scoreDetails = JSON.stringify({ score: r.peak_score, n_peaks: r.n_peaks, n_proximal: r.n_proximal, n_distal: r.n_distal, n_multiome: r.n_multiome });
+    const scoreDetails = JSON.stringify({ score: r.peak_score, n_peaks: r.n_peaks, n_proximal: r.n_proximal, n_distal: r.n_distal, n_multiome: r.n_multiome, datasets: r.datasets || [] });
     const scoreCell = r.peak_score > 0
       ? `<td><span class="lg-score-tip" data-score="${encodeURIComponent(scoreDetails)}" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;font-weight:600;color:#7c3aed;cursor:help;border-bottom:1px dashed #c4b5fd">${r.peak_score.toFixed(2)}</span></td>`
       : `<td style="color:var(--text-muted);font-size:12px">—</td>`;
     const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
-    return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${dsCell}${scoreCell}<td style="white-space:nowrap">${srcs}</td><td style="white-space:nowrap">${linkPill}</td></tr>`;
+    return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${scoreCell}<td style="white-space:nowrap">${linkPill}</td></tr>`;
   }
 
   function getFiltered() {
@@ -2324,7 +2329,7 @@ function initTfCoefScatter() {
     return allData.filter(r => {
       if (filterDir === 'up'   && r.signed_pct_rank < 0.95) return false;
       if (filterDir === 'down' && r.signed_pct_rank > 0.05) return false;
-      if (filterSrc && !(r.sources || []).includes(filterSrc)) return false;
+
       if (q && !r.gene_name.toLowerCase().includes(q) &&
                !(r.submodule   || '').toLowerCase().includes(q) &&
                !(r.supermodule || '').toLowerCase().includes(q)) return false;
@@ -2359,7 +2364,7 @@ function initTfCoefScatter() {
     if (tbody) {
       tbody.innerHTML = pageRows.length
         ? pageRows.map(rowHtml).join('')
-        : `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+        : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
     }
 
     const topCount = document.getElementById('lg-top-count');
@@ -2412,12 +2417,6 @@ function initTfCoefScatter() {
       wrapEl.querySelectorAll('.lg-dir-btn').forEach(b => b.classList.toggle('active', b === dirBtn));
       page = 1; render(); return;
     }
-    const srcBtn = e.target.closest('.lg-src-btn');
-    if (srcBtn) {
-      filterSrc = srcBtn.dataset.src;
-      wrapEl.querySelectorAll('.lg-src-btn').forEach(b => b.classList.toggle('active', b === srcBtn));
-      page = 1; render(); return;
-    }
     const th = e.target.closest('th[data-col]');
     if (!th) return;
     const col = +th.dataset.col;
@@ -2432,27 +2431,8 @@ function initTfCoefScatter() {
     .then(resp => { allData = resp.data || []; render(); })
     .catch(() => {
       const tbody = document.getElementById('lg-tbody');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
     });
-
-  // ── Dataset tooltip (hoverable, clickable) ──────────────────────────────────
-  const lgTip = document.createElement('div');
-  lgTip.id = 'lg-ds-tip';
-  lgTip.style.cssText = [
-    'display:none;position:fixed;z-index:400',
-    'background:var(--bg-card)',
-    'border:1px solid var(--border)',
-    'border-radius:10px',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.18),0 1.5px 4px rgba(0,0,0,0.10)',
-    'padding:0',
-    'font-size:12px',
-    'max-width:380px;min-width:220px',
-    'max-height:340px',
-    'overflow:hidden',
-    'pointer-events:auto',
-    'transition:opacity 0.1s',
-  ].join(';');
-  document.body.appendChild(lgTip);
 
   function dsLink(ds) {
     const name = ds.name, src = ds.source || '';
@@ -2476,107 +2456,7 @@ function initTfCoefScatter() {
     return `<span style="font-weight:600;color:var(--text)">${name}</span>`;
   }
 
-  function buildTipHtml(datasets) {
-    const srcLabel = { 'huangfu-tf_chipseq': 'Huangfu ChIP', 'encode_chipseq': 'ENCODE ChIP', 'remap_chipseq': 'ReMap ChIP', 'tobias': 'TOBIAS' };
-    const srcColor = { 'huangfu-tf_chipseq': '#6366f1', 'encode_chipseq': '#10b981', 'remap_chipseq': '#f59e0b', 'tobias': '#ec4899' };
-    // Group by source
-    const groups = {};
-    for (const d of datasets) {
-      (groups[d.source] = groups[d.source] || []).push(d);
-    }
-    let html = `<div style="overflow-y:auto;max-height:340px;padding:12px 16px 14px">`;
-    html += `<div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Binding datasets</div>`;
-    for (const [src, rows] of Object.entries(groups)) {
-      const col = srcColor[src] || '#9098b8';
-      const lbl = srcLabel[src] || src;
-      html += `<div style="margin-bottom:10px">`;
-      html += `<div style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:${col}22;color:${col};border:1px solid ${col}55;margin-bottom:5px">${lbl}</div>`;
-      for (const d of rows) {
-        html += `<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)">`;
-        html += `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dsLink(d)}</span>`;
-        html += `<span style="flex-shrink:0;font-size:10.5px;color:var(--text-muted);white-space:nowrap">${d.cell_type}</span>`;
-        html += `</div>`;
-      }
-      html += `</div>`;
-    }
-    html += `</div>`;
-    return html;
-  }
-
-  let lgTipAnchor = null, lgHideTimer = null;
-
-  function showTip(span, datasets) {
-    clearTimeout(lgHideTimer);
-    lgTipAnchor = span;
-    lgTip.innerHTML = buildTipHtml(datasets);
-    lgTip.style.display = 'block';
-    lgTip.style.opacity = '1';
-    positionTip(span);
-  }
-
-  function positionTip(span) {
-    const r = span.getBoundingClientRect();
-    const tipW = lgTip.offsetWidth || 280, tipH = lgTip.offsetHeight || 200;
-    let left = r.left, top = r.bottom + 6;
-    if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
-    if (top + tipH > window.innerHeight - 8) top = r.top - tipH - 6;
-    lgTip.style.left = Math.max(8, left) + 'px';
-    lgTip.style.top  = Math.max(8, top)  + 'px';
-  }
-
-  function schedulehide() {
-    lgHideTimer = setTimeout(() => {
-      lgTip.style.display = 'none';
-      lgTipAnchor = null;
-    }, 120);
-  }
-
-  wrapEl.addEventListener('mouseover', e => {
-    const span = e.target.closest('.lg-ds-count');
-    if (!span) return;
-    let datasets;
-    try { datasets = JSON.parse(decodeURIComponent(span.dataset.ds)); } catch(e) { return; }
-    showTip(span, datasets);
-  });
-  wrapEl.addEventListener('mouseout', e => {
-    if (e.target.closest('.lg-ds-count')) schedulehide();
-  });
-  lgTip.addEventListener('mouseenter', () => clearTimeout(lgHideTimer));
-  lgTip.addEventListener('mouseleave', () => schedulehide());
-
-  // ── Source-pill tooltip ─────────────────────────────────────────────────────
-  const lgSrcTip = document.createElement('div');
-  lgSrcTip.style.cssText = [
-    'display:none;position:fixed;z-index:401',
-    'background:var(--bg-card)',
-    'border:1px solid var(--border)',
-    'border-radius:10px',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.18),0 1.5px 4px rgba(0,0,0,0.10)',
-    'padding:9px 13px',
-    'font-size:12px;line-height:1.5;color:var(--text)',
-    'max-width:280px',
-    'pointer-events:none',
-  ].join(';');
-  document.body.appendChild(lgSrcTip);
-
-  wrapEl.addEventListener('mouseover', e => {
-    const pill = e.target.closest('[data-src-tip]');
-    if (!pill) return;
-    lgSrcTip.textContent = pill.dataset.srcTip;
-    lgSrcTip.style.display = 'block';
-    const r = pill.getBoundingClientRect();
-    const tw = lgSrcTip.offsetWidth || 240, th = lgSrcTip.offsetHeight || 36;
-    let left = r.left, top = r.bottom + 6;
-    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
-    if (top + th > window.innerHeight - 8) top = r.top - th - 6;
-    lgSrcTip.style.left = Math.max(8, left) + 'px';
-    lgSrcTip.style.top  = Math.max(8, top)  + 'px';
-  });
-  wrapEl.addEventListener('mouseout', e => {
-    if (e.target.closest('[data-src-tip]')) lgSrcTip.style.display = 'none';
-  });
-
-  // ── Binding score tooltip ───────────────────────────────────────────────────
+  // ── Binding score tooltip (includes dataset list) ───────────────────────────
   const lgScoreTip = document.createElement('div');
   lgScoreTip.style.cssText = [
     'display:none;position:fixed;z-index:401',
@@ -2584,10 +2464,11 @@ function initTfCoefScatter() {
     'border:1px solid var(--border)',
     'border-radius:10px',
     'box-shadow:0 8px 32px rgba(0,0,0,0.18),0 1.5px 4px rgba(0,0,0,0.10)',
-    'padding:12px 16px 14px',
+    'padding:0',
     'font-size:12px;line-height:1.6;color:var(--text)',
-    'max-width:360px;min-width:260px',
-    'pointer-events:none',
+    'max-width:380px;min-width:260px',
+    'max-height:500px;overflow:hidden',
+    'pointer-events:auto',
   ].join(';');
   document.body.appendChild(lgScoreTip);
 
@@ -2608,16 +2489,58 @@ function initTfCoefScatter() {
       cat(d.n_distal,   '#2563eb', 'Distal peaks',      'TF binding site 1–10 kb from the TSS — near-promoter or proximal enhancer')   +
       cat(nOther,       '#64748b', 'Distal peaks',      'TF binding site >10 kb from TSS — down-weighted by distance') +
       cat(d.n_multiome, '#7c3aed', 'Multiome peaks',    'ATAC peak co-linked to this gene across single cells — scored 3× higher',     '3× weight');
-    return `
+
+    // Dataset section
+    const srcLabel = { 'huangfu-tf_chipseq': 'Huangfu ChIP', 'encode_chipseq': 'ENCODE ChIP', 'remap_chipseq': 'ReMap ChIP', 'tobias': 'TOBIAS' };
+    const srcColor = { 'huangfu-tf_chipseq': '#6366f1', 'encode_chipseq': '#10b981', 'remap_chipseq': '#f59e0b', 'tobias': '#ec4899' };
+    const groups = {};
+    for (const ds of (d.datasets || [])) (groups[ds.source] = groups[ds.source] || []).push(ds);
+    let dsHtml = '';
+    for (const [src, rows] of Object.entries(groups)) {
+      const col = srcColor[src] || '#9098b8';
+      const lbl = srcLabel[src] || src;
+      dsHtml += `<div style="margin-bottom:10px">`;
+      dsHtml += `<div style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:${col}22;color:${col};border:1px solid ${col}55;margin-bottom:5px">${lbl}</div>`;
+      for (const ds of rows) {
+        dsHtml += `<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)">`;
+        dsHtml += `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dsLink(ds)}</span>`;
+        dsHtml += `<span style="flex-shrink:0;font-size:10.5px;color:var(--text-muted);white-space:nowrap">${ds.cell_type}</span>`;
+        dsHtml += `</div>`;
+      }
+      dsHtml += `</div>`;
+    }
+
+    return `<div style="overflow-y:auto;max-height:500px;padding:12px 16px 14px">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Weighted binding score</div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
         <span style="font-size:22px;font-weight:700;color:#7c3aed;font-family:'SF Mono','Fira Code',monospace">${(+d.score).toFixed(2)}</span>
         <span style="font-size:11px;color:var(--text-muted)">${d.n_peaks} peak${d.n_peaks !== 1 ? 's' : ''} total</span>
       </div>
       ${cats}
-      <div style="padding-top:8px;font-size:10.5px;color:var(--text-muted);line-height:1.5">
+      <div style="padding-top:8px;padding-bottom:12px;font-size:10.5px;color:var(--text-muted);line-height:1.5">
         Each peak adds <em>w</em>&thinsp;/&thinsp;log₁₀(distance&thinsp;+&thinsp;10) to the score
-      </div>`;
+      </div>
+      ${dsHtml ? `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Binding datasets</div>
+        ${dsHtml}
+      </div>` : ''}
+    </div>`;
+  }
+
+  let lgScoreTipAnchor = null, lgScoreHideTimer = null;
+
+  function showScoreTip(span, d) {
+    clearTimeout(lgScoreHideTimer);
+    lgScoreTipAnchor = span;
+    lgScoreTip.innerHTML = buildScoreTipHtml(d);
+    lgScoreTip.style.display = 'block';
+    const r = span.getBoundingClientRect();
+    const tw = lgScoreTip.offsetWidth || 280, th = lgScoreTip.offsetHeight || 80;
+    let left = r.left, top = r.bottom + 6;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top + th > window.innerHeight - 8) top = r.top - th - 6;
+    lgScoreTip.style.left = Math.max(8, left) + 'px';
+    lgScoreTip.style.top  = Math.max(8, top)  + 'px';
   }
 
   wrapEl.addEventListener('mouseover', e => {
@@ -2625,18 +2548,16 @@ function initTfCoefScatter() {
     if (!span) return;
     let d;
     try { d = JSON.parse(decodeURIComponent(span.dataset.score)); } catch(e) { return; }
-    lgScoreTip.innerHTML = buildScoreTipHtml(d);
-    lgScoreTip.style.display = 'block';
-    const r = span.getBoundingClientRect();
-    const tw = lgScoreTip.offsetWidth || 240, th = lgScoreTip.offsetHeight || 80;
-    let left = r.left, top = r.bottom + 6;
-    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
-    if (top + th > window.innerHeight - 8) top = r.top - th - 6;
-    lgScoreTip.style.left = Math.max(8, left) + 'px';
-    lgScoreTip.style.top  = Math.max(8, top)  + 'px';
+    showScoreTip(span, d);
   });
   wrapEl.addEventListener('mouseout', e => {
-    if (e.target.closest('.lg-score-tip')) lgScoreTip.style.display = 'none';
+    if (e.target.closest('.lg-score-tip')) {
+      lgScoreHideTimer = setTimeout(() => { lgScoreTip.style.display = 'none'; lgScoreTipAnchor = null; }, 120);
+    }
+  });
+  lgScoreTip.addEventListener('mouseenter', () => clearTimeout(lgScoreHideTimer));
+  lgScoreTip.addEventListener('mouseleave', () => {
+    lgScoreHideTimer = setTimeout(() => { lgScoreTip.style.display = 'none'; lgScoreTipAnchor = null; }, 120);
   });
 })();
 
@@ -3100,12 +3021,15 @@ function initTfCoefScatter() {
     const vals = coefs.map(d => d.coef);
     const n    = vals.length;
     const RUG  = 10;
-    const margin = { top: 42, right: 20, bottom: 48, left: 20 };
+    const GAP  = 4;
+    const bindCoefs = coefs.filter(d => d.has_binding);
+    const hasBind   = bindCoefs.length > 0;
+    const margin = { top: 42, right: 20, bottom: 48, left: 38 };
     const _pageMain = document.querySelector('.page-main') || document.body;
     const fullW  = Math.max((_pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
     const W = fullW - margin.left - margin.right;
     const H = 150;
-    const totalH = H + RUG + 6;
+    const totalH = H + RUG + 6 + (hasBind ? GAP + RUG : 0);
 
     const sorted = [...vals].sort((a, b) => a - b);
     const lo5 = sorted[Math.max(0, Math.ceil(n * 0.05) - 1)];
@@ -3249,7 +3173,7 @@ function initTfCoefScatter() {
 
     // Clip path that keeps chart content inside the plot area
     defs.append('clipPath').attr('id', `grna-chart-clip-${_uid}`).append('rect')
-      .attr('x', 0).attr('y', -2).attr('width', W).attr('height', H + RUG + 10);
+      .attr('x', 0).attr('y', -2).attr('width', W).attr('height', totalH + 10);
 
     // Updateable tail-shade clip rects
     const loClipRect = defs.append('clipPath').attr('id', `grna-clip-lo-${_uid}`).append('rect').attr('y', 0).attr('height', H);
@@ -3258,7 +3182,7 @@ function initTfCoefScatter() {
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Transparent rect to capture drag/wheel events over the whole chart area
-    g.append('rect').attr('width', W).attr('height', H + RUG + 6)
+    g.append('rect').attr('width', W).attr('height', totalH)
       .attr('fill', 'none').attr('pointer-events', 'all');
 
     // Inner group — clipped; all zoom-affected elements go here
@@ -3275,11 +3199,18 @@ function initTfCoefScatter() {
     const hi5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
       .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
 
-    // Rug strip
-    const rugY    = H + 6;
+    // Rug strip — row 1 (all active gRNAs)
+    const rugY1   = H + 6;
+    const rugY2   = rugY1 + RUG + GAP;
+
+    g.append('text').attr('x', -4).attr('y', rugY1 + RUG / 2)
+      .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
+      .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
+      .text('All');
+
     const rugTicks = clipG.selectAll('line.rug-tick').data(coefs).join('line')
       .attr('class', 'rug-tick')
-      .attr('y1', rugY).attr('y2', rugY + RUG)
+      .attr('y1', rugY1).attr('y2', rugY1 + RUG)
       .attr('stroke', d => d.signed_pct_rank >= 0.95 ? '#ec4899'
                           : d.signed_pct_rank <= 0.05 ? '#3b82f6'
                           : 'var(--text-muted)')
@@ -3291,10 +3222,37 @@ function initTfCoefScatter() {
     // Wide transparent hit targets for easier hovering
     const rugHits = clipG.selectAll('line.rug-hit').data(coefs).join('line')
       .attr('class', 'rug-hit')
-      .attr('y1', rugY).attr('y2', rugY + RUG)
+      .attr('y1', rugY1).attr('y2', rugY1 + RUG)
       .attr('stroke', 'transparent')
       .attr('stroke-width', 7)
       .style('cursor', 'pointer');
+
+    // Rug strip — row 2 (TFs with binding evidence only)
+    let rugTicks2 = null, rugHits2 = null;
+    if (hasBind) {
+      g.append('text').attr('x', -4).attr('y', rugY2 + RUG / 2)
+        .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
+        .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
+        .text('Bound');
+
+      rugTicks2 = clipG.selectAll('line.rug-tick2').data(bindCoefs).join('line')
+        .attr('class', 'rug-tick2')
+        .attr('y1', rugY2).attr('y2', rugY2 + RUG)
+        .attr('stroke', d => d.signed_pct_rank >= 0.95 ? '#ec4899'
+                            : d.signed_pct_rank <= 0.05 ? '#3b82f6'
+                            : 'var(--text-muted)')
+        .attr('stroke-width', 1.8)
+        .attr('opacity', d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35)
+        .attr('stroke-linecap', 'round')
+        .attr('pointer-events', 'none');
+
+      rugHits2 = clipG.selectAll('line.rug-hit2').data(bindCoefs).join('line')
+        .attr('class', 'rug-hit2')
+        .attr('y1', rugY2).attr('y2', rugY2 + RUG)
+        .attr('stroke', 'transparent')
+        .attr('stroke-width', 7)
+        .style('cursor', 'pointer');
+    }
 
     // ── geom_label_repel for top/bottom 3 ────────────────────────────────────
     const sortedCoefs = [...coefs].sort((a, b) => a.coef - b.coef);
@@ -3358,7 +3316,7 @@ function initTfCoefScatter() {
         // connector from box bottom-centre to rug tick top
         lg.append('line')
           .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
-          .attr('x2', tickX).attr('y2', rugY)
+          .attr('x2', tickX).attr('y2', rugY1)
           .attr('stroke', color).attr('stroke-width', 0.9)
           .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
         // background box
@@ -3425,7 +3383,7 @@ function initTfCoefScatter() {
         const lg = onTargetG.append('g');
         lg.append('line')
           .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
-          .attr('x2', tickX).attr('y2', rugY)
+          .attr('x2', tickX).attr('y2', rugY1)
           .attr('stroke', OT_COLOR).attr('stroke-width', 0.9)
           .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
         lg.append('rect')
@@ -3443,8 +3401,8 @@ function initTfCoefScatter() {
       });
     }
 
-    // X-axis sits below the rug strip so tick labels don't overlap it
-    const xAxisG = g.append('g').attr('transform', `translate(0,${H + RUG + 8})`).attr('class', 'axis');
+    // X-axis sits below the last rug strip so tick labels don't overlap it
+    const xAxisG = g.append('g').attr('transform', `translate(0,${totalH + 2})`).attr('class', 'axis');
 
     // ── Annotation labels at top (in margin above chart area) ───────────────
     g.append('text').attr('x', 3).attr('y', -27)
@@ -3489,7 +3447,7 @@ function initTfCoefScatter() {
 
     let _rugHideTimer = null;
 
-    function _showRugTip(d) {
+    function _showRugTip(d, yBase) {
       clearTimeout(_rugHideTimer);
       const color   = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
       const coefStr = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
@@ -3523,7 +3481,7 @@ function initTfCoefScatter() {
       const xsc = d3.zoomTransform(svgNode).rescaleX(x0);
       const pt  = svgNode.createSVGPoint();
       pt.x = xsc(d.coef) + margin.left;
-      pt.y = rugY + RUG + margin.top;
+      pt.y = (yBase || rugY1) + RUG + margin.top;
       const sc  = pt.matrixTransform(svgNode.getScreenCTM());
 
       const tipW = rugTip.offsetWidth;
@@ -3546,9 +3504,16 @@ function initTfCoefScatter() {
     rugTip.addEventListener('mouseleave', _hideRugTip);
 
     rugHits
-      .on('mouseover', function(event, d) { _showRugTip(d); })
+      .on('mouseover', function(event, d) { _showRugTip(d, rugY1); })
       .on('mousemove', function()         {})
       .on('mouseout',  function()         { _hideRugTip(); });
+
+    if (rugHits2) {
+      rugHits2
+        .on('mouseover', function(event, d) { _showRugTip(d, rugY2); })
+        .on('mousemove', function()         {})
+        .on('mouseout',  function()         { _hideRugTip(); });
+    }
 
     // ── Update function (called on every zoom event) ──────────────────────────
     function update(xsc) {
@@ -3571,6 +3536,8 @@ function initTfCoefScatter() {
 
       rugTicks.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
       rugHits.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+      if (rugTicks2) rugTicks2.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+      if (rugHits2)  rugHits2.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
 
       drawRepelLabels(xsc);
       if (onTargetVisible) drawOnTargetLabels(xsc);
@@ -3654,11 +3621,12 @@ function initTfCoefScatter() {
   // Mean coef per TF across provided gRNA rows, with fresh rank
   function computeGeneLevel(grnaCoefs) {
     const byTF = {};
-    grnaCoefs.forEach(d => { (byTF[d.tf_name] = byTF[d.tf_name] || []).push(d.coef); });
-    const gc = Object.entries(byTF).map(([tf_name, vals]) => ({
+    grnaCoefs.forEach(d => { (byTF[d.tf_name] = byTF[d.tf_name] || []).push(d); });
+    const gc = Object.entries(byTF).map(([tf_name, rows]) => ({
       tf_name, grna_name: tf_name,
-      coef: vals.reduce((a, b) => a + b, 0) / vals.length,
-      n_grnas: vals.length,
+      coef: rows.reduce((a, d) => a + d.coef, 0) / rows.length,
+      n_grnas: rows.length,
+      has_binding: rows.some(d => d.has_binding),
     }));
     return rerank(gc.sort((a, b) => a.coef - b.coef));
   }
@@ -3710,26 +3678,6 @@ function initTfCoefScatter() {
         const panel = document.createElement('div');
         panel.style.cssText = 'padding-top:12px';
 
-        // ── Guide filter pill buttons ────────────────────────────────────────
-        const guideBar = document.createElement('div');
-        guideBar.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:10px';
-        const gLbl = document.createElement('span');
-        gLbl.textContent = 'Guides:';
-        gLbl.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em';
-
-        function mkPill(label, on) {
-          const b = document.createElement('button');
-          b.textContent = label;
-          b.style.cssText = `padding:3px 11px;font-size:11px;font-weight:600;border-radius:20px;cursor:pointer;transition:all 0.15s;` +
-            `border:1px solid ${on ? 'var(--accent,#6366f1)' : 'var(--border)'};` +
-            `background:${on ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)'};` +
-            `color:${on ? 'var(--accent,#6366f1)' : 'var(--text-muted)'}`;
-          return b;
-        }
-        const pillAll    = mkPill('All guides',  true);
-        const pillActive = mkPill('Active only', false);
-        guideBar.append(gLbl, pillAll, pillActive);
-
         // ── Content elements ─────────────────────────────────────────────────
         const histWrap = document.createElement('div');
         histWrap.style.cssText = `${CARD};padding:16px 16px 8px`;
@@ -3746,9 +3694,9 @@ function initTfCoefScatter() {
         const allWrap = document.createElement('div');
         allWrap.style.cssText = `display:none;${CARD};overflow:hidden;margin-top:6px`;
 
-        panel.append(guideBar, histWrap, tblLabel, tblWrap, toggle, allWrap);
+        panel.append(histWrap, tblLabel, tblWrap, toggle, allWrap);
 
-        // ── Render function — re-runs on guide filter change ─────────────────
+        // ── Render function ──────────────────────────────────────────────────
         function render(panelCoefs) {
           const highlighted = panelCoefs.filter(d => d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05);
           tblLabel.textContent = `Top & bottom 5% ${noun} (${highlighted.length})`;
@@ -3771,28 +3719,14 @@ function initTfCoefScatter() {
           allWrap.dataset.rendered = '';
         }
 
-        // ── Guide filter logic ───────────────────────────────────────────────
-        function applyFilter(activeOnly) {
-          [pillAll, pillActive].forEach(b => {
-            const on = activeOnly ? b === pillActive : b === pillAll;
-            b.style.borderColor = on ? 'var(--accent,#6366f1)' : 'var(--border)';
-            b.style.background  = on ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)';
-            b.style.color       = on ? 'var(--accent,#6366f1)' : 'var(--text-muted)';
-          });
-          let filtered = activeOnly ? allRawCoefs.filter(d => d.active) : allRawCoefs;
-          if (isGeneLevel) {
-            filtered = computeGeneLevel(filtered);
-          } else if (activeOnly) {
-            filtered = rerank([...filtered].sort((a, b) => a.coef - b.coef));
-          }
-          render(filtered);
+        // ── Always render with active guides only ────────────────────────────
+        let filtered = allRawCoefs.filter(d => d.active);
+        if (isGeneLevel) {
+          filtered = computeGeneLevel(filtered);
+        } else {
+          filtered = rerank([...filtered].sort((a, b) => a.coef - b.coef));
         }
-
-        pillAll.addEventListener('click',    () => applyFilter(false));
-        pillActive.addEventListener('click', () => applyFilter(true));
-
-        // Initial render (all guides)
-        applyFilter(false);
+        render(filtered);
         return panel;
       }
 

@@ -1831,19 +1831,34 @@ def api_tf_linked_genes_all(tf_name):
             WHERE tp.dataset_id IN ({ds_ph})
             GROUP BY gr.gene_id, tp.peak_id, gr.gene_region_subtype
         ),
+        -- Deduplicate: each (gene_id, peak_id) gets exactly one effective subtype.
+        -- Multiome takes priority; without multiome, use the non-multiome subtype.
+        peak_dedup AS (
+            SELECT
+                gene_id,
+                peak_id,
+                MIN(min_dist_measured) AS min_dist_measured,
+                CASE
+                    WHEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) = 1
+                    THEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN gene_region_subtype ELSE NULL END)
+                    ELSE MIN(gene_region_subtype)
+                END AS effective_subtype
+            FROM peak_raw
+            GROUP BY gene_id, peak_id
+        ),
         peak_scores AS (
             SELECT
                 gene_id,
-                COUNT(DISTINCT peak_id) AS n_peaks,
-                SUM(CASE WHEN gene_region_subtype = 'proximal'            THEN 1 ELSE 0 END) AS n_proximal,
-                SUM(CASE WHEN gene_region_subtype = 'distal'              THEN 1 ELSE 0 END) AS n_distal,
-                SUM(CASE WHEN gene_region_subtype LIKE '%multiome_peak'   THEN 1 ELSE 0 END) AS n_multiome,
+                COUNT(*) AS n_peaks,
+                SUM(CASE WHEN effective_subtype = 'proximal'          THEN 1 ELSE 0 END) AS n_proximal,
+                SUM(CASE WHEN effective_subtype = 'distal'            THEN 1 ELSE 0 END) AS n_distal,
+                SUM(CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) AS n_multiome,
                 SUM(
-                    CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
+                    CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
                     * LOG(10) / LOG(
                         COALESCE(
                             min_dist_measured,
-                            CASE gene_region_subtype
+                            CASE effective_subtype
                                 WHEN 'proximal' THEN 500
                                 WHEN 'distal'   THEN 5500
                                 ELSE 50000
@@ -1851,7 +1866,7 @@ def api_tf_linked_genes_all(tf_name):
                         ) + 10
                     )
                 ) AS peak_score
-            FROM peak_raw
+            FROM peak_dedup
             GROUP BY gene_id
         )
         SELECT gt.gene_name,
@@ -2302,7 +2317,13 @@ def api_gene_grna_coefs(gene_name):
 
     rows = db.execute("""
         SELECT gr.gene_name AS tf_name, gr.grna_name, gr.active, dr.coef,
-               PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank
+               PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank,
+               CASE WHEN EXISTS (
+                   SELECT 1 FROM tf_gene_links tgl
+                   JOIN tf_dataset_table tdt ON tgl.dataset_id = tdt.dataset_id
+                   WHERE tdt.tf_gene_name = gr.gene_name
+                     AND tgl.gene_id = dr.gene_id
+               ) THEN 1 ELSE 0 END AS has_binding
         FROM de_results dr
         JOIN grna_table gr ON dr.grna_id = gr.grna_id
         WHERE dr.gene_id = ?
@@ -2311,7 +2332,8 @@ def api_gene_grna_coefs(gene_name):
 
     return jsonify({'coefs': [
         {'tf_name': r['tf_name'], 'grna_name': r['grna_name'], 'active': r['active'],
-         'coef': r['coef'], 'signed_pct_rank': r['signed_pct_rank']}
+         'coef': r['coef'], 'signed_pct_rank': r['signed_pct_rank'],
+         'has_binding': bool(r['has_binding'])}
         for r in rows
     ]})
 
@@ -3062,6 +3084,18 @@ def api_link_coefs(tf, gene):
         return jsonify({"tf": tf, "gene": gene, "de": None,
                         "error": "coefficient data unavailable"}), 503
     return jsonify({"tf": tf, "gene": gene, "de": de})
+
+
+@perturbseq_bp.route("/api/link/<tf>/<gene>/tooltip")
+def api_link_tooltip(tf, gene):
+    db = get_db()
+    tf_row   = resolve_gene(db, tf)
+    gene_row = resolve_gene(db, gene)
+    tf_expr = [{'timepoint': r['timepoint'], 'mean_tpm': r['mean_tpm']}
+               for r in _gene_expr_by_timepoint(db, tf_row['gene_id'])] if tf_row else []
+    gene_expr = [{'timepoint': r['timepoint'], 'mean_tpm': r['mean_tpm']}
+                 for r in _gene_expr_by_timepoint(db, gene_row['gene_id'])] if gene_row else []
+    return jsonify({'tf': tf, 'gene': gene, 'tf_expr': tf_expr, 'gene_expr': gene_expr})
 
 
 @perturbseq_bp.route("/api/atac-counts/<int:atac_peak_id>")

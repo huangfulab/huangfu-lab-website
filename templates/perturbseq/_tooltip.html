@@ -94,6 +94,7 @@
   }
 
   document.addEventListener('mouseover', e => {
+    if (window._tooltipLocked) return;
     const r = resolveTarget(e.target);
     if (!r) return;
     currentEl = r.el;
@@ -103,6 +104,15 @@
     const r = resolveTarget(e.target);
     if (r) { currentEl = null; scheduleHide(); }
   });
+
+  // Public API — lets other components fetch gene info using this cache
+  window._getGeneTip = function(gene, cb) {
+    if (cache[gene] !== undefined) { cb(cache[gene]); return; }
+    fetch('/perturbseq/api/gene/' + encodeURIComponent(gene) + '/tooltip')
+      .then(r => r.json())
+      .then(data => { cache[gene] = data; cb(data); })
+      .catch(() => { const empty = {full_name:null,summary:null,submodule:null,supermodule:null,is_tf:false}; cache[gene]=empty; cb(empty); });
+  };
 })();
 </script>
 
@@ -221,6 +231,7 @@
   }
 
   document.addEventListener('mouseover', e => {
+    if (window._tooltipLocked) return;
     const r = resolveTarget(e.target);
     if (!r) return;
     currentEl = r.el;
@@ -230,5 +241,153 @@
     const r = resolveTarget(e.target);
     if (r) { currentEl = null; scheduleHide(); }
   });
+})();
+</script>
+
+<!-- ── Global TF→gene link tooltip ─────────────────────────────────────── -->
+<div id="link-tip" role="tooltip" aria-hidden="true">
+  <div id="link-tip-header">
+    <span id="link-tip-tf"></span>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;color:var(--text-muted,#999)"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span id="link-tip-gene"></span>
+  </div>
+  <div id="link-tip-body"></div>
+</div>
+<style>
+#link-tip{display:none;position:fixed;z-index:9999;width:340px;border-radius:var(--radius,6px);background:var(--bg-card,#fff);border:1px solid var(--border,#dde);border-left:4px solid #6366f1;box-shadow:0 4px 18px rgba(0,0,0,.13);overflow:hidden;font-family:inherit;pointer-events:none}
+#link-tip-header{display:flex;align-items:center;gap:5px;padding:7px 11px 6px;border-bottom:1px solid var(--border,#dde);background:var(--bg-elevated,#f6f7fb)}
+#link-tip-tf{font-size:12px;font-weight:700;color:#4a56b0}
+#link-tip-gene{font-size:12px;font-weight:700;color:#059669}
+#link-tip-body{padding:7px 11px 9px}
+.lt-chart-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#888);margin-bottom:2px}
+</style>
+<script>
+(function(){
+  const tip    = document.getElementById('link-tip');
+  const tipTf  = document.getElementById('link-tip-tf');
+  const tipGene= document.getElementById('link-tip-gene');
+  const tipB   = document.getElementById('link-tip-body');
+  const cache  = {};
+  let hideTimer = null, currentEl = null;
+
+  function resolveTarget(target) {
+    const a = target.closest('a[href]');
+    if (!a) return null;
+    const m = a.getAttribute('href').match(/\/perturbseq\/link\/([^/?#]+)\/([^/?#]+)/);
+    if (!m) return null;
+    return { el: a, tf: decodeURIComponent(m[1]), gene: decodeURIComponent(m[2]) };
+  }
+
+  function positionNear(el) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (y + th > H - pad) y = r.top - th - 6;
+    if (x + tw > W - pad) x = r.right - tw;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function sparkline(expr, color, showAxis) {
+    const W=312, PL=30, PR=6, PT=4, PB=showAxis?22:5;
+    const IW=W-PL-PR, IH=44, H=PT+IH+PB;
+    const vals = expr.map(d => d.mean_tpm||0);
+    const vMax = Math.max(...vals, 0.01);
+    const n = expr.length;
+    const xs = expr.map((_,i) => PL + (i/(n-1))*IW);
+    const toY = v => PT + IH - (v/vMax)*IH;
+    const pts = xs.map((x,i) => [x, toY(vals[i])]);
+    const base = PT + IH;
+    // Catmull-Rom → cubic Bézier (same algorithm as expr-chart.js uses via D3)
+    function crPath(pts) {
+      const f = v => Math.round(v*10)/10;
+      let d = `M${f(pts[0][0])},${f(pts[0][1])}`;
+      for (let i=0; i<pts.length-1; i++) {
+        const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(pts.length-1,i+2)];
+        const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+        const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+        d += ` C${f(c1x)},${f(c1y)} ${f(c2x)},${f(c2y)} ${f(p2[0])},${f(p2[1])}`;
+      }
+      return d;
+    }
+    const linePath = crPath(pts);
+    // Area: descend to baseline at each end, enclose the smooth curve
+    const areaPath = `M${pts[0][0]},${base} L${linePath.substring(1)} L${pts[n-1][0]},${base} Z`;
+    const yticks = [0, vMax/2, vMax].map(v=>{
+      const y=toY(v), lbl=v===0?'0':v<10?v.toFixed(1):Math.round(v);
+      return `<line x1="${PL-4}" y1="${y}" x2="${PL}" y2="${y}" stroke="#ccc" stroke-width="0.8"/><text x="${PL-6}" y="${y+3}" text-anchor="end" font-size="7" fill="#aaa">${lbl}</text>`;
+    }).join('');
+    const yLbl=`<text transform="rotate(-90)" x="${-(PT+IH/2)}" y="9" text-anchor="middle" font-size="7" fill="#aaa">TPM</text>`;
+    const lbls=['ES','12h','24h','36h','48h','60h','72h'];
+    const xAxis=showAxis?xs.map((x,i)=>
+      `<line x1="${x}" y1="${PT+IH+2}" x2="${x}" y2="${PT+IH+5}" stroke="#bbb" stroke-width="1"/><text x="${x}" y="${H-2}" text-anchor="middle" font-size="8" fill="#aaa">${lbls[i]}</text>`
+    ).join(''):'';
+    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">${yLbl}${yticks}<path d="${areaPath}" fill="${color}" opacity="0.15"/><path d="${linePath}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>${xAxis}</svg>`;
+  }
+
+  function render(tf, gene, data, el) {
+    tipTf.textContent  = tf;
+    tipGene.textContent= gene;
+    let html='';
+    if (data.tf_expr && data.tf_expr.length) {
+      html += `<div class="lt-chart-label">${tf} — transcription factor</div>${sparkline(data.tf_expr,'#4a56b0',false)}`;
+    }
+    if (data.gene_expr && data.gene_expr.length) {
+      html += `<div class="lt-chart-label" style="margin-top:8px">${gene} — target gene</div>${sparkline(data.gene_expr,'#059669',true)}`;
+    }
+    if (!html) html='<span style="color:var(--text-muted,#aaa);font-size:12px">Loading…</span>';
+    tipB.innerHTML=html;
+    tip.style.display='block';
+    positionNear(el);
+  }
+
+  function scheduleHide() {
+    hideTimer = setTimeout(()=>{ tip.style.display='none'; }, 150);
+  }
+
+  function show(el, tf, gene) {
+    clearTimeout(hideTimer);
+    const key=tf+'\x00'+gene;
+    if (cache[key]!==undefined) { render(tf,gene,cache[key],el); return; }
+    render(tf,gene,{tf_expr:[],gene_expr:[]},el);
+    fetch('/perturbseq/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
+      .then(r=>r.json())
+      .then(data=>{ cache[key]=data; if(currentEl===el) render(tf,gene,data,el); })
+      .catch(()=>{ cache[key]={tf_expr:[],gene_expr:[]}; });
+  }
+
+  document.addEventListener('mouseover', e=>{
+    if (window._tooltipLocked) return;
+    const r=resolveTarget(e.target);
+    if(!r) return;
+    currentEl=r.el;
+    show(r.el,r.tf,r.gene);
+  });
+  document.addEventListener('mouseout', e=>{
+    const r=resolveTarget(e.target);
+    if(r){ currentEl=null; scheduleHide(); }
+  });
+
+  // Public API — lets other tooltips (e.g. scatter plot) reuse the same sparklines + cache
+  window._renderLinkCharts = function(tf, gene, el, cb) {
+    const key = tf+'\x00'+gene;
+    function doRender(data) {
+      let html='';
+      if (data.tf_expr && data.tf_expr.length)
+        html += `<div class="lt-chart-label">${tf} — TF</div>${sparkline(data.tf_expr,'#4a56b0',false)}`;
+      if (data.gene_expr && data.gene_expr.length)
+        html += `<div class="lt-chart-label" style="margin-top:8px">${gene} — target gene</div>${sparkline(data.gene_expr,'#059669',true)}`;
+      el.innerHTML = html;
+      if (cb) cb();
+    }
+    if (cache[key]!==undefined) { doRender(cache[key]); return; }
+    el.innerHTML = '<span style="font-size:11px;color:var(--text-muted,#aaa)">Loading…</span>';
+    if (cb) cb();
+    fetch('/perturbseq/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
+      .then(r=>r.json())
+      .then(data=>{ cache[key]=data; doRender(data); })
+      .catch(()=>{ cache[key]={tf_expr:[],gene_expr:[]}; doRender(cache[key]); });
+  };
 })();
 </script>
