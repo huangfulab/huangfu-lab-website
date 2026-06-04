@@ -1411,7 +1411,6 @@ def gene_page(gene_name):
 
     tfs, modules = _nav_lists(db)
     reg_elements     = _query_gene_elements(db, gene_name, gene_id=gene_id)
-    reg_tfs          = _query_gene_reg_tfs(db, gene_id) if reg_elements else []
     tf_element_count = _count_tf_elements(db, gene_name) if is_tf else 0
     _locus_row = db.execute(
         'SELECT chr, MIN(chrom_start) AS locus_start, MAX(chrom_end) AS locus_end '
@@ -1452,7 +1451,6 @@ def gene_page(gene_name):
         tc_reg_clusters=tc_reg_clusters,
         tfs=tfs, modules=modules,
         reg_elements=reg_elements,
-        reg_tfs=reg_tfs,
         tf_element_count=tf_element_count,
         gene_locus=gene_locus,
         gene_summary=gene_summary,
@@ -2812,54 +2810,6 @@ def _query_atac_counts(db, atac_peak_id: int) -> list:
         })
     return result
 
-
-def _query_gene_reg_tfs(db, gene_id: str) -> list:
-    """Aggregate TFs bound to this gene's regulatory elements, ranked by coverage."""
-    rows = db.execute("""
-        SELECT
-            td.tf_gene_name,
-            COUNT(DISTINCT ap.atac_peak_id)                         AS n_elements,
-            COUNT(DISTINCT td.dataset_id)                           AS n_datasets,
-            MAX(CASE WHEN td.source = 'tobias' THEN 1 ELSE 0 END)  AS has_motif,
-            MAX(CASE WHEN td.source != 'tobias' THEN 1 ELSE 0 END) AS has_chip,
-            GROUP_CONCAT(DISTINCT
-                gr.gene_region_subtype || '|' || COALESCE(gr.multiome_hicar_support, '')
-            ) AS subtype_combos,
-            GROUP_CONCAT(DISTINCT ap.atac_peak_id)                  AS peak_ids
-        FROM gene_region_table      gr
-        JOIN tf_gene_overlaps  tgo ON gr.gene_region_id = tgo.gene_region_id
-        JOIN tf_peaks          tp  ON tgo.peak_id       = tp.peak_id
-        JOIN atac_tf_overlaps  ato ON tp.peak_id        = ato.peak_id
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id  = ap.atac_peak_id
-        JOIN tf_dataset_table       td  ON tp.dataset_id     = td.dataset_id
-        WHERE gr.gene_id = ?
-        GROUP BY td.tf_gene_name
-        ORDER BY n_elements DESC, n_datasets DESC
-        LIMIT 200
-    """, (gene_id,)).fetchall()
-
-    _lt_order = ['tss_proximal_1kb', 'tss_distal_10kb', 'distal_multiome', 'distal_multiome_hicar']
-    result = []
-    for r in rows:
-        link_types = set()
-        for combo in (r['subtype_combos'] or '').split(','):
-            parts = combo.split('|', 1)
-            subtype = parts[0]
-            hicar   = parts[1] if len(parts) > 1 else ''
-            if subtype:
-                link_types.add(_subtype_to_link_type(subtype, hicar))
-        peak_ids = [int(p) for p in (r['peak_ids'] or '').split(',') if p]
-        result.append({
-            'tf_gene_name': r['tf_gene_name'],
-            'n_elements':   r['n_elements'],
-            'n_datasets':   r['n_datasets'],
-            'has_chip':     bool(r['has_chip']),
-            'has_motif':    bool(r['has_motif']),
-            'link_types':   sorted(link_types,
-                                   key=lambda x: _lt_order.index(x) if x in _lt_order else 99),
-            'peak_ids':     peak_ids,
-        })
-    return result
 
 
 def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:

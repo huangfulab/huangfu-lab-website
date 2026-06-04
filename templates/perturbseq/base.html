@@ -116,11 +116,25 @@
   const sections = links.map(l => document.getElementById(l.getAttribute('href').slice(1))).filter(Boolean);
   if (!links.length || !sections.length) return;
   function update() {
-    const threshold = 90;
+    const ENTRY_MARGIN = 90;      // px from top before a section becomes a candidate
+    const SWITCH_FRACTION = 0.85; // switch to next when this fraction of section has scrolled past
     const visible = sections.filter(s => s.getBoundingClientRect().height > 0);
     if (!visible.length) return;
     let active = visible[0];
-    for (const sec of visible) { if (sec.getBoundingClientRect().top <= threshold) active = sec; }
+    for (let i = 0; i < visible.length; i++) {
+      const top = visible[i].getBoundingClientRect().top;
+      if (top > ENTRY_MARGIN) break;
+      // Use distance to next section as the effective section height,
+      // since section elements are headings whose own height is tiny.
+      const sectionHeight = i + 1 < visible.length
+        ? visible[i + 1].getBoundingClientRect().top - top
+        : document.documentElement.scrollHeight - (window.scrollY + top);
+      if (-top >= sectionHeight * SWITCH_FRACTION && i + 1 < visible.length) {
+        active = visible[i + 1];
+      } else {
+        active = visible[i];
+      }
+    }
     links.forEach(l => l.classList.remove('active'));
     const link = sidebar.querySelector(`.sidebar-link[href="#${active.id}"]`);
     if (link) link.classList.add('active');

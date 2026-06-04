@@ -372,10 +372,8 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <a href="#sec-regulated-modules" class="sidebar-link indented">Modules regulated by {{ gene }}</a>
     <a href="#sec-linked-genes" class="sidebar-link indented">Genes regulated by {{ gene }}</a>
     {% endif %}
-    {% if reg_elements or reg_tfs %}
+    {% if reg_elements %}
     <span class="sidebar-role sidebar-role--target">{{ gene }} as a Regulated Gene</span>
-    {% endif %}
-    {% if reg_tfs %}
     <a href="#sec-reg-tfs" class="sidebar-link indented">TFs regulating {{ gene }}</a>
     {% endif %}
     {% if reg_elements %}
@@ -640,28 +638,14 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 {% endif %}
 
 <!-- ── Regulated-gene role banner ─────────────────────────────────────── -->
-{% if reg_elements or reg_tfs %}
+{% if reg_elements %}
 <div class="role-banner role-banner--target">
   <span>{{ gene }} — as a Regulated Gene</span>
 </div>
-{% endif %}
 
-<!-- ── TFs bound to regulatory elements ──────────────────────────────────── -->
-{% if reg_tfs %}
-{% set lt_styles = {
-  'tss_proximal_1kb':      'color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)',
-  'tss_distal_10kb':       'color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)',
-  'distal_multiome':       'color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)',
-  'distal_multiome_hicar': 'color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)',
-} %}
-{% set lt_short = {
-  'tss_proximal_1kb':      'Proximal',
-  'tss_distal_10kb':       'Distal',
-  'distal_multiome':       'Multiome',
-  'distal_multiome_hicar': 'HiCAR',
-} %}
-<h2 class="section-h2" id="sec-reg-tfs">TFs regulating {{ gene }} <span class="section-count" id="reg-tf-count">{{ reg_tfs | length }} TF{{ 's' if reg_tfs | length != 1 else '' }}</span></h2>
-<p class="section-desc">Transcription factors linked to <strong>{{ gene }}</strong> by binding evidence (ChIP-seq or motif footprint peaks overlapping regulatory elements) and/or perturbation evidence (Perturb-seq knockdown). The <strong>Data type</strong> column indicates whether each TF has binding, perturbation, or both types of evidence. The <strong>Mean coef</strong> column shows the average Perturb-seq regression coefficient across all gRNAs (positive = {{ gene }} upregulated upon KD; negative = downregulated). Perturbation-only rows are appended after the page loads.</p>
+<!-- ── TFs regulating gene ──────────────────────────────────── -->
+<h2 class="section-h2" id="sec-reg-tfs">TFs regulating {{ gene }} <span class="section-count" id="reg-tf-count">0 TFs</span></h2>
+<p class="section-desc">Transcription factors with Perturb-seq knockdown data for <strong>{{ gene }}</strong>. The <strong>Binding</strong> column indicates whether any binding evidence exists for this TF–gene pair (ChIP-seq or motif footprint peaks). The <strong>Mean coef</strong> is the average Perturb-seq regression coefficient across active gRNAs (positive = {{ gene }} upregulated upon KD; negative = downregulated). The <strong>Outlier</strong> column indicates whether this gene is in the top or bottom 5% of all TF knockdown effects.</p>
 <div id="grna-coef-loading" style="display:none;margin-bottom:10px"><div class="dt-spinner" style="display:inline-block;vertical-align:middle;margin-right:6px"></div><span style="font-size:12px;color:var(--text-muted)">Loading perturbation data…</span></div>
 <div id="grna-coef-wrap" style="display:none;margin-bottom:20px"></div>
 <div id="reg-tf-wrap">
@@ -674,82 +658,24 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <button class="filter-pill active" data-filter="dtype" data-val="all">All</button>
   <button class="filter-pill" data-filter="dtype" data-val="binding">Binding</button>
   <button class="filter-pill" data-filter="dtype" data-val="perturbation">Perturbation</button>
-  <button class="filter-pill" data-filter="dtype" data-val="both">Both</button>
+  <button class="filter-pill" data-filter="dtype" data-val="both" title="Binding evidence + outlier effect (top/bottom 5%)">Binding + Outlier</button>
   <span class="filter-sep"></span>
-  <span class="filter-label">Evidence:</span>
-  <button class="filter-pill" data-filter="ev" data-val="chip">ChIP</button>
-  <button class="filter-pill" data-filter="ev" data-val="motif">Motif</button>
-  <span class="filter-sep"></span>
-  <span class="filter-label">Link type:</span>
-  <button class="filter-pill" data-filter="lt" data-val="tss_proximal_1kb">Proximal</button>
-  <button class="filter-pill" data-filter="lt" data-val="tss_distal_10kb">Distal</button>
-  <button class="filter-pill" data-filter="lt" data-val="distal_multiome">Multiome</button>
-  <button class="filter-pill" data-filter="lt" data-val="distal_multiome_hicar">HiCAR</button>
-  <span class="filter-sep"></span>
-  <span class="filter-label">Min elements:</span>
-  <button class="filter-pill active" data-filter="min" data-val="1">Any</button>
-  <button class="filter-pill" data-filter="min" data-val="2">≥2</button>
-  <button class="filter-pill" data-filter="min" data-val="3">≥3</button>
-  <button class="filter-pill" data-filter="min" data-val="5">≥5</button>
-  <span class="filter-sep"></span>
-  <span class="filter-label">Element:</span>
-  <select id="reg-tf-element-sel" class="sst-select" style="font-size:11px;padding:2px 5px">
-    <option value="">All</option>
-    {% for el in reg_elements %}
-    <option value="{{ el.atac_peak_id }}">{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}{% if el.tss_dist_label %} ({{ el.tss_dist_label }}){% endif %}</option>
-    {% endfor %}
-  </select>
+  <span class="filter-label">Effect:</span>
+  <button class="filter-pill active" data-filter="dir" data-val="all">All</button>
+  <button class="filter-pill" data-filter="dir" data-val="up">↑ Up</button>
+  <button class="filter-pill" data-filter="dir" data-val="down">↓ Down</button>
 </div>
 <div style="overflow-x:auto">
 <table class="data-table" id="reg-tf-table">
   <thead>
   <tr>
-    <th class="sortable" data-key="name"     data-type="string">TF</th>
-    <th>Data type</th>
-    <th>Evidence</th>
-    <th>Link types</th>
-    <th class="sortable" data-key="elements" data-type="number">Elements</th>
-    <th class="sortable" data-key="datasets" data-type="number">Datasets</th>
-    <th class="sortable" data-key="mean_coef" data-type="number">Mean coef</th>
+    <th class="sortable" data-key="name"            data-type="string">TF</th>
+    <th class="sortable" data-key="mean_coef"       data-type="number" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
+    <th>Binding</th>
+    <th class="sortable" data-key="signed_pct_rank" data-type="number" title="Whether this gene is an outlier (top/bottom 5%) in the TF knockdown effect distribution">Outlier</th>
     <th>TF→Gene link</th>
   </tr></thead>
-  <tbody>
-  {% for tf in reg_tfs %}
-  <tr data-name="{{ tf.tf_gene_name }}"
-      data-evidence="binding"
-      data-elements="{{ tf.n_elements }}"
-      data-datasets="{{ tf.n_datasets }}"
-      data-has-chip="{{ '1' if tf.has_chip else '0' }}"
-      data-has-motif="{{ '1' if tf.has_motif else '0' }}"
-      data-link-types="{{ tf.link_types | join(',') }}"
-      data-peak-ids="{{ tf.peak_ids | join(',') }}"
-      data-mean_coef="">
-    <td><a href="/perturbseq/gene/{{ tf.tf_gene_name }}"
-           style="font-weight:600;color:var(--accent);text-decoration:none">{{ tf.tf_gene_name }}</a></td>
-    <td class="reg-tf-ev-td" style="white-space:nowrap"><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Binding</span></td>
-    <td style="white-space:nowrap">
-      {% if tf.has_chip %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0;margin-right:3px">ChIP</span>{% endif %}
-      {% if tf.has_motif %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(16,185,129,0.12);color:#059669">Motif</span>{% endif %}
-    </td>
-    <td>
-      {% for lt in tf.link_types %}<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin:1px 2px 1px 0;{{ lt_styles.get(lt, '') }}">{{ lt_short.get(lt, lt) }}</span>{% endfor %}
-    </td>
-    <td>{{ tf.n_elements }}</td>
-    <td>{{ tf.n_datasets }}</td>
-    <td class="reg-tf-coef-td" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:var(--text-muted)">—</td>
-    <td><a href="/perturbseq/link/{{ tf.tf_gene_name }}/{{ gene }}"
-           style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;
-                  font-size:11px;font-weight:600;white-space:nowrap;
-                  padding:2px 8px;border-radius:10px;
-                  background:rgba(74,86,176,0.10);color:#4a56b0;
-                  border:1.5px solid rgba(74,86,176,0.25);
-                  transition:background 0.12s"
-           onmouseover="this.style.background='rgba(74,86,176,0.2)'"
-           onmouseout="this.style.background='rgba(74,86,176,0.10)'"
-           >{{ tf.tf_gene_name }} → {{ gene }}</a></td>
-  </tr>
-  {% endfor %}
-  </tbody>
+  <tbody></tbody>
 </table>
 </div>
 <div class="sst-bar bottom" style="border-top:1px solid var(--border);border-radius:0 0 8px 8px">
@@ -1494,43 +1420,29 @@ requestAnimationFrame(() => {
 (function() {
   const table = document.getElementById('reg-tf-table');
   if (!table) return;
-  const headers    = table.querySelectorAll('th.sortable');
-  const searchEl   = document.getElementById('reg-tf-search');
-  const countEl    = document.getElementById('reg-tf-count');
-  const infoEl     = document.getElementById('reg-tf-info');
-  const perPageEl  = document.getElementById('reg-tf-per-page');
-  const pagesEl    = document.getElementById('reg-tf-pages');
-  const elementSel = document.getElementById('reg-tf-element-sel');
+  const headers   = table.querySelectorAll('th.sortable');
+  const searchEl  = document.getElementById('reg-tf-search');
+  const countEl   = document.getElementById('reg-tf-count');
+  const infoEl    = document.getElementById('reg-tf-info');
+  const perPageEl = document.getElementById('reg-tf-per-page');
+  const pagesEl   = document.getElementById('reg-tf-pages');
 
-  let sortKey = 'elements', sortDir = 'desc', q = '';
+  let sortKey = 'mean_coef', sortDir = 'asc', q = '';
   let page = 1, perPage = 10;
-  // multi-select sets for evidence and link-type; single value for min-elements; single for dtype
-  let evFilter    = new Set();   // 'chip', 'motif' — empty = no restriction
-  let ltFilter    = new Set();   // link type keys — empty = no restriction
-  let minEl       = 1;
-  let elFilter    = '';          // atac_peak_id as string, '' = all
-  let dtypeFilter = 'all';       // 'all', 'binding', 'perturbation', 'both'
+  let dtypeFilter = 'all';   // 'all', 'binding', 'perturbation', 'both'
+  let filterDir   = 'all';   // 'all', 'up', 'down'
 
-  // Wire filter pills
   document.querySelectorAll('#reg-tf-filter-bar .filter-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       const f = btn.dataset.filter, v = btn.dataset.val;
-      if (f === 'min' || f === 'dtype') {
-        document.querySelectorAll(`#reg-tf-filter-bar .filter-pill[data-filter="${f}"]`)
-          .forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        if (f === 'min') minEl = +v;
-        else dtypeFilter = v;
-      } else {
-        btn.classList.toggle('active');
-        const set = f === 'ev' ? evFilter : ltFilter;
-        set.has(v) ? set.delete(v) : set.add(v);
-      }
+      document.querySelectorAll(`#reg-tf-filter-bar .filter-pill[data-filter="${f}"]`)
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (f === 'dtype') dtypeFilter = v;
+      else if (f === 'dir') filterDir = v;
       page = 1; refresh();
     });
   });
-
-  if (elementSel) elementSel.addEventListener('change', () => { elFilter = elementSel.value; page = 1; refresh(); });
 
   function renderPages(totalPages) {
     pagesEl.innerHTML = '';
@@ -1564,32 +1476,19 @@ requestAnimationFrame(() => {
     const filtered = allRows.filter(r => {
       if (q && !r.dataset.name.toLowerCase().includes(q)) return false;
 
-      // dtype filter — hides rows that lack the required evidence type
-      const ev = r.dataset.evidence || 'binding';
-      if (dtypeFilter === 'binding'      && ev === 'perturbation') return false;
-      if (dtypeFilter === 'perturbation' && ev === 'binding')      return false;
-      if (dtypeFilter === 'both'         && ev !== 'both')         return false;
-
-      // binding-specific filters do not apply to perturbation-only rows;
-      // activating any of them implicitly hides perturbation-only rows
-      const isPertOnly = ev === 'perturbation';
-      if (isPertOnly) {
-        return !(evFilter.size || ltFilter.size || minEl > 1 || elFilter);
+      if (dtypeFilter === 'binding'      && r.dataset.hasBinding !== '1') return false;
+      if (dtypeFilter === 'perturbation' && r.dataset.hasBinding === '1') return false;
+      if (dtypeFilter === 'both') {
+        // Require binding evidence AND outlier status (top/bottom 5%)
+        if (r.dataset.hasBinding !== '1') return false;
+        const rank = r.dataset.signed_pct_rank === '' ? null : +r.dataset.signed_pct_rank;
+        if (rank === null || (rank > 0.05 && rank < 0.95)) return false;
       }
 
-      if (evFilter.size) {
-        const ok = (evFilter.has('chip')  && r.dataset.hasChip  === '1') ||
-                   (evFilter.has('motif') && r.dataset.hasMotif === '1');
-        if (!ok) return false;
-      }
-      if (ltFilter.size) {
-        const rowLts = (r.dataset.linkTypes || '').split(',').filter(Boolean);
-        if (!rowLts.some(lt => ltFilter.has(lt))) return false;
-      }
-      if (+r.dataset.elements < minEl) return false;
-      if (elFilter) {
-        const ids = (r.dataset.peakIds || '').split(',');
-        if (!ids.includes(elFilter)) return false;
+      if (filterDir !== 'all' && r.dataset.signed_pct_rank !== '') {
+        const rank = +r.dataset.signed_pct_rank;
+        if (filterDir === 'up'   && rank < 0.95) return false;
+        if (filterDir === 'down' && rank > 0.05) return false;
       }
       return true;
     });
@@ -3013,35 +2912,48 @@ function initTfCoefScatter() {
       const pageRows = filtered.slice((page - 1) * perPage, page * perPage);
 
       const noun = isGeneLevel ? 'TF genes' : 'gRNAs';
+      const bindBadge = has => has
+        ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(74,86,176,0.10);color:#4a56b0">Yes</span>'
+        : '<span style="color:var(--text-muted);font-size:12px">—</span>';
+      const linkPill = tf =>
+        `<a href="/perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(GENE)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.25);white-space:nowrap;text-decoration:none">${tf} → ${GENE}</a>`;
+
       const colDef = isGeneLevel
         ? [
-            { key: 'tf_name',  label: 'TF' },
-            { key: 'coef',     label: 'Mean Coef' },
-            ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
-            { key: 'n_grnas',  label: '# gRNAs' },
+            { key: 'tf_name',        label: 'TF' },
+            { key: 'coef',           label: 'Mean coef' },
+            { key: '_binding',       label: 'Binding' },
+            { key: 'signed_pct_rank', label: 'Outlier' },
+            { key: '_link',          label: 'TF→Gene link' },
           ]
         : [
-            { key: 'tf_name',   label: 'TF' },
-            { key: 'grna_name', label: 'gRNA' },
-            { key: 'coef',      label: 'Coefficient' },
-            ...(showEffect ? [{ key: '_effect', label: 'Effect' }] : []),
+            { key: 'tf_name',        label: 'TF' },
+            { key: 'grna_name',      label: 'gRNA' },
+            { key: 'coef',           label: 'Coef' },
+            { key: '_binding',       label: 'Binding' },
+            { key: 'signed_pct_rank', label: 'Outlier' },
+            { key: '_link',          label: 'TF→Gene link' },
           ];
 
+      const _unsortable = new Set(['_binding', '_link']);
       const ths = colDef.map(c => {
-        const sortable = c.key !== '_effect';
+        const sortable = !_unsortable.has(c.key);
         return `<th${sortable ? ` class="sst-sortable${c.key === sortCol ? (sortDir > 0 ? ' sst-asc' : ' sst-desc') : ''}" data-grna-col="${c.key}"` : ''}>${c.label}</th>`;
       }).join('');
 
       const trs = pageRows.map(d => isGeneLevel ? `<tr>
         <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
         <td>${coefSpan(d.coef)}</td>
-        ${showEffect ? `<td>${effectPill(d)}</td>` : ''}
-        <td style="color:var(--text-muted);font-size:11px">${d.n_grnas}</td>
+        <td>${bindBadge(d.has_binding)}</td>
+        <td>${effectPill(d) || '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>
+        <td style="white-space:nowrap">${linkPill(d.tf_name)}</td>
       </tr>` : `<tr>
         <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
         <td style="font-family:'SF Mono','Fira Code',monospace;font-size:11px">${d.grna_name}</td>
         <td>${coefSpan(d.coef)}</td>
-        ${showEffect ? `<td>${effectPill(d)}</td>` : ''}
+        <td>${bindBadge(d.has_binding)}</td>
+        <td>${effectPill(d) || '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>
+        <td style="white-space:nowrap">${linkPill(d.tf_name)}</td>
       </tr>`).join('');
 
       const start = filtered.length ? (page - 1) * perPage + 1 : 0;
@@ -3570,50 +3482,34 @@ function initTfCoefScatter() {
         return '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Binding</span>';
       }
 
-      // Fill Mean Coef column in the reg-tfs table and mark evidence
-      const _gl = computeGeneLevel(coefs);
-      const _coefByTF = new Map(_gl.map(d => [d.tf_name, d]));
-      const _seenBindingTFs = new Set();
-      document.querySelectorAll('#reg-tf-table tbody tr[data-name]').forEach(row => {
-        _seenBindingTFs.add(row.dataset.name);
-        const d = _coefByTF.get(row.dataset.name);
-        const coefTd = row.querySelector('.reg-tf-coef-td');
-        if (d && coefTd) {
-          row.dataset.mean_coef = String(d.coef);
-          coefTd.innerHTML = coefSpan(d.coef);
-          row.dataset.evidence = 'both';
-          const evTd = row.querySelector('.reg-tf-ev-td');
-          if (evTd) evTd.innerHTML = evBadge('both');
-        }
-      });
-
-      // Append perturbation-only rows (TFs in KD library not yet in binding table)
+      // Build all reg-tf table rows from the API response (same data as rug plot)
+      const _gl = computeGeneLevel(coefs.filter(d => d.active));
       const _tbody = document.querySelector('#reg-tf-table tbody');
       if (_tbody) {
+        _tbody.innerHTML = '';
         _gl.forEach(d => {
-          if (_seenBindingTFs.has(d.tf_name)) return;
+          const pill = effectPill(d);
           const tr = document.createElement('tr');
-          tr.dataset.name = d.tf_name;
-          tr.dataset.evidence = 'perturbation';
-          tr.dataset.elements = '';
-          tr.dataset.datasets = '';
-          tr.dataset.hasChip = '0';
-          tr.dataset.hasMotif = '0';
-          tr.dataset.linkTypes = '';
-          tr.dataset.peakIds = '';
-          tr.dataset.mean_coef = String(d.coef);
+          tr.dataset.name            = d.tf_name;
+          tr.dataset.hasBinding      = d.has_binding ? '1' : '0';
+          tr.dataset.mean_coef       = String(d.coef);
+          tr.dataset.signed_pct_rank = String(d.signed_pct_rank);
           tr.innerHTML =
             `<td><a href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}"` +
               ` style="font-weight:600;color:var(--accent);text-decoration:none">${d.tf_name}</a></td>` +
-            `<td class="reg-tf-ev-td" style="white-space:nowrap">${evBadge('perturbation')}</td>` +
-            `<td></td>` +
-            `<td style="white-space:nowrap"></td>` +
-            `<td></td>` +
-            `<td></td>` +
             `<td class="reg-tf-coef-td" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px">${coefSpan(d.coef)}</td>` +
-            `<td></td>`;
+            `<td class="reg-tf-bind-td">${d.has_binding
+              ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Yes</span>'
+              : '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>` +
+            `<td class="reg-tf-de-td">${pill || '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>` +
+            `<td><a href="/perturbseq/link/${encodeURIComponent(d.tf_name)}/${encodeURIComponent(GENE)}"` +
+              ` style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-size:11px;font-weight:600;white-space:nowrap;padding:2px 8px;border-radius:10px;background:rgba(74,86,176,0.10);color:#4a56b0;border:1.5px solid rgba(74,86,176,0.25);transition:background 0.12s"` +
+              ` onmouseover="this.style.background='rgba(74,86,176,0.2)'" onmouseout="this.style.background='rgba(74,86,176,0.10)'"` +
+              `>${d.tf_name} → ${GENE}</a></td>`;
           _tbody.appendChild(tr);
         });
+        const countEl = document.getElementById('reg-tf-count');
+        if (countEl) countEl.textContent = `${_gl.length} TF${_gl.length !== 1 ? 's' : ''}`;
       }
 
       // Re-run sort/filter to incorporate new rows
