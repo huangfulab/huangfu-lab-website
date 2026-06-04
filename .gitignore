@@ -8,3 +8,6 @@ data_copy.sh
 data
 *.tar.gz
 pkg_versions.py
+plots
+Rplots.pdf
+coef_comparison_plots.R

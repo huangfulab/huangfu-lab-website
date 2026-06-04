@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, jsonify, request, g, redirect, url
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
-DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v3.db")
+DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v4.db")
 
 def _last_commit_ts() -> int | None:
     try:
@@ -1805,13 +1805,13 @@ def api_tf_linked_genes_all(tf_name):
             SELECT grna_id FROM grna_table WHERE gene_name = ?
         ),
         gene_de AS (
-            SELECT dr.gene_id, AVG(dr.coef) AS mean_coef
+            SELECT dr.gene_id, AVG(dr.coef) AS mean_coef, AVG(dr.z_coef) AS mean_z_coef
             FROM de_results dr
             WHERE dr.grna_id IN (SELECT grna_id FROM tf_grnas)
             GROUP BY dr.gene_id
         ),
         gene_de_pct AS (
-            SELECT gene_id, mean_coef,
+            SELECT gene_id, mean_coef, mean_z_coef,
                    PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank,
                    PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
             FROM gene_de
@@ -1881,6 +1881,7 @@ def api_tf_linked_genes_all(tf_name):
                COALESCE(ps.n_distal,    0)   AS n_distal,
                COALESCE(ps.n_multiome,  0)   AS n_multiome,
                gdp.mean_coef,
+               gdp.mean_z_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
         FROM tf_gene_links tgl
@@ -1927,6 +1928,7 @@ def api_tf_linked_genes_all(tf_name):
             'sources':          sources,
             'datasets':         datasets,
             'mean_coef':        r['mean_coef'],
+            'mean_z_coef':      r['mean_z_coef'],
             'de_pct_rank':      r['de_pct_rank'],
             'signed_pct_rank':  r['signed_pct_rank'],
         })
