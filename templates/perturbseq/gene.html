@@ -2074,24 +2074,19 @@ function initTfCoefScatter() {
     .then(r => r.json())
     .then(resp => {
       if (loadingEl) loadingEl.style.display = 'none';
-      const rawData = (resp.data || []).map(d => ({
-        gene_name:   d.gene_name,
-        mean_coef:   +d.mean_coef,
-        mean_z_coef: d.mean_z_coef != null ? +d.mean_z_coef : null,
-        peak_score:  Number.isFinite(+d.peak_score) ? +d.peak_score : 0,
-      }));
+      const rawData = (resp.data || [])
+        .filter(d => d.mean_z_coef != null)
+        .map(d => ({
+          gene_name:   d.gene_name,
+          mean_z_coef: +d.mean_z_coef,
+          peak_score:  Number.isFinite(+d.peak_score) ? +d.peak_score : 0,
+        }));
 
       wrap.innerHTML = '';
       if (!rawData.length) {
         wrap.innerHTML = '<div class="tf-target-empty">No linked genes with perturbation coefficients were found for this TF.</div>';
         return;
       }
-
-      const TABS = [
-        { key: 'raw',      label: 'Raw coefficient',      xField: 'mean_coef',   xLabel: 'Mean coefficient across TF KD datasets' },
-        { key: 'zscore',   label: 'Z-scored coefficient', xField: 'mean_z_coef', xLabel: 'Mean z-scored coefficient across TF KD datasets' },
-      ];
-      let activeTab = 'raw';
 
       const card = document.createElement('div');
       card.className = 'tf-target-chart-card';
@@ -2101,13 +2096,10 @@ function initTfCoefScatter() {
             <div class="tf-target-chart-title">Knockdown response vs. binding support</div>
             <div class="tf-target-chart-subtitle">Each dot is a linked gene. Left = downregulated, right = upregulated upon ${GENE} knockdown. Height reflects the strength of TF binding evidence in nearby open chromatin.</div>
           </div>
-          <div class="scatter-tab-bar" style="display:flex;gap:4px;align-self:flex-start;margin-top:2px">
-            ${TABS.map(t => `<button class="scatter-tab-btn${t.key === activeTab ? ' active' : ''}" data-tab="${t.key}" style="font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:${t.key === activeTab ? 'var(--accent)' : 'var(--bg-card)'};color:${t.key === activeTab ? '#fff' : 'var(--text-muted)'};cursor:pointer;font-weight:${t.key === activeTab ? '600' : '400'}">${t.label}</button>`).join('')}
-          </div>
         </div>`;
       wrap.appendChild(card);
 
-      const margin = { top: 16, right: 16, bottom: 44, left: 52 };
+      const margin = { top: 36, right: 16, bottom: 44, left: 52 };
       const pageMain = document.querySelector('.page-main') || document.body;
       const fullW = Math.max((pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 340);
       const fullH = 340;
@@ -2121,7 +2113,6 @@ function initTfCoefScatter() {
       const { el: scatterTip, caret: scatterCaret, caretInner: scatterCaretInner,
               show: _scatterShowCard, hide: _hideScatterTip } = _makeLinkCard(document.body);
       let _scatterPtX = 0, _scatterPtY = 0;
-      let _activeXField = 'mean_coef';
 
       function _positionScatterTip() {
         const ptX = _scatterPtX, ptY = _scatterPtY;
@@ -2155,10 +2146,9 @@ function initTfCoefScatter() {
 
       function _showScatterTip(d, ptX, ptY) {
         _scatterPtX = ptX; _scatterPtY = ptY;
-        const xVal = d[_activeXField];
         _scatterShowCard({
           displayName: d.gene_name,
-          color: xVal >= 0 ? '#ec4899' : '#3b82f6',
+          color: d.mean_z_coef >= 0 ? '#ec4899' : '#3b82f6',
           tfName: GENE,
           targetGene: d.gene_name,
           repositionFn: _positionScatterTip,
@@ -2173,6 +2163,37 @@ function initTfCoefScatter() {
       const zeroLine = g.append('line')
         .attr('y1', 0).attr('y2', H)
         .attr('stroke', 'var(--border)').attr('stroke-dasharray', '3,3');
+
+      // Threshold lines (5th / 95th percentile cutoffs)
+      const loThreshLine = g.append('line').attr('y1', 0).attr('y2', H)
+        .attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+      const hiThreshLine = g.append('line').attr('y1', 0).attr('y2', H)
+        .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+
+      // Annotation groups: arrow line + two text rows each
+      const _scUid = Math.random().toString(36).slice(2);
+      const defs = svgEl.append('defs');
+      defs.append('marker').attr('id', `sc-arr-blue-${_scUid}`)
+        .attr('viewBox', '0 0 8 8').attr('refX', 7).attr('refY', 4)
+        .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+        .append('path').attr('d', 'M0,0 L8,4 L0,8 z').attr('fill', '#3b82f6');
+      defs.append('marker').attr('id', `sc-arr-pink-${_scUid}`)
+        .attr('viewBox', '0 0 8 8').attr('refX', 7).attr('refY', 4)
+        .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+        .append('path').attr('d', 'M0,0 L8,4 L0,8 z').attr('fill', '#ec4899');
+
+      const loAnnotG = g.append('g');
+      const loAnnotArrow = loAnnotG.append('line').attr('stroke', '#3b82f6').attr('stroke-width', 1)
+        .attr('marker-end', `url(#sc-arr-blue-${_scUid})`);
+      const loAnnotT1 = loAnnotG.append('text').attr('fill', '#3b82f6').attr('font-size', 9.5).attr('font-weight', '600');
+      const loAnnotT2 = loAnnotG.append('text').attr('fill', '#3b82f6').attr('font-size', 8.5).attr('opacity', 0.8);
+
+      const hiAnnotG = g.append('g');
+      const hiAnnotArrow = hiAnnotG.append('line').attr('stroke', '#ec4899').attr('stroke-width', 1)
+        .attr('marker-end', `url(#sc-arr-pink-${_scUid})`);
+      const hiAnnotT1 = hiAnnotG.append('text').attr('fill', '#ec4899').attr('font-size', 9.5).attr('font-weight', '600');
+      const hiAnnotT2 = hiAnnotG.append('text').attr('fill', '#ec4899').attr('font-size', 8.5).attr('opacity', 0.8);
+
       const circles = g.append('g');
       const xLabel = g.append('text')
         .attr('x', W / 2).attr('y', H + 36)
@@ -2189,56 +2210,62 @@ function initTfCoefScatter() {
         .range([H, 0]);
       yAxis.call(d3.axisLeft(y).ticks(7).tickFormat(d3.format('.2f')));
 
-      function renderTab(tabKey) {
-        _activeXField = TABS.find(t => t.key === tabKey).xField;
-        const tabLabel = TABS.find(t => t.key === tabKey).xLabel;
-        const data = rawData.filter(d => Number.isFinite(d[_activeXField]));
+      const xExtent = d3.extent(rawData, d => d.mean_z_coef);
+      const xPad = Math.max(0.02, ((xExtent[1] ?? 0) - (xExtent[0] ?? 0)) * 0.08);
+      const x = d3.scaleLinear()
+        .domain([(xExtent[0] ?? -0.1) - xPad, (xExtent[1] ?? 0.1) + xPad]).nice()
+        .range([0, W]);
 
-        const xExtent = d3.extent(data, d => d[_activeXField]);
-        const xPad = Math.max(0.02, ((xExtent[1] ?? 0) - (xExtent[0] ?? 0)) * 0.08);
-        const x = d3.scaleLinear()
-          .domain([(xExtent[0] ?? -0.1) - xPad, (xExtent[1] ?? 0.1) + xPad]).nice()
-          .range([0, W]);
+      xAxis.call(d3.axisBottom(x).ticks(7));
+      zeroLine.attr('x1', x(0)).attr('x2', x(0));
+      xLabel.text('Mean z-scored coefficient across TF KD datasets');
 
-        xAxis.call(d3.axisBottom(x).ticks(7));
-        zeroLine.attr('x1', x(0)).attr('x2', x(0));
-        xLabel.text(tabLabel);
+      // Threshold lines at the inner edge of each colored cluster
+      const blueData = rawData.filter(d => d.mean_z_coef < 0);
+      const pinkData = rawData.filter(d => d.mean_z_coef >= 0);
+      const loVal = blueData.length ? d3.max(blueData, d => d.mean_z_coef) : null;
+      const hiVal = pinkData.length ? d3.min(pinkData, d => d.mean_z_coef) : null;
+      const fmt = d3.format('.2f');
 
-        circles.selectAll('circle')
-          .data(data, d => d.gene_name)
-          .join('circle')
-          .attr('cx', d => x(d[_activeXField]))
-          .attr('cy', d => y(d.peak_score))
-          .attr('r', 3.6)
-          .attr('fill', d => d[_activeXField] >= 0 ? '#ec4899' : '#3b82f6')
-          .attr('fill-opacity', 0.78)
-          .style('cursor', 'pointer')
-          .on('mouseover', (event, d) => {
-            const rect = svgNode.getBoundingClientRect();
-            const cx = +event.currentTarget.getAttribute('cx');
-            const cy = +event.currentTarget.getAttribute('cy');
-            _showScatterTip(d, rect.left + margin.left + cx, rect.top + margin.top + cy);
-          })
-          .on('mouseout', _hideScatterTip)
-          .on('click', (_, d) => { window.location.href = `/perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
+      const TEXT_OFF = 12;
+      const lx = loVal != null ? x(loVal) : null;
+      const hx = hiVal != null ? x(hiVal) : null;
+      const tooClose = lx != null && hx != null && Math.abs(hx - lx) < 120;
+      const loY0 = 2, hiY0 = tooClose ? 18 : 2;
+
+      if (loVal != null) {
+        loThreshLine.attr('x1', lx).attr('x2', lx);
+        loAnnotArrow.attr('x1', lx - TEXT_OFF).attr('y1', loY0 + 13).attr('x2', lx - 2).attr('y2', loY0 + 24);
+        loAnnotT1.attr('x', lx - TEXT_OFF).attr('y', loY0 + 9).attr('text-anchor', 'end').text('Bottom 5%');
+        loAnnotT2.attr('x', lx - TEXT_OFF).attr('y', loY0 + 18).attr('text-anchor', 'end').text(`5th pct cutoff: ${fmt(loVal)}`);
       }
 
-      card.appendChild(svgEl.node());
-      renderTab(activeTab);
+      if (hiVal != null) {
+        hiThreshLine.attr('x1', hx).attr('x2', hx);
+        hiAnnotArrow.attr('x1', hx + TEXT_OFF).attr('y1', hiY0 + 13).attr('x2', hx + 2).attr('y2', hiY0 + 24);
+        hiAnnotT1.attr('x', hx + TEXT_OFF).attr('y', hiY0 + 9).attr('text-anchor', 'start').text('Top 5%');
+        hiAnnotT2.attr('x', hx + TEXT_OFF).attr('y', hiY0 + 18).attr('text-anchor', 'start').text(`95th pct cutoff: ${fmt(hiVal)}`);
+      }
 
-      card.querySelectorAll('.scatter-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          activeTab = btn.dataset.tab;
-          card.querySelectorAll('.scatter-tab-btn').forEach(b => {
-            const isActive = b.dataset.tab === activeTab;
-            b.classList.toggle('active', isActive);
-            b.style.background = isActive ? 'var(--accent)' : 'var(--bg-card)';
-            b.style.color = isActive ? '#fff' : 'var(--text-muted)';
-            b.style.fontWeight = isActive ? '600' : '400';
-          });
-          renderTab(activeTab);
-        });
-      });
+      circles.selectAll('circle')
+        .data(rawData, d => d.gene_name)
+        .join('circle')
+        .attr('cx', d => x(d.mean_z_coef))
+        .attr('cy', d => y(d.peak_score))
+        .attr('r', 3.6)
+        .attr('fill', d => d.mean_z_coef >= 0 ? '#ec4899' : '#3b82f6')
+        .attr('fill-opacity', 0.78)
+        .style('cursor', 'pointer')
+        .on('mouseover', (event, d) => {
+          const rect = svgNode.getBoundingClientRect();
+          const cx = +event.currentTarget.getAttribute('cx');
+          const cy = +event.currentTarget.getAttribute('cy');
+          _showScatterTip(d, rect.left + margin.left + cx, rect.top + margin.top + cy);
+        })
+        .on('mouseout', _hideScatterTip)
+        .on('click', (_, d) => { window.location.href = `/perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
+
+      card.appendChild(svgEl.node());
     })
     .catch(() => { wrap.style.display = 'none'; });
 }
