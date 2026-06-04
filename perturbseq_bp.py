@@ -1959,7 +1959,7 @@ def api_tf_coef_scatter_all(tf_name):
         ),
         gene_de_pct AS (
             SELECT gene_id, mean_z_coef,
-                   PERCENT_RANK() OVER (ORDER BY mean_coef) AS signed_pct_rank
+                   PERCENT_RANK() OVER (ORDER BY mean_z_coef) AS signed_pct_rank
             FROM gene_de
         ),
         peak_raw AS (
