@@ -3532,9 +3532,9 @@ function initTfCoefScatter() {
       // Tab bar
       const tabBar = document.createElement('div');
       tabBar.style.cssText = 'display:flex;border-bottom:1px solid var(--border);margin-top:4px';
-      const tabGrna = mkTabBtn('gRNA level', true);
-      const tabGene = mkTabBtn('Gene level', false);
-      tabBar.append(tabGrna, tabGene);
+      const tabGene = mkTabBtn('Gene level', true);
+      const tabGrna = mkTabBtn('gRNA level', false);
+      tabBar.append(tabGene, tabGrna);
 
       // Build a panel. allRawCoefs is always the raw gRNA-level data so filtering
       // can be applied before computing gene-level averages.
@@ -3597,18 +3597,18 @@ function initTfCoefScatter() {
 
       const grnaPanel = buildPanel(coefs, false);
       const genePanel = buildPanel(coefs, true);
-      genePanel.style.display = 'none';
+      grnaPanel.style.display = 'none';
 
       function activateTab(idx) {
-        grnaPanel.style.display = idx === 0 ? '' : 'none';
-        genePanel.style.display = idx === 1 ? '' : 'none';
-        [tabGrna, tabGene].forEach((btn, i) => {
+        genePanel.style.display = idx === 0 ? '' : 'none';
+        grnaPanel.style.display = idx === 1 ? '' : 'none';
+        [tabGene, tabGrna].forEach((btn, i) => {
           btn.style.borderBottomColor = i === idx ? 'var(--accent,#6366f1)' : 'transparent';
           btn.style.color = i === idx ? 'var(--accent,#6366f1)' : 'var(--text-muted)';
         });
       }
-      tabGrna.addEventListener('click', () => activateTab(0));
-      tabGene.addEventListener('click', () => activateTab(1));
+      tabGene.addEventListener('click', () => activateTab(0));
+      tabGrna.addEventListener('click', () => activateTab(1));
 
       wrapEl.append(tabBar, grnaPanel, genePanel);
       show(wrapEl);
