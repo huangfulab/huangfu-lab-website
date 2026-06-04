@@ -1935,6 +1935,86 @@ def api_tf_linked_genes_all(tf_name):
     return jsonify({'data': data})
 
 
+@perturbseq_bp.route("/api/tf/<tf_name>/coef-scatter-all")
+def api_tf_coef_scatter_all(tf_name):
+    """Lightweight endpoint for the all-genes scatter canvas.
+    Returns compact array-of-arrays [[mean_z_coef, peak_score, is_outlier], ...]."""
+    db = get_db()
+    ds_ids = _tf_dataset_ids(db, tf_name)
+    if not ds_ids:
+        return jsonify({'d': []})
+    ds_ph = ','.join('?' * len(ds_ids))
+
+    rows = db.execute(f"""
+        WITH tf_grnas AS (
+            SELECT grna_id FROM grna_table WHERE gene_name = ?
+        ),
+        gene_de AS (
+            SELECT dr.gene_id,
+                   AVG(dr.z_coef) AS mean_z_coef,
+                   AVG(dr.coef)   AS mean_coef
+            FROM de_results dr
+            WHERE dr.grna_id IN (SELECT grna_id FROM tf_grnas)
+            GROUP BY dr.gene_id
+        ),
+        gene_de_pct AS (
+            SELECT gene_id, mean_z_coef,
+                   PERCENT_RANK() OVER (ORDER BY mean_coef) AS signed_pct_rank
+            FROM gene_de
+        ),
+        peak_raw AS (
+            SELECT gr.gene_id, tp.peak_id, gr.gene_region_subtype,
+                   MIN(ptd.distance) AS min_dist_measured
+            FROM tf_peaks tp
+            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
+            JOIN gene_region_table gr  ON tgo.gene_region_id = gr.gene_region_id
+            LEFT JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
+            LEFT JOIN peak_tss_distances ptd
+                   ON ato.atac_peak_id = ptd.atac_peak_id AND ptd.gene_id = gr.gene_id
+            WHERE tp.dataset_id IN ({ds_ph})
+            GROUP BY gr.gene_id, tp.peak_id, gr.gene_region_subtype
+        ),
+        peak_dedup AS (
+            SELECT gene_id, peak_id,
+                   MIN(min_dist_measured) AS min_dist_measured,
+                   CASE
+                       WHEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) = 1
+                       THEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN gene_region_subtype ELSE NULL END)
+                       ELSE MIN(gene_region_subtype)
+                   END AS effective_subtype
+            FROM peak_raw
+            GROUP BY gene_id, peak_id
+        ),
+        peak_scores AS (
+            SELECT gene_id,
+                   SUM(
+                       CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
+                       * LOG(10) / LOG(
+                           COALESCE(min_dist_measured,
+                               CASE effective_subtype
+                                   WHEN 'proximal' THEN 500
+                                   WHEN 'distal'   THEN 5500
+                                   ELSE 50000 END) + 10)
+                   ) AS peak_score
+            FROM peak_dedup
+            GROUP BY gene_id
+        )
+        SELECT gdp.mean_z_coef,
+               COALESCE(ps.peak_score, 0.0) AS peak_score,
+               CASE WHEN gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05
+                    THEN 1 ELSE 0 END AS is_outlier,
+               gt.gene_name
+        FROM gene_de_pct gdp
+        JOIN gene_table gt ON gdp.gene_id = gt.gene_id
+        LEFT JOIN peak_scores ps ON gdp.gene_id = ps.gene_id
+        WHERE gdp.mean_z_coef IS NOT NULL
+    """, [tf_name] + ds_ids).fetchall()
+
+    data = [[round(r['mean_z_coef'], 3), round(r['peak_score'], 3), r['is_outlier'], r['gene_name']]
+            for r in rows]
+    return jsonify({'d': data})
+
+
 _gene_coef_cache: dict = {}   # tf_name → {gene_id: mean_coef}
 _coef_rug_cache:  dict = {}   # tf_name → linked_by_type payload
 
