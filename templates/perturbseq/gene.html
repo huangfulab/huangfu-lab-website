@@ -1986,6 +1986,84 @@ function initTfCoefLollipop() {
     .catch(() => { wrap.style.display = 'none'; });
 }
 
+// Shared factory for the hoverable tooltip card used by both the scatter plot and rug plot.
+// Returns { el, caret, caretInner, show, hide }.
+// show({ displayName, color, headerExtra, tfName, targetGene, repositionFn, onHide })
+//   displayName  — gene shown in header & whose page/description we link to
+//   tfName       — TF in the /link/{tf}/{gene} path and _renderLinkCharts call
+//   targetGene   — target gene in the same path
+//   headerExtra  — optional HTML appended inline after displayName (coef, gRNA count, …)
+//   repositionFn — called after async content loads to re-anchor the card
+//   onHide       — called when the hide timer fires (e.g. to release _tooltipLocked)
+function _makeLinkCard(attachTo) {
+  const LINK_S = 'display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;' +
+    'padding:2px 8px;border-radius:10px;text-decoration:none;white-space:nowrap;';
+  const DESC_WORD_LIMIT = 30;
+
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;z-index:9999;display:none;background:var(--bg-card);' +
+    'border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11.5px;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,.14);width:340px;line-height:1.6;pointer-events:auto';
+
+  const caret = document.createElement('div');
+  const caretInner = document.createElement('div');
+  caret.appendChild(caretInner);
+  el.appendChild(caret);
+  (attachTo || document.body).appendChild(el);
+
+  let _timer = null;
+
+  function show({ displayName, color, headerExtra, tfName, targetGene, repositionFn, onHide }) {
+    clearTimeout(_timer);
+    while (el.children.length > 1) el.removeChild(el.lastChild);
+
+    const body = document.createElement('div');
+    body.innerHTML =
+      `<div><span style="font-weight:700;color:${color}">${displayName}</span>${headerExtra || ''}</div>` +
+      `<div class="lc-desc" style="font-size:11px;color:var(--text-muted);font-style:italic;margin:3px 0 5px;line-height:1.45"></div>` +
+      `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
+        `<a href="/perturbseq/gene/${encodeURIComponent(displayName)}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
+          ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${displayName} ↗</a>` +
+        `<a href="/perturbseq/link/${encodeURIComponent(tfName)}/${encodeURIComponent(targetGene)}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
+          ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${tfName}→${targetGene} ↗</a>` +
+      `</div>`;
+    el.appendChild(body);
+
+    const descEl = body.querySelector('.lc-desc');
+    if (window._getGeneTip) {
+      window._getGeneTip(displayName, info => {
+        if (!descEl.isConnected) return;
+        const txt = info.summary || '';
+        const words = txt.trim().split(/\s+/).filter(Boolean);
+        descEl.textContent = words.length > DESC_WORD_LIMIT ? words.slice(0, DESC_WORD_LIMIT).join(' ') + '…' : txt;
+        if (txt && repositionFn) repositionFn();
+      });
+    }
+
+    if (window._renderLinkCharts) {
+      const chartsDiv = document.createElement('div');
+      chartsDiv.style.cssText = 'margin-top:9px;padding-top:8px;border-top:1px solid var(--border,#eee)';
+      el.appendChild(chartsDiv);
+      window._renderLinkCharts(tfName, targetGene, chartsDiv, repositionFn);
+    }
+
+    el._onHide = onHide || null;
+    el.style.display = 'block';
+  }
+
+  function hide() {
+    _timer = setTimeout(() => {
+      el.style.display = 'none';
+      if (el._onHide) { el._onHide(); el._onHide = null; }
+    }, 150);
+  }
+
+  el.addEventListener('mouseenter', () => clearTimeout(_timer));
+  el.addEventListener('mouseleave', hide);
+
+  return { el, caret, caretInner, show, hide };
+}
+
 function initTfCoefScatter() {
   if (!IS_TF) return;
   const wrap = document.getElementById('tf-coef-density-wrap');
@@ -2058,29 +2136,9 @@ function initTfCoefScatter() {
         .attr('stroke', 'var(--border)')
         .attr('stroke-dasharray', '3,3');
 
-      // ── Scatter tooltip: hoverable card with caret, anchored to point ──
-      const scatterTip = document.createElement('div');
-      scatterTip.style.cssText = 'position:fixed;z-index:9999;display:none;background:var(--bg-card);' +
-        'border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11.5px;' +
-        'box-shadow:0 4px 16px rgba(0,0,0,.14);width:340px;line-height:1.6;pointer-events:auto';
-
-      // Downward-pointing caret (at bottom by default for tooltip above point)
-      const scatterCaret = document.createElement('div');
-      scatterCaret.style.cssText = 'position:absolute;bottom:-7px;width:0;height:0;' +
-        'border-left:7px solid transparent;border-right:7px solid transparent;' +
-        'border-top:7px solid var(--border)';
-      const scatterCaretInner = document.createElement('div');
-      scatterCaretInner.style.cssText = 'position:absolute;bottom:1.5px;left:-6px;width:0;height:0;' +
-        'border-left:6px solid transparent;border-right:6px solid transparent;' +
-        'border-top:6px solid var(--bg-card)';
-      scatterCaret.appendChild(scatterCaretInner);
-      scatterTip.appendChild(scatterCaret);
-      document.body.appendChild(scatterTip);
-
-      const LINK_S = 'display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;' +
-        'padding:2px 8px;border-radius:10px;text-decoration:none;white-space:nowrap;';
-
-      let _scatterHideTimer = null;
+      // ── Scatter tooltip: uses shared _makeLinkCard factory ──
+      const { el: scatterTip, caret: scatterCaret, caretInner: scatterCaretInner,
+              show: _scatterShowCard, hide: _hideScatterTip } = _makeLinkCard(document.body);
       let _scatterPtX = 0, _scatterPtY = 0;
 
       function _positionScatterTip() {
@@ -2114,63 +2172,18 @@ function initTfCoefScatter() {
       }
 
       function _showScatterTip(d, ptX, ptY) {
-        clearTimeout(_scatterHideTimer);
         _scatterPtX = ptX; _scatterPtY = ptY;
-        const color   = d.mean_coef >= 0 ? '#ec4899' : '#3b82f6';
-        const tfEnc   = encodeURIComponent(GENE);
-        const geneEnc = encodeURIComponent(d.gene_name);
-
-        // Clear all children except caret
-        while (scatterTip.children.length > 1) scatterTip.removeChild(scatterTip.lastChild);
-
-        const body = document.createElement('div');
-        body.innerHTML =
-          `<div><span style="font-weight:700;color:${color}">${d.gene_name}</span></div>` +
-          `<div class="st-desc" style="font-size:11px;color:var(--text-muted);font-style:italic;margin:3px 0 5px;line-height:1.45"></div>` +
-          `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
-            `<a href="/perturbseq/gene/${geneEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
-              ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.gene_name} ↗</a>` +
-            `<a href="/perturbseq/link/${tfEnc}/${geneEnc}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
-              ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${GENE}→${d.gene_name} ↗</a>` +
-          `</div>`;
-        scatterTip.appendChild(body);
-
-        // Populate description (async, uses shared cache from gene tooltip)
-        const DESC_WORD_LIMIT = 30;
-        const descEl = body.querySelector('.st-desc');
-        if (window._getGeneTip) {
-          window._getGeneTip(d.gene_name, info => {
-            if (!descEl.isConnected) return;
-            const txt = info.summary || '';
-            const words = txt.trim().split(/\s+/).filter(Boolean);
-            if (words.length > DESC_WORD_LIMIT) {
-              descEl.textContent = words.slice(0, DESC_WORD_LIMIT).join(' ') + '…';
-            } else {
-              descEl.textContent = txt;
-            }
-            if (txt) _positionScatterTip();
-          });
-        }
-
-        // Expression charts below a divider
-        if (window._renderLinkCharts) {
-          const chartsDiv = document.createElement('div');
-          chartsDiv.style.cssText = 'margin-top:9px;padding-top:8px;border-top:1px solid var(--border,#eee)';
-          scatterTip.appendChild(chartsDiv);
-          window._renderLinkCharts(GENE, d.gene_name, chartsDiv, _positionScatterTip);
-        }
-
-        scatterTip.style.display = 'block';
+        _scatterShowCard({
+          displayName: d.gene_name,
+          color: d.mean_coef >= 0 ? '#ec4899' : '#3b82f6',
+          tfName: GENE,
+          targetGene: d.gene_name,
+          repositionFn: _positionScatterTip,
+          onHide: () => { window._tooltipLocked = false; }
+        });
         window._tooltipLocked = true;
         _positionScatterTip();
       }
-
-      function _hideScatterTip() {
-        _scatterHideTimer = setTimeout(() => { scatterTip.style.display = 'none'; window._tooltipLocked = false; }, 150);
-      }
-
-      scatterTip.addEventListener('mouseenter', () => clearTimeout(_scatterHideTimer));
-      scatterTip.addEventListener('mouseleave', _hideScatterTip);
 
       const svgNode = svg.node();
       g.append('g')
@@ -3327,84 +3340,57 @@ function initTfCoefScatter() {
       .attr('fill', 'var(--text-muted)').attr('opacity', 0.8)
       .text('Perturb-seq regression coefficients');
 
-    // ── Rug tooltip — static popover with caret, anchored below the rug strip ──
-    const rugTip = document.createElement('div');
-    rugTip.style.cssText = 'position:fixed;z-index:9999;display:none;background:var(--bg-card);' +
-      'border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11.5px;' +
-      'box-shadow:0 4px 16px rgba(0,0,0,.14);min-width:180px;line-height:1.6';
-    // Upward-pointing caret (border + fill to match card bg)
-    const rugCaret = document.createElement('div');
-    rugCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;' +
-      'border-left:7px solid transparent;border-right:7px solid transparent;' +
-      'border-bottom:7px solid var(--border)';
-    const rugCaretInner = document.createElement('div');
-    rugCaretInner.style.cssText = 'position:absolute;top:1.5px;left:-6px;width:0;height:0;' +
-      'border-left:6px solid transparent;border-right:6px solid transparent;' +
-      'border-bottom:6px solid var(--bg-card)';
-    rugCaret.appendChild(rugCaretInner);
-    rugTip.appendChild(rugCaret);
-    container.appendChild(rugTip);
-
-    const LINK_S = 'display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;' +
-      'padding:2px 8px;border-radius:10px;text-decoration:none;white-space:nowrap;';
-
-    let _rugHideTimer = null;
+    // ── Rug tooltip: uses shared _makeLinkCard factory ──
+    const { el: rugTip, caret: rugCaret, caretInner: rugCaretInner,
+            show: _rugShowCard, hide: _hideRugTip } = _makeLinkCard(container);
 
     function _showRugTip(d, yBase) {
-      clearTimeout(_rugHideTimer);
-      const color   = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
-      const coefStr = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
-      const tfEnc   = encodeURIComponent(d.tf_name);
-      const geneEnc = encodeURIComponent(GENE);
-      const nGrnas  = isGeneLevel
-        ? `<span style="color:var(--text-muted);font-size:10.5px"> (${d.n_grnas} gRNA${d.n_grnas !== 1 ? 's' : ''})</span>`
-        : '';
-      const nameRow = isGeneLevel
-        ? `<div><span style="font-weight:700;color:${color}">${d.tf_name}</span>` +
-          `<span style="color:var(--text-muted)"> ${coefStr}</span>${nGrnas}</div>`
-        : `<div><span style="font-weight:700">${d.tf_name}</span>` +
-          `<span style="font-family:'SF Mono','Fira Code',monospace;font-size:10.5px;color:var(--text-muted)"> ${d.grna_name}</span></div>` +
-          `<div style="color:${color};font-weight:600">${coefStr}</div>`;
-
-      // Replace all content after the caret
-      while (rugTip.children.length > 1) rugTip.removeChild(rugTip.lastChild);
-      const body = document.createElement('div');
-      body.innerHTML = nameRow +
-        `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
-          `<a href="/perturbseq/gene/${tfEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
-            ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.tf_name} ↗</a>` +
-          `<a href="/perturbseq/link/${tfEnc}/${geneEnc}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
-            ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${d.tf_name}→${GENE} ↗</a>` +
-        `</div>`;
-      rugTip.appendChild(body);
-      rugTip.style.display = 'block';
-
-      // Anchor tooltip below the rug tick in viewport coords
+      // Convert SVG rug-tick position to screen coords at the moment of hover
       const svgNode = svgSel.node();
       const xsc = d3.zoomTransform(svgNode).rescaleX(x0);
       const pt  = svgNode.createSVGPoint();
       pt.x = xsc(d.coef) + margin.left;
       pt.y = (yBase || rugY1) + RUG + margin.top;
       const sc  = pt.matrixTransform(svgNode.getScreenCTM());
+      const _ptX = sc.x, _ptY = sc.y;
 
-      const tipW = rugTip.offsetWidth;
-      const CARET_H = 7;
-      let left = sc.x - tipW / 2;
-      const top  = sc.y + CARET_H; // tooltip body starts right below caret tip
-      left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+      function _positionRug() {
+        const tipW = rugTip.offsetWidth;
+        const CARET_H = 7;
+        let left = _ptX - tipW / 2;
+        const top  = _ptY + CARET_H;
+        left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+        rugCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;' +
+          'border-left:7px solid transparent;border-right:7px solid transparent;' +
+          'border-bottom:7px solid var(--border)';
+        rugCaretInner.style.cssText = 'position:absolute;top:1.5px;left:-6px;width:0;height:0;' +
+          'border-left:6px solid transparent;border-right:6px solid transparent;' +
+          'border-bottom:6px solid var(--bg-card)';
+        rugCaret.style.left = Math.max(8, Math.min(tipW - 22, _ptX - left - 7)) + 'px';
+        rugTip.style.left = left + 'px';
+        rugTip.style.top  = top  + 'px';
+      }
 
-      // Shift caret to point at the actual rug tick x
-      const caretLeft = Math.max(8, Math.min(tipW - 22, sc.x - left - 7));
-      rugCaret.style.left = caretLeft + 'px';
+      const color      = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
+      const coefStr    = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
+      const headerExtra = isGeneLevel
+        ? `<span style="color:var(--text-muted);font-size:10.5px"> ${coefStr}` +
+          (d.n_grnas ? ` (${d.n_grnas} gRNA${d.n_grnas !== 1 ? 's' : ''})` : '') + `</span>`
+        : `<span style="font-family:'SF Mono','Fira Code',monospace;font-size:10.5px;color:var(--text-muted)"> ${d.grna_name}</span>` +
+          `<span style="color:${color};font-size:10.5px;font-weight:600"> ${coefStr}</span>`;
 
-      rugTip.style.left = left + 'px';
-      rugTip.style.top  = top  + 'px';
+      _rugShowCard({
+        displayName: d.tf_name,
+        color,
+        headerExtra,
+        tfName: d.tf_name,
+        targetGene: GENE,
+        repositionFn: _positionRug,
+        onHide: () => { window._tooltipLocked = false; },
+      });
+      window._tooltipLocked = true;
+      _positionRug();
     }
-
-    function _hideRugTip() { _rugHideTimer = setTimeout(() => { rugTip.style.display = 'none'; }, 150); }
-
-    rugTip.addEventListener('mouseenter', () => clearTimeout(_rugHideTimer));
-    rugTip.addEventListener('mouseleave', _hideRugTip);
 
     rugHits
       .on('mouseover', function(event, d) { _showRugTip(d, rugY1); })
