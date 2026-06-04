@@ -3326,6 +3326,12 @@ def tf_gene_link_page(tf, gene):
     gene_expr = [{'timepoint': r['timepoint'], 'mean_tpm': r['mean_tpm']}
                  for r in _gene_expr_by_timepoint(db, gene_row_data['gene_id'])] if gene_row_data else []
 
+    def _get_summary(row):
+        if not row:
+            return None
+        r = db.execute("SELECT Summary FROM gene_table WHERE gene_id=?", (row['gene_id'],)).fetchone()
+        return r['Summary'] if r else None
+
     gene_tss = None
     if gene_row_data:
         _tss = db.execute(
@@ -3341,8 +3347,8 @@ def tf_gene_link_page(tf, gene):
         "perturbseq/tf_gene_link.html",
         tf=tf,
         gene=gene,
-        tf_desc=None,
-        gene_desc=None,
+        tf_desc=_get_summary(tf_row),
+        gene_desc=_get_summary(gene_row_data),
         elements=elements,
         tf_peaks_data=tf_peaks_data,
         tf_expr=tf_expr,

@@ -304,11 +304,11 @@
 #coef-grid-de { display:grid; gap:12px; margin-bottom:28px; }
 .coef-mini-card { background:var(--bg-card); border:1px solid var(--border);
                   border-radius:var(--radius); padding:10px 12px; box-shadow:var(--shadow); }
-.coef-card-title { font-size:10px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
-.coef-card-name  { font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.coef-card-title { font-size:10px; font-weight:600; text-align:justify;color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+.coef-card-name  { font-size:13px; font-weight:700; text-align:justify;color:var(--text); margin-bottom:4px; }
 .coef-svg { width:100%; display:block; overflow:visible; }
-.coef-loading { font-size:11px; color:var(--text-muted); font-style:italic; padding:12px 0; }
-.coef-empty { font-size:11px; color:var(--text-muted); font-style:italic; padding:12px 0; }
+.coef-loading { font-size:11px; text-align:justify;color:var(--text-muted); font-style:italic; padding:12px 0; }
+.coef-empty { font-size:11px; text-align:justify;color:var(--text-muted); font-style:italic; padding:12px 0; }
 .coef-axis path,.coef-axis line { stroke:var(--border); }
 .coef-axis text { fill:var(--text-muted); font-size:9px; }
 .coef-grid-lines line { stroke:var(--border); stroke-opacity:0.35; }
@@ -339,6 +339,26 @@
   {% endfor %}
 {% endfor %}
 
+<div class="page-with-sidebar">
+
+<!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
+<aside class="page-sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-label">On this page</span>
+    <button class="sidebar-toggle" aria-label="Toggle sidebar"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8,2 4,6 8,10"/></svg></button>
+  </div>
+  <nav class="sidebar-nav">
+    <span class="sidebar-role" style="font-size:12px;font-weight:700;text-align:justify;color:var(--text);letter-spacing:0">{{ tf }} → {{ gene }}</span>
+    <a href="#sec-expression" class="sidebar-link">Expression</a>
+    <a href="#sec-perturbation" class="sidebar-link">Perturbation</a>
+    <a href="#sec-binding" class="sidebar-link">TF Binding</a>
+    <a href="#sec-browser" class="sidebar-link">Genome Browser</a>
+  </nav>
+</aside>
+
+<!-- ── Main content ─────────────────────────────────────────────────────── -->
+<div class="page-main">
+
 <!-- ── Hero ─────────────────────────────────────────────────────────── -->
 <div class="link-hero">
   <div class="hero-sel-wrap" id="tf-sel-wrap">
@@ -358,50 +378,47 @@
     <div class="hero-sel-dropdown" id="gene-sel-dropdown"></div>
   </div>
 </div>
-<div class="link-subtitle">
-  {% if tf_desc %}<strong>{{ tf }}</strong>: {{ tf_desc }}{% endif %}
-  {% if tf_desc and gene_desc %} &nbsp;·&nbsp; {% endif %}
-  {% if gene_desc %}<strong>{{ gene }}</strong>: {{ gene_desc }}{% endif %}
-</div>
 
 <!-- ── Expression charts ──────────────────────────────────────────────── -->
-<h2 class="section-h2">Expression</h2>
+<h2 class="section-h2" id="sec-expression">Expression</h2>
 <p class="section-desc">RNA-seq expression profiles of {{ tf }} and {{ gene }} across the ESC → Definitive Endoderm time course, showing whether the TF and its putative target are co-expressed.</p>
 <div class="expr-pair">
   <div class="expr-card">
     <div class="expr-card-header">
-      <div>
-        <div class="expr-card-title">Transcription Factor</div>
-        <div class="expr-card-name"><a href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}" class="expr-gene-link">{{ tf }}</a></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="expr-card-title">Transcription Factor:</div>
+        <a href="{{ url_for('perturbseq.gene_page', gene_name=tf) }}" style="display:inline-flex;align-items:center;font-size:13px;font-weight:700;padding:2px 10px;border-radius:20px;background:rgba(74,86,176,0.10);color:#4a56b0;border:1.5px solid rgba(74,86,176,0.30);text-decoration:none;transition:background 0.12s" onmouseenter="this.style.background='rgba(74,86,176,0.20)'" onmouseleave="this.style.background='rgba(74,86,176,0.10)'">{{ tf }} ↗</a>
       </div>
     </div>
     <svg class="expr-svg" id="tf-expr-chart"></svg>
+    {% if tf_desc %}<div style="margin:8px 0 0;font-size:11.5px;text-align:justify;color:var(--text-muted);font-style:italic;line-height:1.5">{{ tf_desc }}</div>{% endif %}
   </div>
   <div class="expr-card">
     <div class="expr-card-header">
-      <div>
-        <div class="expr-card-title">Target Gene</div>
-        <div class="expr-card-name"><a href="{{ url_for('perturbseq.gene_page', gene_name=gene) }}" class="expr-gene-link">{{ gene }}</a></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="expr-card-title">Target Gene:</div>
+        <a href="{{ url_for('perturbseq.gene_page', gene_name=gene) }}" style="display:inline-flex;align-items:center;font-size:13px;font-weight:700;padding:2px 10px;border-radius:20px;background:rgba(5,150,105,0.10);color:#059669;border:1.5px solid rgba(5,150,105,0.30);text-decoration:none;transition:background 0.12s" onmouseenter="this.style.background='rgba(5,150,105,0.20)'" onmouseleave="this.style.background='rgba(5,150,105,0.10)'">{{ gene }} ↗</a>
       </div>
     </div>
     <svg class="expr-svg" id="gene-expr-chart"></svg>
+    {% if gene_desc %}<div style="margin:8px 0 0;font-size:11.5px;text-align:justify;color:var(--text-muted);font-style:italic;line-height:1.5">{{ gene_desc }}</div>{% endif %}
   </div>
 </div>
 
 <!-- ── Regression coefficient density plots (DE only) ────────────────── -->
 <hr class="section-divider">
-<h2 class="section-h2">Perturbation Regression Coefficients — Definitive Endoderm</h2>
+<h2 class="section-h2" id="sec-perturbation">Perturbation Regression Coefficients</h2>
 <p class="section-desc">Distribution of per-gene regression coefficients for each {{ tf }} guide RNA in the Perturb-seq DE screen. The marker shows where {{ gene }} falls in each distribution, indicating the direction and magnitude of its response to {{ tf }} knockdown.</p>
 <div class="coef-loading" id="coef-loading-de">Loading…</div>
 <div id="coef-grid-de"></div>
 
 <!-- ── TF Binding Evidence ─────────────────────────────────────────────── -->
 <hr class="section-divider">
-<h2 class="section-h2">TF Binding Evidence</h2>
+<h2 class="section-h2" id="sec-binding">TF Binding Evidence</h2>
 <p class="section-desc">Regulatory elements (ATAC-seq peaks) linking {{ tf }} to {{ gene }}, supported by TOBIAS motif footprints and/or ChIP-seq peak overlap. The diagram connects each binding source through intermediate elements to the target gene — click any pill to filter the view.</p>
 
 {% if not elements %}
-<p style="font-size:13px;color:var(--text-muted);margin:0 0 28px;font-style:italic">No regulatory elements with TF binding evidence were found linking <strong style="font-style:normal">{{ tf }}</strong> to <strong style="font-style:normal">{{ gene }}</strong> in this dataset.</p>
+<p style="font-size:13px;text-align:justify;color:var(--text-muted);margin:0 0 28px;font-style:italic">No regulatory elements with TF binding evidence were found linking <strong style="font-style:normal">{{ tf }}</strong> to <strong style="font-style:normal">{{ gene }}</strong> in this dataset.</p>
 {% else %}
 
 <!-- ── Filter bar above evidence flow ────────────────────────────────── -->
@@ -511,7 +528,7 @@
       <div class="ev-node-pill ev-node-pill-gene" id="pill-gene">
         <div class="ev-node-type">Gene</div>
         <div class="ev-node-name">{{ gene }}</div>
-        {% if gene_desc %}<div class="ev-node-detail">{{ gene_desc }}</div>{% endif %}
+        <!-- {% if gene_desc %}<div class="ev-node-detail">{{ gene_desc }}</div>{% endif %} -->
       </div>
     </div>
     <div class="ev-link-legend">
@@ -532,7 +549,7 @@
 
 <!-- ── Genome browser ─────────────────────────────────────────────────── -->
 <hr class="section-divider">
-<h2 class="section-h2">Genome Browser</h2>
+<h2 class="section-h2" id="sec-browser">Genome Browser</h2>
 <p class="section-desc">Genomic view centered on regulatory elements linking {{ tf }} to {{ gene }}. Tracks include TF binding peaks (motif footprints and ChIP-seq), ATAC-seq accessibility, RNA-seq expression, and arc-loop connections from each element to the {{ gene }} TSS — all across the ESC → DE time course.</p>
 {% if elements %}
 <div class="igv-card">
@@ -560,8 +577,11 @@
   <div id="igv-container"></div>
 </div>
 {% else %}
-<p style="color:var(--text-muted);font-size:13px;margin-bottom:28px">No regulatory elements found linking <strong>{{ tf }}</strong> to <strong>{{ gene }}</strong> in this dataset.</p>
+<p style="text-align:justify;color:var(--text-muted);font-size:13px;margin-bottom:28px">No regulatory elements found linking <strong>{{ tf }}</strong> to <strong>{{ gene }}</strong> in this dataset.</p>
 {% endif %}
+
+</div><!-- end page-main -->
+</div><!-- end page-with-sidebar -->
 
 {% endblock %}
 
