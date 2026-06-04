@@ -661,7 +661,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   'distal_multiome_hicar': 'HiCAR',
 } %}
 <h2 class="section-h2" id="sec-reg-tfs">TFs regulating {{ gene }} <span class="section-count" id="reg-tf-count">{{ reg_tfs | length }} TF{{ 's' if reg_tfs | length != 1 else '' }}</span></h2>
-<p class="section-desc">Transcription factors with ChIP-seq or motif footprint binding peaks overlapping open chromatin elements linked to <strong>{{ gene }}</strong>. The <strong>Mean coef</strong> column shows the average Perturb-seq regression coefficient across all gRNAs for that TF (positive = {{ gene }} upregulated upon KD; negative = downregulated).</p>
+<p class="section-desc">Transcription factors linked to <strong>{{ gene }}</strong> by binding evidence (ChIP-seq or motif footprint peaks overlapping regulatory elements) and/or perturbation evidence (Perturb-seq knockdown). The <strong>Data type</strong> column indicates whether each TF has binding, perturbation, or both types of evidence. The <strong>Mean coef</strong> column shows the average Perturb-seq regression coefficient across all gRNAs (positive = {{ gene }} upregulated upon KD; negative = downregulated). Perturbation-only rows are appended after the page loads.</p>
 <div id="grna-coef-loading" style="display:none;margin-bottom:10px"><div class="dt-spinner" style="display:inline-block;vertical-align:middle;margin-right:6px"></div><span style="font-size:12px;color:var(--text-muted)">Loading perturbation data…</span></div>
 <div id="grna-coef-wrap" style="display:none;margin-bottom:20px"></div>
 <div id="reg-tf-wrap">
@@ -669,6 +669,12 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <input id="reg-tf-search" type="text" placeholder="Search TF…" autocomplete="off"
          style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;
                 background:var(--bg-card);color:var(--text);outline:none;width:160px">
+  <span class="filter-sep"></span>
+  <span class="filter-label">Data:</span>
+  <button class="filter-pill active" data-filter="dtype" data-val="all">All</button>
+  <button class="filter-pill" data-filter="dtype" data-val="binding">Binding</button>
+  <button class="filter-pill" data-filter="dtype" data-val="perturbation">Perturbation</button>
+  <button class="filter-pill" data-filter="dtype" data-val="both">Both</button>
   <span class="filter-sep"></span>
   <span class="filter-label">Evidence:</span>
   <button class="filter-pill" data-filter="ev" data-val="chip">ChIP</button>
@@ -699,6 +705,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <thead>
   <tr>
     <th class="sortable" data-key="name"     data-type="string">TF</th>
+    <th>Data type</th>
     <th>Evidence</th>
     <th>Link types</th>
     <th class="sortable" data-key="elements" data-type="number">Elements</th>
@@ -709,6 +716,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <tbody>
   {% for tf in reg_tfs %}
   <tr data-name="{{ tf.tf_gene_name }}"
+      data-evidence="binding"
       data-elements="{{ tf.n_elements }}"
       data-datasets="{{ tf.n_datasets }}"
       data-has-chip="{{ '1' if tf.has_chip else '0' }}"
@@ -718,6 +726,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
       data-mean_coef="">
     <td><a href="/perturbseq/gene/{{ tf.tf_gene_name }}"
            style="font-weight:600;color:var(--accent);text-decoration:none">{{ tf.tf_gene_name }}</a></td>
+    <td class="reg-tf-ev-td" style="white-space:nowrap"><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Binding</span></td>
     <td style="white-space:nowrap">
       {% if tf.has_chip %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0;margin-right:3px">ChIP</span>{% endif %}
       {% if tf.has_motif %}<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(16,185,129,0.12);color:#059669">Motif</span>{% endif %}
@@ -1495,21 +1504,23 @@ requestAnimationFrame(() => {
 
   let sortKey = 'elements', sortDir = 'desc', q = '';
   let page = 1, perPage = 10;
-  // multi-select sets for evidence and link-type; single value for min-elements
-  let evFilter  = new Set();   // 'chip', 'motif' — empty = no restriction
-  let ltFilter  = new Set();   // link type keys — empty = no restriction
-  let minEl     = 1;
-  let elFilter  = '';          // atac_peak_id as string, '' = all
+  // multi-select sets for evidence and link-type; single value for min-elements; single for dtype
+  let evFilter    = new Set();   // 'chip', 'motif' — empty = no restriction
+  let ltFilter    = new Set();   // link type keys — empty = no restriction
+  let minEl       = 1;
+  let elFilter    = '';          // atac_peak_id as string, '' = all
+  let dtypeFilter = 'all';       // 'all', 'binding', 'perturbation', 'both'
 
   // Wire filter pills
   document.querySelectorAll('#reg-tf-filter-bar .filter-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       const f = btn.dataset.filter, v = btn.dataset.val;
-      if (f === 'min') {
-        document.querySelectorAll('#reg-tf-filter-bar .filter-pill[data-filter="min"]')
+      if (f === 'min' || f === 'dtype') {
+        document.querySelectorAll(`#reg-tf-filter-bar .filter-pill[data-filter="${f}"]`)
           .forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        minEl = +v;
+        if (f === 'min') minEl = +v;
+        else dtypeFilter = v;
       } else {
         btn.classList.toggle('active');
         const set = f === 'ev' ? evFilter : ltFilter;
@@ -1552,6 +1563,20 @@ requestAnimationFrame(() => {
 
     const filtered = allRows.filter(r => {
       if (q && !r.dataset.name.toLowerCase().includes(q)) return false;
+
+      // dtype filter — hides rows that lack the required evidence type
+      const ev = r.dataset.evidence || 'binding';
+      if (dtypeFilter === 'binding'      && ev === 'perturbation') return false;
+      if (dtypeFilter === 'perturbation' && ev === 'binding')      return false;
+      if (dtypeFilter === 'both'         && ev !== 'both')         return false;
+
+      // binding-specific filters do not apply to perturbation-only rows;
+      // activating any of them implicitly hides perturbation-only rows
+      const isPertOnly = ev === 'perturbation';
+      if (isPertOnly) {
+        return !(evFilter.size || ltFilter.size || minEl > 1 || elFilter);
+      }
+
       if (evFilter.size) {
         const ok = (evFilter.has('chip')  && r.dataset.hasChip  === '1') ||
                    (evFilter.has('motif') && r.dataset.hasMotif === '1');
@@ -1616,6 +1641,7 @@ requestAnimationFrame(() => {
   if (searchEl) searchEl.addEventListener('input', () => { q = searchEl.value.trim().toLowerCase(); page = 1; refresh(); });
   if (perPageEl) perPageEl.addEventListener('change', () => { perPage = +perPageEl.value; page = 1; refresh(); });
 
+  window._regTfRefresh = refresh;
   refresh();
 })();
 
@@ -3535,35 +3561,65 @@ function initTfCoefScatter() {
 
       show(wrapEl);
 
-      // Fill Mean Coef column in the reg-tfs table
+      // Evidence badge HTML helpers
+      function evBadge(type) {
+        if (type === 'both')
+          return '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(5,150,105,0.12);color:#059669">Both</span>';
+        if (type === 'perturbation')
+          return '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(236,72,153,0.10);color:#be185d">Perturbation</span>';
+        return '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Binding</span>';
+      }
+
+      // Fill Mean Coef column in the reg-tfs table and mark evidence
       const _gl = computeGeneLevel(coefs);
       const _coefByTF = new Map(_gl.map(d => [d.tf_name, d]));
+      const _seenBindingTFs = new Set();
       document.querySelectorAll('#reg-tf-table tbody tr[data-name]').forEach(row => {
+        _seenBindingTFs.add(row.dataset.name);
         const d = _coefByTF.get(row.dataset.name);
-        const td = row.querySelector('.reg-tf-coef-td');
-        if (d && td) {
+        const coefTd = row.querySelector('.reg-tf-coef-td');
+        if (d && coefTd) {
           row.dataset.mean_coef = String(d.coef);
-          td.innerHTML = coefSpan(d.coef);
+          coefTd.innerHTML = coefSpan(d.coef);
+          row.dataset.evidence = 'both';
+          const evTd = row.querySelector('.reg-tf-ev-td');
+          if (evTd) evTd.innerHTML = evBadge('both');
         }
       });
 
-      const CARD = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)';
-
-      function mkTabBtn(label, active) {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.style.cssText = `padding:7px 18px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;` +
-          `border-bottom:2px solid ${active ? 'var(--accent,#6366f1)' : 'transparent'};` +
-          `color:${active ? 'var(--accent,#6366f1)' : 'var(--text-muted)'};margin-bottom:-1px;transition:color 0.15s,border-color 0.15s`;
-        return btn;
+      // Append perturbation-only rows (TFs in KD library not yet in binding table)
+      const _tbody = document.querySelector('#reg-tf-table tbody');
+      if (_tbody) {
+        _gl.forEach(d => {
+          if (_seenBindingTFs.has(d.tf_name)) return;
+          const tr = document.createElement('tr');
+          tr.dataset.name = d.tf_name;
+          tr.dataset.evidence = 'perturbation';
+          tr.dataset.elements = '';
+          tr.dataset.datasets = '';
+          tr.dataset.hasChip = '0';
+          tr.dataset.hasMotif = '0';
+          tr.dataset.linkTypes = '';
+          tr.dataset.peakIds = '';
+          tr.dataset.mean_coef = String(d.coef);
+          tr.innerHTML =
+            `<td><a href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}"` +
+              ` style="font-weight:600;color:var(--accent);text-decoration:none">${d.tf_name}</a></td>` +
+            `<td class="reg-tf-ev-td" style="white-space:nowrap">${evBadge('perturbation')}</td>` +
+            `<td></td>` +
+            `<td style="white-space:nowrap"></td>` +
+            `<td></td>` +
+            `<td></td>` +
+            `<td class="reg-tf-coef-td" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px">${coefSpan(d.coef)}</td>` +
+            `<td></td>`;
+          _tbody.appendChild(tr);
+        });
       }
 
-      // Tab bar
-      const tabBar = document.createElement('div');
-      tabBar.style.cssText = 'display:flex;border-bottom:1px solid var(--border);margin-top:4px';
-      const tabGene = mkTabBtn('Gene level', true);
-      const tabGrna = mkTabBtn('gRNA level', false);
-      tabBar.append(tabGene, tabGrna);
+      // Re-run sort/filter to incorporate new rows
+      if (window._regTfRefresh) window._regTfRefresh();
+
+      const CARD = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)';
 
       // Build a panel. allRawCoefs is always the raw gRNA-level data so filtering
       // can be applied before computing gene-level averages.
@@ -3625,21 +3681,8 @@ function initTfCoefScatter() {
       }
 
       const grnaPanel = buildPanel(coefs, false);
-      const genePanel = buildPanel(coefs, true);
-      grnaPanel.style.display = 'none';
 
-      function activateTab(idx) {
-        genePanel.style.display = idx === 0 ? '' : 'none';
-        grnaPanel.style.display = idx === 1 ? '' : 'none';
-        [tabGene, tabGrna].forEach((btn, i) => {
-          btn.style.borderBottomColor = i === idx ? 'var(--accent,#6366f1)' : 'transparent';
-          btn.style.color = i === idx ? 'var(--accent,#6366f1)' : 'var(--text-muted)';
-        });
-      }
-      tabGene.addEventListener('click', () => activateTab(0));
-      tabGrna.addEventListener('click', () => activateTab(1));
-
-      wrapEl.append(tabBar, grnaPanel, genePanel);
+      wrapEl.append(grnaPanel);
       show(wrapEl);
     })
     .catch(() => { loadingEl.style.display = 'none'; });
