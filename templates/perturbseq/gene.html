@@ -2015,9 +2015,8 @@ function initTfCoefScatter() {
       card.innerHTML = `
         <div class="tf-target-chart-head">
           <div>
-            <div class="tf-target-chart-kicker">Linked Target Genes</div>
-            <div class="tf-target-chart-title">TF-linked gene response scatter for ${GENE} knockdown</div>
-            <div class="tf-target-chart-subtitle">Each point is one linked gene. X-axis shows mean perturbation coefficient across datasets; Y-axis shows number of linked TF peaks.</div>
+            <div class="tf-target-chart-title">Knockdown response vs. binding support</div>
+            <div class="tf-target-chart-subtitle">Each dot is a linked gene. Left = downregulated, right = upregulated upon ${GENE} knockdown. Height reflects the strength of TF binding evidence in nearby open chromatin.</div>
           </div>
         </div>`;
       wrap.appendChild(card);
@@ -2128,8 +2127,6 @@ function initTfCoefScatter() {
         body.innerHTML =
           `<div><span style="font-weight:700;color:${color}">${d.gene_name}</span></div>` +
           `<div class="st-desc" style="font-size:11px;color:var(--text-muted);font-style:italic;margin:3px 0 5px;line-height:1.45"></div>` +
-          `<div style="color:var(--text-muted)">coef ${d.mean_coef >= 0 ? '+' : ''}${d.mean_coef.toFixed(3)}</div>` +
-          `<div style="color:var(--text-muted)">binding score ${d.peak_score.toFixed(2)}</div>` +
           `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
             `<a href="/perturbseq/gene/${geneEnc}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
               ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${d.gene_name} ↗</a>` +
@@ -2139,12 +2136,18 @@ function initTfCoefScatter() {
         scatterTip.appendChild(body);
 
         // Populate description (async, uses shared cache from gene tooltip)
+        const DESC_WORD_LIMIT = 30;
         const descEl = body.querySelector('.st-desc');
         if (window._getGeneTip) {
           window._getGeneTip(d.gene_name, info => {
             if (!descEl.isConnected) return;
             const txt = info.summary || '';
-            descEl.textContent = txt.length > 150 ? txt.slice(0, 150).trimEnd() + '…' : txt;
+            const words = txt.trim().split(/\s+/).filter(Boolean);
+            if (words.length > DESC_WORD_LIMIT) {
+              descEl.textContent = words.slice(0, DESC_WORD_LIMIT).join(' ') + '…';
+            } else {
+              descEl.textContent = txt;
+            }
             if (txt) _positionScatterTip();
           });
         }
@@ -3024,7 +3027,8 @@ function initTfCoefScatter() {
     const GAP  = 4;
     const bindCoefs = coefs.filter(d => d.has_binding);
     const hasBind   = bindCoefs.length > 0;
-    const margin = { top: 42, right: 20, bottom: 48, left: 38 };
+    const rugLabelW = hasBind ? (14 + GENE.length) * 5 + 8 : 0;
+    const margin = { top: 42, right: 20, bottom: 48, left: Math.max(38, rugLabelW) };
     const _pageMain = document.querySelector('.page-main') || document.body;
     const fullW  = Math.max((_pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
     const W = fullW - margin.left - margin.right;
@@ -3099,67 +3103,30 @@ function initTfCoefScatter() {
     const btnPanR  = mkBtn('Pan right', iconRight, () => zoom.translateBy(svgSel, -PAN_PX, 0));
     const btnReset = mkBtn('Reset view', iconReset, () => zoom.transform(svgSel, d3.zoomIdentity));
 
-    const onTargetRaw = coefs.filter(d => d.tf_name && d.tf_name.toLowerCase() === GENE.toLowerCase());
-    const hasOnTarget = onTargetRaw.length > 0;
-    let onTargetVisible = false;
-
-    const btnOnTarget = document.createElement('button');
-    btnOnTarget.textContent = 'Display on-target guides';
-    btnOnTarget.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:26px;' +
-      'border:1px solid var(--border);border-radius:5px;background:var(--bg-card);' +
-      `color:${hasOnTarget ? 'var(--text-muted)' : 'var(--border)'};` +
-      `cursor:${hasOnTarget ? 'pointer' : 'default'};padding:0 8px;font-size:11px;white-space:nowrap;` +
-      `transition:background 0.12s,color 0.12s,border-color 0.12s;flex-shrink:0;margin-left:6px;` +
-      `opacity:${hasOnTarget ? '1' : '0.45'}`;
-    btnOnTarget.title = hasOnTarget
-      ? `${onTargetRaw.length} guide${onTargetRaw.length > 1 ? 's' : ''} targeting ${GENE}`
-      : `No on-target gRNAs available for ${GENE}`;
-    if (hasOnTarget) {
-      btnOnTarget.addEventListener('mouseenter', () => {
-        if (!onTargetVisible) { btnOnTarget.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnOnTarget.style.color='var(--text)'; }
-      });
-      btnOnTarget.addEventListener('mouseleave', () => {
-        if (!onTargetVisible) { btnOnTarget.style.background='var(--bg-card)'; btnOnTarget.style.color='var(--text-muted)'; }
-      });
-    }
-
-    // ── Label visibility toggle + count slider ───────────────────────────────
-    let labelsVisible = true;
-    let labelCount    = 3;
-
-    const sep1 = document.createElement('div');
-    sep1.style.cssText = 'width:1px;height:16px;background:var(--border);margin:0 5px;flex-shrink:0';
-
-    const iconTagLabel = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h5.5l6 6-5.5 5.5L2 7.5V2z"/><circle cx="5.5" cy="5.5" r="1.1" fill="currentColor" stroke="none"/></svg>`;
-
-    const btnLabels = document.createElement('button');
-    btnLabels.title = 'Toggle gRNA labels';
-    btnLabels.innerHTML = iconTagLabel;
-    btnLabels.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
-      'border:1px solid var(--accent,#6366f1);border-radius:5px;background:var(--bg-elevated,rgba(100,116,139,0.14));' +
-      'color:var(--accent,#6366f1);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s,border-color 0.12s;flex-shrink:0';
+    // ── Label count slider ───────────────────────────────────────────────────
+    let labelCount = 5;
 
     const sliderWrap = document.createElement('div');
     sliderWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex-shrink:0';
 
     const sliderLbl = document.createElement('span');
-    sliderLbl.textContent = 'top/bot:';
+    sliderLbl.textContent = 'Top hits to label:';
     sliderLbl.style.cssText = 'font-size:10px;color:var(--text-muted);white-space:nowrap';
 
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.min  = '1';
-    slider.max  = '10';
-    slider.value = '3';
+    slider.max  = '30';
+    slider.value = '5';
     slider.style.cssText = 'width:72px;accent-color:var(--accent,#6366f1);cursor:pointer;margin:0';
 
     const sliderVal = document.createElement('span');
-    sliderVal.textContent = '3';
+    sliderVal.textContent = '5';
     sliderVal.style.cssText = 'font-size:10px;color:var(--text-muted);min-width:12px;font-variant-numeric:tabular-nums';
 
     sliderWrap.append(sliderLbl, slider, sliderVal);
 
-    toolbar.append(btnZoomIn, btnZoomOut, btnPanL, btnPanR, btnReset, btnOnTarget, sep1, btnLabels, sliderWrap);
+    toolbar.append(btnZoomIn, btnZoomOut, btnPanL, btnPanR, btnReset, sliderWrap);
     container.appendChild(toolbar);
 
     // ── SVG scaffold ─────────────────────────────────────────────────────────
@@ -3206,7 +3173,7 @@ function initTfCoefScatter() {
     g.append('text').attr('x', -4).attr('y', rugY1 + RUG / 2)
       .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
       .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
-      .text('All');
+      .text('All TFs');
 
     const rugTicks = clipG.selectAll('line.rug-tick').data(coefs).join('line')
       .attr('class', 'rug-tick')
@@ -3233,7 +3200,7 @@ function initTfCoefScatter() {
       g.append('text').attr('x', -4).attr('y', rugY2 + RUG / 2)
         .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
         .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
-        .text('Bound');
+        .text(`TFs that bind ${GENE}`);
 
       rugTicks2 = clipG.selectAll('line.rug-tick2').data(bindCoefs).join('line')
         .attr('class', 'rug-tick2')
@@ -3266,7 +3233,6 @@ function initTfCoefScatter() {
 
     function drawRepelLabels(xsc) {
       labelG.selectAll('*').remove();
-      if (!labelsVisible) return;
       const n = Math.min(labelCount, Math.floor(sortedCoefs.length / 2));
       const repelData = [...sortedCoefs.slice(0, n), ...sortedCoefs.slice(-n)];
 
@@ -3276,7 +3242,7 @@ function initTfCoefScatter() {
         cx    : xsc(d.coef),
         cy    : H - RL_BOX_H / 2 - 5,   // start near bottom of density area
         w     : Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
-        color : d.signed_pct_rank <= 0.05 ? '#3b82f6' : '#ec4899'
+        color : d.signed_pct_rank <= 0.05 ? '#3b82f6' : d.signed_pct_rank >= 0.95 ? '#ec4899' : 'var(--text-muted)'
       }));
 
       // 2-D force repulsion: push overlapping labels apart in whichever axis has less overlap
@@ -3334,69 +3300,6 @@ function initTfCoefScatter() {
           .attr('font-size', `${RL_FONT}px`)
           .attr('font-family', "'SF Mono','Fira Code',monospace")
           .attr('fill', color).attr('font-weight', '600')
-          .text(d.grna_name);
-      });
-    }
-
-    // ── On-target guide labels (repel, slate colour) ──────────────────────────
-    const onTargetG = clipG.append('g').attr('class', 'on-target-labels').attr('display', 'none');
-    const OT_COLOR  = '#94a3b8';
-
-    function drawOnTargetLabels(xsc) {
-      onTargetG.selectAll('*').remove();
-      const items = onTargetRaw.map(d => ({
-        d,
-        tickX: xsc(d.coef),
-        cx:    xsc(d.coef),
-        cy:    H - RL_BOX_H / 2 - 5,
-        w:     Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
-      }));
-      // 2-D repulsion (same algorithm as drawRepelLabels)
-      for (let iter = 0; iter < 600; iter++) {
-        let moved = false;
-        for (let i = 0; i < items.length; i++) {
-          for (let j = i + 1; j < items.length; j++) {
-            const dx = items[j].cx - items[i].cx;
-            const dy = items[j].cy - items[i].cy;
-            const overlapX = (items[i].w + items[j].w) / 2 + 2 - Math.abs(dx);
-            const overlapY = RL_BOX_H + 3 - Math.abs(dy);
-            if (overlapX > 0 && overlapY > 0) {
-              moved = true;
-              if (overlapX <= overlapY) {
-                const push = overlapX / 2 + 0.5;
-                const sx = dx === 0 ? 1 : Math.sign(dx);
-                items[i].cx -= sx * push; items[j].cx += sx * push;
-              } else {
-                const push = overlapY / 2 + 0.5;
-                const sy = dy === 0 ? -1 : Math.sign(dy);
-                items[i].cy -= sy * push; items[j].cy += sy * push;
-              }
-            }
-          }
-          const hw = items[i].w / 2, hh = RL_BOX_H / 2;
-          items[i].cx = Math.max(hw + 1, Math.min(W - hw - 1, items[i].cx));
-          items[i].cy = Math.max(hh + 4, Math.min(H - hh - 4, items[i].cy));
-        }
-        if (!moved) break;
-      }
-      items.forEach(({ d, cx, cy, w, tickX }) => {
-        const lg = onTargetG.append('g');
-        lg.append('line')
-          .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
-          .attr('x2', tickX).attr('y2', rugY1)
-          .attr('stroke', OT_COLOR).attr('stroke-width', 0.9)
-          .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
-        lg.append('rect')
-          .attr('x', cx - w / 2).attr('y', cy - RL_BOX_H / 2)
-          .attr('width', w).attr('height', RL_BOX_H).attr('rx', 3)
-          .attr('fill', 'var(--bg-card)').attr('stroke', OT_COLOR)
-          .attr('stroke-width', 0.9).attr('opacity', 0.93);
-        lg.append('text')
-          .attr('x', cx).attr('y', cy)
-          .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
-          .attr('font-size', `${RL_FONT}px`)
-          .attr('font-family', "'SF Mono','Fira Code',monospace")
-          .attr('fill', OT_COLOR).attr('font-weight', '600')
           .text(d.grna_name);
       });
     }
@@ -3540,7 +3443,6 @@ function initTfCoefScatter() {
       if (rugHits2)  rugHits2.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
 
       drawRepelLabels(xsc);
-      if (onTargetVisible) drawOnTargetLabels(xsc);
 
       xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
     }
@@ -3563,49 +3465,12 @@ function initTfCoefScatter() {
     btnZoomIn.addEventListener('click',  () => zoom.scaleBy(svgSel, ZOOM_STEP));
     btnZoomOut.addEventListener('click', () => zoom.scaleBy(svgSel, 1 / ZOOM_STEP));
 
-    if (hasOnTarget) {
-      btnOnTarget.addEventListener('click', () => {
-        onTargetVisible = !onTargetVisible;
-        onTargetG.attr('display', onTargetVisible ? null : 'none');
-        if (onTargetVisible) {
-          const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
-          drawOnTargetLabels(xsc);
-          btnOnTarget.style.background   = 'var(--bg-elevated,rgba(100,116,139,0.14))';
-          btnOnTarget.style.color        = 'var(--accent,#6366f1)';
-          btnOnTarget.style.borderColor  = 'var(--accent,#6366f1)';
-        } else {
-          btnOnTarget.style.background  = 'var(--bg-card)';
-          btnOnTarget.style.color       = 'var(--text-muted)';
-          btnOnTarget.style.borderColor = 'var(--border)';
-        }
-      });
-    }
-
-    // Label toggle
-    btnLabels.addEventListener('click', () => {
-      labelsVisible = !labelsVisible;
-      labelG.selectAll('*').remove();
-      if (labelsVisible) {
-        btnLabels.style.borderColor = 'var(--accent,#6366f1)';
-        btnLabels.style.background  = 'var(--bg-elevated,rgba(100,116,139,0.14))';
-        btnLabels.style.color       = 'var(--accent,#6366f1)';
-        const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
-        drawRepelLabels(xsc);
-      } else {
-        btnLabels.style.borderColor = 'var(--border)';
-        btnLabels.style.background  = 'var(--bg-card)';
-        btnLabels.style.color       = 'var(--text-muted)';
-      }
-    });
-
     // Label count slider
     slider.addEventListener('input', () => {
       labelCount = +slider.value;
       sliderVal.textContent = labelCount;
-      if (labelsVisible) {
-        const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
-        drawRepelLabels(xsc);
-      }
+      const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
+      drawRepelLabels(xsc);
     });
 
     container.appendChild(svg.node());

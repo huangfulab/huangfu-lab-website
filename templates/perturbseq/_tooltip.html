@@ -290,7 +290,7 @@
   }
 
   function sparkline(expr, color, showAxis) {
-    const W=312, PL=30, PR=6, PT=4, PB=showAxis?22:5;
+    const W=312, PL=30, PR=6, PT=4, PB=showAxis?33:5;
     const IW=W-PL-PR, IH=44, H=PT+IH+PB;
     const vals = expr.map(d => d.mean_tpm||0);
     const vMax = Math.max(...vals, 0.01);
@@ -320,10 +320,11 @@
     }).join('');
     const yLbl=`<text transform="rotate(-90)" x="${-(PT+IH/2)}" y="9" text-anchor="middle" font-size="7" fill="#aaa">TPM</text>`;
     const lbls=['ES','12h','24h','36h','48h','60h','72h'];
+    const xAxisLabel=showAxis?`<text x="${PL+IW/2}" y="${H-2}" text-anchor="middle" font-size="8" fill="#aaa" font-style="italic">ESC → DE time point</text>`:'';
     const xAxis=showAxis?xs.map((x,i)=>
-      `<line x1="${x}" y1="${PT+IH+2}" x2="${x}" y2="${PT+IH+5}" stroke="#bbb" stroke-width="1"/><text x="${x}" y="${H-2}" text-anchor="middle" font-size="8" fill="#aaa">${lbls[i]}</text>`
+      `<line x1="${x}" y1="${PT+IH+2}" x2="${x}" y2="${PT+IH+5}" stroke="#bbb" stroke-width="1"/><text x="${x}" y="${H-14}" text-anchor="middle" font-size="8" fill="#aaa">${lbls[i]}</text>`
     ).join(''):'';
-    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">${yLbl}${yticks}<path d="${areaPath}" fill="${color}" opacity="0.15"/><path d="${linePath}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>${xAxis}</svg>`;
+    return `<svg width="${W}" height="${H}" style="display:block;overflow:visible">${yLbl}${yticks}<path d="${areaPath}" fill="${color}" opacity="0.15"/><path d="${linePath}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>${xAxis}${xAxisLabel}</svg>`;
   }
 
   function render(tf, gene, data, el) {
@@ -378,6 +379,8 @@
         html += `<div class="lt-chart-label">${tf} — TF</div>${sparkline(data.tf_expr,'#4a56b0',false)}`;
       if (data.gene_expr && data.gene_expr.length)
         html += `<div class="lt-chart-label" style="margin-top:8px">${gene} — target gene</div>${sparkline(data.gene_expr,'#059669',true)}`;
+      if (html)
+        html = `<div style="font-size:10px;font-weight:700;color:var(--text-muted,#888);text-align:center;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Expression during DE differentiation</div>` + html;
       el.innerHTML = html;
       if (cb) cb();
     }
