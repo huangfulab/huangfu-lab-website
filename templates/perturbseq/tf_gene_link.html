@@ -155,7 +155,7 @@
 .ev-node-pill-el, .ev-node-pill-gene { display: flex; align-items: center; gap: 16px; }
 .el-pill-text, .gene-pill-text { flex: 0 0 auto; min-width: 0; }
 .el-sparkline { flex: 1 1 0; max-width: 160px; min-width: 60px; height: 40px; display: block; }
-.gene-sparkline { flex: 0 0 60px; width: 60px; height: 30px; display: block; margin-left: auto; opacity: 0.85; }
+.gene-sparkline { flex: 1 1 0; max-width: 160px; min-width: 60px; height: 40px; display: block; margin-left: auto; opacity: 0.85; }
 .ev-link-legend { margin-top: 14px; display: flex; flex-direction: column; gap: 5px; }
 .ev-link-legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); }
 .ev-link-swatch { width: 22px; height: 3px; border-radius: 2px; flex-shrink: 0; }
@@ -1343,8 +1343,8 @@ let _igvBrowser = null;
   const svgEl = document.getElementById('sparkline-gene');
   if (!svgEl) return;
   const COLOR = '#10b981';
-  const W = Math.round(svgEl.getBoundingClientRect().width) || 60;
-  const H = 30, ml = 2, mr = 2, mt = 3, mb = 3;
+  const W = Math.round(svgEl.getBoundingClientRect().width) || 120;
+  const H = 40, ml = 3, mr = 3, mt = 4, mb = 4;
   const iW = W - ml - mr, iH = H - mt - mb;
   svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
   const tps  = GENE_EXPR.map(d => d.timepoint);
@@ -1362,7 +1362,7 @@ let _igvBrowser = null;
     if (d.mean_tpm == null) return;
     g.append('circle')
       .attr('cx', x(d.timepoint)).attr('cy', y(d.mean_tpm))
-      .attr('r', 1.5).attr('fill', COLOR).attr('stroke', 'rgba(0,0,0,0.35)').attr('stroke-width', 0.6);
+      .attr('r', 2).attr('fill', COLOR).attr('stroke', 'rgba(0,0,0,0.35)').attr('stroke-width', 0.8);
   });
 })();
 
