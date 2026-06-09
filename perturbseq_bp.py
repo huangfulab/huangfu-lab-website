@@ -3001,10 +3001,14 @@ def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
         except Exception:
             ys = [0.0] * n_pts
         target_coef = target_map.get(grna_id)
+        lo5 = float(np.percentile(coefs_arr, 5))
+        hi5 = float(np.percentile(coefs_arr, 95))
         result_grnas.append({
             'grna': grna_names[grna_id],
             'y': [round(v, 6) for v in ys],
             'target_coef': round(target_coef, 6) if target_coef is not None else None,
+            'lo5': round(lo5, 5),
+            'hi5': round(hi5, 5),
         })
 
     return {'x': [round(v, 5) for v in xs.tolist()], 'gRNAs': result_grnas}

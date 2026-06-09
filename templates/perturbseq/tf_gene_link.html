@@ -605,11 +605,13 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
 
   function drawOneGrnaChart(svgEl, xs, grna, geneName, grnaIdx) {
     const NUDGE   = 44;   /* px: label floats this far above the curve point */
-    const margin  = {top: 58, right: 14, bottom: 36, left: 10};
+    const margin  = {top: 64, right: 14, bottom: 36, left: 10};
     const W  = svgEl.parentElement.clientWidth - 2;
     const H  = 200;
     const iW = W - margin.left - margin.right;
     const iH = H - margin.top  - margin.bottom;
+    const COL_LO = '#3b82f6';   /* blue  — downregulated / bottom 5% */
+    const COL_HI = '#ec4899';   /* pink  — upregulated   / top 5%    */
 
     svgEl.setAttribute('width',  W);
     svgEl.setAttribute('height', H);
@@ -618,29 +620,55 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     const x = d3.scaleLinear().domain(xDom).range([0, iW]);
     const y = d3.scaleLinear().domain([0, d3.max(grna.y) * 1.1]).range([iH, 0]);
 
+    const uid = `${grnaIdx}-${Date.now()}`;
     const svg = d3.select(svgEl).append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    /* directional labels — sit in the top margin, left and right corners */
-    const dirLabelY = -(margin.top - 12);
+    /* directional labels — two lines each side, color-coded */
     svg.append('text')
-      .attr('x', 0).attr('y', dirLabelY)
-      .attr('text-anchor', 'start').attr('font-size', 8).attr('fill', 'var(--text-muted)')
-      .text(`← genes downreg. by ${grna.grna}`);
+      .attr('x', 0).attr('y', -(margin.top - 14))
+      .attr('text-anchor', 'start').attr('font-size', 11).attr('fill', COL_LO).attr('opacity', 0.9)
+      .text(`← Genes downreg. by ${grna.grna}`);
     svg.append('text')
-      .attr('x', iW).attr('y', dirLabelY)
-      .attr('text-anchor', 'end').attr('font-size', 8).attr('fill', 'var(--text-muted)')
-      .text(`genes upreg. by ${grna.grna} →`);
+      .attr('x', 0).attr('y', -(margin.top - 28))
+      .attr('text-anchor', 'start').attr('font-size', 9.5).attr('fill', COL_LO).attr('opacity', 0.75)
+      .text('(bottom 5%)');
+    svg.append('text')
+      .attr('x', iW).attr('y', -(margin.top - 14))
+      .attr('text-anchor', 'end').attr('font-size', 11).attr('fill', COL_HI).attr('opacity', 0.9)
+      .text(`Genes upreg. by ${grna.grna} →`);
+    svg.append('text')
+      .attr('x', iW).attr('y', -(margin.top - 28))
+      .attr('text-anchor', 'end').attr('font-size', 9.5).attr('fill', COL_HI).attr('opacity', 0.75)
+      .text('(top 5%)');
+
+    /* clip paths for coloured tail areas */
+    const lo5x = grna.lo5 != null ? x(grna.lo5) : null;
+    const hi5x = grna.hi5 != null ? x(grna.hi5) : null;
+    const defs = svg.append('defs');
+    if (lo5x != null) {
+      defs.append('clipPath').attr('id', `clip-lo-${uid}`)
+        .append('rect').attr('x', 0).attr('y', 0).attr('width', Math.max(0, lo5x)).attr('height', iH);
+    }
+    if (hi5x != null) {
+      defs.append('clipPath').attr('id', `clip-hi-${uid}`)
+        .append('rect').attr('x', hi5x).attr('y', 0).attr('width', Math.max(0, iW - hi5x)).attr('height', iH);
+    }
+
+    /* annotation color: blue/pink if beyond 5% cutoff, neutral otherwise */
+    const annColor = grna.target_coef != null && grna.lo5 != null && grna.hi5 != null
+      ? (grna.target_coef <= grna.lo5 ? COL_LO : grna.target_coef >= grna.hi5 ? COL_HI : COL)
+      : COL;
 
     /* arrowhead marker — unique per panel */
     const markerId = `coef-arrow-${grnaIdx}`;
-    svg.append('defs').append('marker')
+    defs.append('marker')
       .attr('id', markerId)
       .attr('viewBox', '0 -4 8 8')
       .attr('refX', 7).attr('refY', 0)
       .attr('markerWidth', 5).attr('markerHeight', 5)
       .attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-4L8,0L0,4Z').attr('fill', COL);
+      .append('path').attr('d', 'M0,-4L8,0L0,4Z').attr('fill', annColor);
 
     /* light grid */
     svg.append('g').attr('class','coef-grid-lines')
@@ -666,9 +694,31 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     /* density area + line */
     const areaGen = d3.area().x((_,i) => x(xs[i])).y0(iH).y1(d => y(d)).curve(d3.curveMonotoneX);
     const lineGen = d3.line().x((_,i) => x(xs[i])).y(d => y(d)).curve(d3.curveMonotoneX);
-    svg.append('path').datum(grna.y).attr('fill', COL).attr('fill-opacity', 0.1).attr('d', areaGen);
+    /* base fill (neutral) */
+    svg.append('path').datum(grna.y).attr('fill', COL).attr('fill-opacity', 0.08).attr('d', areaGen);
+    /* coloured tail fills */
+    if (lo5x != null) {
+      svg.append('path').datum(grna.y).attr('fill', COL_LO).attr('fill-opacity', 0.25)
+        .attr('clip-path', `url(#clip-lo-${uid})`).attr('d', areaGen);
+    }
+    if (hi5x != null) {
+      svg.append('path').datum(grna.y).attr('fill', COL_HI).attr('fill-opacity', 0.25)
+        .attr('clip-path', `url(#clip-hi-${uid})`).attr('d', areaGen);
+    }
+    /* density outline */
     svg.append('path').datum(grna.y).attr('fill','none').attr('stroke', COL)
       .attr('stroke-width', 1.8).attr('d', lineGen);
+    /* 5% boundary dashed lines */
+    if (lo5x != null) {
+      svg.append('line')
+        .attr('x1', lo5x).attr('x2', lo5x).attr('y1', 0).attr('y2', iH)
+        .attr('stroke', COL_LO).attr('stroke-width', 1.4).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+    }
+    if (hi5x != null) {
+      svg.append('line')
+        .attr('x1', hi5x).attr('x2', hi5x).attr('y1', 0).attr('y2', iH)
+        .attr('stroke', COL_HI).attr('stroke-width', 1.4).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+    }
 
     /* target gene annotation — arrow + floating label */
     if (grna.target_coef != null) {
@@ -701,7 +751,7 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
         svg.append('line')
           .attr('x1', labelCX).attr('y1', arrowY1)
           .attr('x2', tx).attr('y2', arrowY2)
-          .attr('stroke', COL).attr('stroke-width', 1.1)
+          .attr('stroke', annColor).attr('stroke-width', 1.1)
           .attr('marker-end', `url(#${markerId})`);
       }
 
@@ -710,16 +760,16 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
         .attr('x', labelCX - lHalfW).attr('y', labelCY - lHalfH)
         .attr('width', lHalfW * 2).attr('height', lHalfH * 2)
         .attr('rx', 3).attr('fill', 'var(--bg-card)')
-        .attr('stroke', COL).attr('stroke-width', 1.2);
+        .attr('stroke', annColor).attr('stroke-width', 1.2);
       svg.append('text')
         .attr('x', labelCX).attr('y', labelCY + lFont / 2 - 1)
         .attr('text-anchor', 'middle').attr('font-size', lFont)
-        .attr('font-weight', 700).attr('fill', COL)
+        .attr('font-weight', 700).attr('fill', annColor)
         .text(labelText);
 
       /* small dot on the curve */
       svg.append('circle').attr('cx', tx).attr('cy', ty).attr('r', 3.5)
-        .attr('fill', COL).attr('stroke', 'var(--bg-card)').attr('stroke-width', 1.5);
+        .attr('fill', annColor).attr('stroke', 'var(--bg-card)').attr('stroke-width', 1.5);
     }
   }
 
