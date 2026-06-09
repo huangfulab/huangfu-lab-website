@@ -722,7 +722,7 @@ def _build_gene_data_list(genes, pub_counts, lambert_tfs, perturbed_tfs, name_ke
 
 
 def _tf_dataset_ids(db, tf_gene_name: str) -> list:
-    """Return dataset_ids for a TF — used to filter tf_module_enrichment via indexed dataset_id."""
+    """Return dataset_ids for a TF — used to filter tf_peaks and tf_gene_binding_scores."""
     return [r[0] for r in db.execute(
         "SELECT dataset_id FROM tf_dataset_table WHERE tf_gene_name=?", (tf_gene_name,))]
 
@@ -731,19 +731,14 @@ def _bind_edges_for_tf(db, tf_gene_name: str, source_filter: str) -> dict:
     """Return {module_name: {odds_ratio}} for a TF's binding enrichment.
 
     source_filter: 'hotspot_supermodule' or 'hotspot_submodule'
-    Uses dataset_id pre-fetch to avoid full tf_dataset_table scan.
     """
-    ds_ids = _tf_dataset_ids(db, tf_gene_name)
-    if not ds_ids:
-        return {}
-    ph = ','.join('?' * len(ds_ids))
-    return {r['module']: r for r in rows_to_dicts(db.execute(f"""
+    return {r['module']: r for r in rows_to_dicts(db.execute("""
         SELECT m.module_name AS module, MAX(e.odds_ratio) AS odds_ratio
         FROM tf_module_enrichment e
         JOIN module_table m ON e.module_id = m.module_id
-        WHERE e.dataset_id IN ({ph}) AND e.gene_set_collection=?
+        WHERE e.tf_gene_name = ? AND e.gene_set_collection = ?
         GROUP BY m.module_name
-    """, ds_ids + [source_filter]))}
+    """, (tf_gene_name, source_filter)))}
 
 
 def _nav_lists(db):
@@ -839,17 +834,15 @@ def _super_page(mod_name):
         "WHERE module=? AND module_collection='hotspot_supermodule' "
         "AND gene_set_collection='DE-hotspot_modules'",
         (mod_name,)))
-    # TF binding edges: grouped by TF across all datasets for this module
-    ds_ids_per_tf: dict = {}
+    # TF binding edges: grouped by TF for this module
+    bind_map = {}
     for r in db.execute("""
-        SELECT d.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio
+        SELECT e.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio
         FROM tf_module_enrichment e
-        JOIN tf_dataset_table d ON e.dataset_id = d.dataset_id
         WHERE e.module_id=? AND e.gene_set_collection='hotspot_supermodule'
-        GROUP BY d.tf_gene_name
+        GROUP BY e.tf_gene_name
     """, (module_id,)).fetchall():
-        ds_ids_per_tf[r['tf']] = {'tf': r['tf'], 'odds_ratio': r['odds_ratio']}
-    bind_map = ds_ids_per_tf
+        bind_map[r['tf']] = {'tf': r['tf'], 'odds_ratio': r['odds_ratio']}
     top_tfs = _merge_pert_bind_edges(pert_rows, bind_map)
     for row in top_tfs:
         row['color'] = MODULE_COLORS.get(mod_name, '#4a56b0')
@@ -994,11 +987,10 @@ def _gc_page(name):
         bind_tfs = {
             r[0]: round(r[1], 3)
             for r in db.execute("""
-                SELECT td.tf_gene_name, MAX(e.odds_ratio) AS odds_ratio
+                SELECT e.tf_gene_name, MAX(e.odds_ratio) AS odds_ratio
                 FROM tf_module_enrichment e
-                JOIN tf_dataset_table td ON e.dataset_id = td.dataset_id
                 WHERE e.module_id=? AND e.gene_set_collection='mfuzz' AND e.padj_fisher < 0.05
-                GROUP BY td.tf_gene_name
+                GROUP BY e.tf_gene_name
             """, (mod_row['module_id'],)).fetchall()
         }
     else:
@@ -1145,11 +1137,10 @@ def _go_page(term_name):
 
     # TFs that bind this GO term gene set (via gmt_enrichment — gene_set uses accession string)
     bind_map = {r['tf']: r for r in rows_to_dicts(db.execute("""
-        SELECT d.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio
+        SELECT e.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio
         FROM gmt_enrichment e
-        JOIN tf_dataset_table d ON e.dataset_id = d.dataset_id
         WHERE e.gene_set LIKE ? AND e.gene_set_collection LIKE 'GO%'
-        GROUP BY d.tf_gene_name
+        GROUP BY e.tf_gene_name
     """, (f'%({go_accession})%',)))} if go_accession else {}
 
     tf_rows = _merge_pert_bind_edges(pert_rows, bind_map)
@@ -2139,16 +2130,14 @@ def api_edges():
     pert = rows_to_dicts(db.execute(
         "SELECT gene_name AS tf, module, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj "
         "FROM gsea_tf_table WHERE gene_set_collection='DE-hotspot_modules'").fetchall())
-    # Build binding map: join via module_id index, then resolve tf_gene_name from dataset_id
     bind_map = {}
     for r in db.execute("""
-        SELECT d.tf_gene_name AS tf, m.module_name AS module,
+        SELECT e.tf_gene_name AS tf, m.module_name AS module,
                MAX(e.odds_ratio) AS odds_ratio, MIN(e.padj_fisher) AS padj
         FROM tf_module_enrichment e
         JOIN module_table m ON e.module_id = m.module_id
-        JOIN tf_dataset_table d ON e.dataset_id = d.dataset_id
         WHERE e.gene_set_collection IN ('hotspot_supermodule', 'hotspot_submodule')
-        GROUP BY d.tf_gene_name, m.module_name
+        GROUP BY e.tf_gene_name, m.module_name
     """).fetchall():
         if expressed and r["tf"] not in expressed:
             continue
@@ -2208,19 +2197,14 @@ def api_tf(tf_name):
         "SELECT module, module_collection, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj, direction "
         "FROM gsea_tf_table WHERE gene_name=? AND gene_set_collection='DE-hotspot_modules'",
         (tf_name,)).fetchall())
-    ds_ids = _tf_dataset_ids(db, tf_name)
-    if ds_ids:
-        ph = ','.join('?' * len(ds_ids))
-        bind = rows_to_dicts(db.execute(f"""
-            SELECT m.module_name AS module, m.source AS module_collection,
-                   MAX(e.odds_ratio) AS odds_ratio, MIN(e.padj_fisher) AS padj
-            FROM tf_module_enrichment e
-            JOIN module_table m ON e.module_id = m.module_id
-            WHERE e.dataset_id IN ({ph}) AND e.gene_set_collection IN ('hotspot_supermodule','hotspot_submodule')
-            GROUP BY m.module_name
-        """, ds_ids).fetchall())
-    else:
-        bind = []
+    bind = rows_to_dicts(db.execute("""
+        SELECT m.module_name AS module, m.source AS module_collection,
+               MAX(e.odds_ratio) AS odds_ratio, MIN(e.padj_fisher) AS padj
+        FROM tf_module_enrichment e
+        JOIN module_table m ON e.module_id = m.module_id
+        WHERE e.tf_gene_name = ? AND e.gene_set_collection IN ('hotspot_supermodule','hotspot_submodule')
+        GROUP BY m.module_name
+    """, (tf_name,)).fetchall())
     return jsonify({"perturbation": pert, "binding": bind})
 
 
@@ -2237,11 +2221,10 @@ def api_module(mod_name):
         "FROM gsea_tf_table WHERE module=? AND gene_set_collection='DE-hotspot_modules'",
         (mod_name,)).fetchall())
     bind = rows_to_dicts(db.execute("""
-        SELECT d.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio, MIN(e.padj_fisher) AS padj
+        SELECT e.tf_gene_name AS tf, MAX(e.odds_ratio) AS odds_ratio, MIN(e.padj_fisher) AS padj
         FROM tf_module_enrichment e
-        JOIN tf_dataset_table d ON e.dataset_id = d.dataset_id
         WHERE e.module_id=? AND e.gene_set_collection IN ('hotspot_supermodule','hotspot_submodule')
-        GROUP BY d.tf_gene_name
+        GROUP BY e.tf_gene_name
     """, (module_id,)).fetchall())
     return jsonify({"perturbation": pert, "binding": bind})
 
@@ -2885,19 +2868,15 @@ def tf_module_link_page(tf, module_name):
         "ORDER BY g.NES DESC",
         (tf, module_name)))
 
-    ds_ids = _tf_dataset_ids(db, tf)
-    binding_datasets = []
-    if ds_ids:
-        ph = ','.join('?' * len(ds_ids))
-        binding_datasets = rows_to_dicts(db.execute(f"""
-            SELECT td.source, td.cell_type, td.dataset, te.odds_ratio AS odds_ratio,
-                   te.padj_fisher, te.n_overlap, te.n_tf_targets
-            FROM tf_module_enrichment te
-            JOIN tf_dataset_table td ON te.dataset_id=td.dataset_id
-            WHERE te.dataset_id IN ({ph}) AND te.module_id=?
-              AND te.gene_set_collection='hotspot_supermodule'
-            ORDER BY te.padj_fisher
-        """, ds_ids + [module_id]))
+    binding_datasets = rows_to_dicts(db.execute("""
+        SELECT td.source, td.cell_type, td.dataset, te.odds_ratio AS odds_ratio,
+               te.padj_fisher, te.n_overlap, te.n_tf_targets
+        FROM tf_module_enrichment te
+        JOIN tf_dataset_table td ON td.tf_gene_name = te.tf_gene_name
+        WHERE te.tf_gene_name=? AND te.module_id=?
+          AND te.gene_set_collection='hotspot_supermodule'
+        ORDER BY te.padj_fisher
+    """, (tf, module_id)))
     best_binding = binding_datasets[0] if binding_datasets else None
 
     sub_pert = rows_to_dicts(db.execute(
