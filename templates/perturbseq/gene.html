@@ -715,7 +715,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <tr data-tss_dist="{{ el.tss_dist if el.tss_dist is not none else 9999999 }}"
       data-coord="{{ el.chr }}:{{ el.start }}-{{ el.end }}"
       data-size="{{ el.end - el.start }}"
-      data-link_type="{{ el.link_type }}"
+      data-link_type="{{ el.evidence_type }}"
       data-n_tfs="{{ el.n_tfs }}">
     <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
     <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
@@ -723,17 +723,17 @@ details[open] .go-summary::before { transform: rotate(90deg); }
            >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
     <td>{{ el.tss_dist_label if el.tss_dist_label else '—' }}</td>
     <td style="white-space:nowrap">
-      {% if el.tss_dist is not none and el.tss_dist == 0 %}
-      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#059669;border-color:#6ee7b7;background:rgba(16,185,129,0.08)">At TSS</span>
-      {% elif (el.tss_dist is not none and el.tss_dist <= 10000) or el.link_type in ['tss_proximal_1kb', 'tss_distal_10kb'] %}
+      {% if el.distance_label == 'at_tss' %}
+      <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)">At TSS</span>
+      {% elif el.distance_label == 'proximal' %}
       <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#2563eb;border-color:#93c5fd;background:rgba(59,130,246,0.08)">Proximal (&lt;10kb)</span>
       {% else %}
       <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;color:#6b7280;border-color:#d1d5db;background:rgba(107,114,128,0.06)">Distal (&gt;10kb)</span>
       {% endif %}
-      {% if el.link_type in ['distal_multiome', 'distal_multiome_hicar'] %}
+      {% if el.evidence_type in ['multiome', 'multiome_hicar'] %}
       <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#7c3aed;border-color:#c4b5fd;background:rgba(139,92,246,0.08)">Multiome</span>
       {% endif %}
-      {% if el.link_type == 'distal_multiome_hicar' %}
+      {% if el.evidence_type == 'multiome_hicar' %}
       <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)">HiCAR</span>
       {% endif %}
     </td>
@@ -2757,10 +2757,9 @@ function initTfCoefScatter() {
   if (!container || typeof igv === 'undefined') return;
 
   const _LINK_COLORS = {
-    tss_proximal_1kb:      '#059669',
-    tss_distal_10kb:       '#2563eb',
-    distal_multiome:       '#7c3aed',
-    distal_multiome_hicar: '#b45309',
+    proximity:      '#2563eb',
+    multiome:       '#7c3aed',
+    multiome_hicar: '#b45309',
   };
   const geneChr = {{ gene_locus.chr | tojson }};
   const geneTss = {{ gene_locus.tss | tojson }};
@@ -2776,7 +2775,7 @@ function initTfCoefScatter() {
             chr1: geneChr, start1: peakMid, end1: peakMid,
             chr2: geneChr, start2: geneTss,  end2: geneTss,
             name: `${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}`,
-            color: _LINK_COLORS[el.link_type] || '#9ca3af',
+            color: _LINK_COLORS[el.evidence_type] || '#9ca3af',
           };
         })
     : [];
@@ -2809,7 +2808,7 @@ function initTfCoefScatter() {
       start: el.start,
       end:   el.end,
       name:  `${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}`,
-      color: _LINK_COLORS[el.link_type] || '#9ca3af',
+      color: _LINK_COLORS[el.evidence_type] || '#9ca3af',
     }));
 
   const _ATAC_TRACKS = [

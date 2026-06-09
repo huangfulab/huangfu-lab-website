@@ -115,12 +115,11 @@
   border-radius: 20px; border: 1.5px solid; letter-spacing: 0.3px;
   white-space: nowrap;
 }
-.ev-pill.motif    { background: rgba(16,185,129,0.10); color: #059669; border-color: #6ee7b7; }
-.ev-pill.chipseq  { background: rgba(74,86,176,0.10);  color: var(--accent); border-color: #a5b0e8; }
-.ev-pill.proximal { background: rgba(16,185,129,0.10); color: #059669; border-color: #6ee7b7; }
-.ev-pill.distal   { background: rgba(59,130,246,0.10); color: #2563eb; border-color: #93c5fd; }
-.ev-pill.multiome { background: rgba(139,92,246,0.10); color: #7c3aed; border-color: #c4b5fd; }
-.ev-pill.hicar    { background: rgba(245,158,11,0.10); color: #b45309; border-color: #fcd34d; }
+.ev-pill.motif     { background: rgba(16,185,129,0.10); color: #059669; border-color: #6ee7b7; }
+.ev-pill.chipseq   { background: rgba(74,86,176,0.10);  color: var(--accent); border-color: #a5b0e8; }
+.ev-pill.proximity { background: rgba(59,130,246,0.10); color: #2563eb; border-color: #93c5fd; }
+.ev-pill.multiome  { background: rgba(139,92,246,0.10); color: #7c3aed; border-color: #c4b5fd; }
+.ev-pill.hicar     { background: rgba(245,158,11,0.10); color: #b45309; border-color: #fcd34d; }
 
 /* ── Evidence flow diagram (modular) ──────────────────────────────── */
 .ev-flow-v2 {
@@ -320,21 +319,24 @@
 {% block content %}
 
 {# ── helpers ──────────────────────────────────────────────────────────── #}
-{% set link_type_meta = {
-  'tss_proximal_1kb':       {'label': 'Proximal 1 kb',      'cls': 'lt-proximal', 'pill_cls': 'proximal'},
-  'tss_distal_10kb':        {'label': 'Distal 10 kb',       'cls': 'lt-distal',   'pill_cls': 'distal'},
-  'distal_multiome':        {'label': 'Distal + Multiome',  'cls': 'lt-multiome', 'pill_cls': 'multiome'},
-  'distal_multiome_hicar':  {'label': 'Distal + Multiome + HiCAR', 'cls': 'lt-hicar', 'pill_cls': 'hicar'},
-} %}
+{% set _dist_labels  = {'at_tss': 'At TSS', 'proximal': 'Proximal', 'distal': 'Distal'} %}
+{% set _ev_suffixes  = {'proximity': '', 'multiome': ' · Multiome', 'multiome_hicar': ' · Multiome+HiCAR'} %}
+{% set _ev_labels    = {'proximity': 'Proximity', 'multiome': 'Multiome', 'multiome_hicar': 'Multiome+HiCAR'} %}
+{% set _ev_pill_cls  = {'proximity': 'proximity', 'multiome': 'multiome', 'multiome_hicar': 'hicar'} %}
+{% set ltype_colors  = {'proximity': '#3b82f6', 'multiome': '#8b5cf6', 'multiome_hicar': '#f59e0b'} %}
 
-{# collect evidence classes present across all elements #}
-{% set ns = namespace(has_motif=false, chipseq_n=0, link_types=[]) %}
+{# collect evidence types and display combos present across all elements #}
+{% set ns = namespace(has_motif=false, chipseq_n=0, evidence_types=[], link_combos=[]) %}
 {% for el in elements %}
   {% if el.motif %}{% set ns.has_motif = true %}{% endif %}
   {% set ns.chipseq_n = ns.chipseq_n + (el.chipseq | length) %}
   {% for e2g in el.e2g_links %}
-    {% if e2g.link_type not in ns.link_types %}
-      {% set ns.link_types = ns.link_types + [e2g.link_type] %}
+    {% if e2g.evidence_type not in ns.evidence_types %}
+      {% set ns.evidence_types = ns.evidence_types + [e2g.evidence_type] %}
+    {% endif %}
+    {% set combo = e2g.evidence_type ~ '|' ~ e2g.distance_label %}
+    {% if combo not in ns.link_combos %}
+      {% set ns.link_combos = ns.link_combos + [combo] %}
     {% endif %}
   {% endfor %}
 {% endfor %}
@@ -452,16 +454,17 @@
   <!-- Section 2: Element → Gene -->
   <div class="ev-filter-section">
     <span class="ev-filter-section-label">Element → Gene</span>
-    {% for lt in ns.link_types %}
-      {% set m = link_type_meta.get(lt, {'label': lt, 'pill_cls': 'distal'}) %}
-      <span class="ev-pill {{ m.pill_cls }} ev-pill-btn" data-lt="{{ lt }}">{{ m.label }}</span>
+    {% for ev in ['proximity', 'multiome', 'multiome_hicar'] %}
+      {% if ev in ns.evidence_types %}
+        <span class="ev-pill {{ _ev_pill_cls[ev] }} ev-pill-btn" data-lt="{{ ev }}">{{ _ev_labels[ev] }}</span>
+      {% endif %}
     {% endfor %}
   </div>
 </div>
 
 <!-- ── Evidence flow diagram ─────────────────────────────────────────── -->
 {% set ns_ev = namespace(ev_idx=0, seen_motifs=[], seen_chips=[]) %}
-{% set ltype_colors = {'tss_proximal_1kb':'#10b981','tss_distal_10kb':'#3b82f6','distal_multiome':'#8b5cf6','distal_multiome_hicar':'#f59e0b'} %}
+{# ltype_colors defined above in link_type_meta block #}
 <div class="ev-flow-v2" id="ev-flow-v2">
 
   <!-- Col 1: TF binding evidence pills -->
@@ -532,10 +535,12 @@
       </div>
     </div>
     <div class="ev-link-legend">
-      {% for lt in ns.link_types %}
-      <div class="ev-link-legend-item" data-lt="{{ lt }}">
-        <span class="ev-link-swatch" style="background:{{ ltype_colors.get(lt,'#6b7280') }}"></span>
-        {{ link_type_meta.get(lt, {'label': lt}).label }}
+      {% for combo in ns.link_combos %}
+        {% set ev = combo.split('|')[0] %}
+        {% set dl = combo.split('|')[1] %}
+      <div class="ev-link-legend-item" data-lt="{{ ev }}">
+        <span class="ev-link-swatch" style="background:{{ ltype_colors.get(ev,'#6b7280') }}"></span>
+        {{ _dist_labels.get(dl, dl) }}{{ _ev_suffixes.get(ev, '') }}
       </div>
       {% endfor %}
     </div>
@@ -814,10 +819,9 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
 /* ── Evidence flow: arrows + interactive filter ────────────────────── */
 (function() {
   const LINK_COLOR = {
-    tss_proximal_1kb:      '#10b981',
-    tss_distal_10kb:       '#3b82f6',
-    distal_multiome:       '#8b5cf6',
-    distal_multiome_hicar: '#f59e0b',
+    proximity:      '#3b82f6',
+    multiome:       '#8b5cf6',
+    multiome_hicar: '#f59e0b',
   };
   const NEUTRAL = '#c4cbe8';
 
@@ -844,8 +848,8 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     if (el.motif) evToEl.push({ from: motifPillId.get(el.motif.name), to: elPill });
     el.chipseq.forEach(ds => evToEl.push({ from: chipPillId.get(ds.dataset_id), to: elPill }));
     el.e2g_links.forEach(lnk => elToGene.push({
-      from: elPill, type: lnk.link_type,
-      color: LINK_COLOR[lnk.link_type] || '#6b7280',
+      from: elPill, type: lnk.evidence_type,
+      color: LINK_COLOR[lnk.evidence_type] || '#6b7280',
     }));
   });
 
@@ -1039,10 +1043,9 @@ let _igvBrowser = null;
   if (!allPeaks.length) return;
 
   const _LINK_COLORS = {
-    tss_proximal_1kb:      '#059669',
-    tss_distal_10kb:       '#2563eb',
-    distal_multiome:       '#7c3aed',
-    distal_multiome_hicar: '#b45309',
+    proximity:      '#2563eb',
+    multiome:       '#7c3aed',
+    multiome_hicar: '#b45309',
   };
 
   /* Loop arcs: one arc per element × link-type, from peak midpoint to gene TSS */
@@ -1057,7 +1060,7 @@ let _igvBrowser = null;
           chr1: refChr, start1: peakMid,      end1: peakMid,
           chr2: refChr, start2: GENE_TSS.tss, end2: GENE_TSS.tss,
           name:  el.element_id,
-          color: _LINK_COLORS[lnk.link_type] || '#9ca3af',
+          color: _LINK_COLORS[lnk.evidence_type] || '#9ca3af',
         }));
       })
     : [];

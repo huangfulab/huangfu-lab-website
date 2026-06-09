@@ -99,10 +99,9 @@
   display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
   border-radius: 10px; border: 1.5px solid; letter-spacing: 0.3px; white-space: nowrap;
 }
-.lt-pill.tss_proximal_1kb      { color: #059669; border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
-.lt-pill.tss_distal_10kb       { color: #2563eb; border-color: #93c5fd; background: rgba(59,130,246,0.08); }
-.lt-pill.distal_multiome       { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
-.lt-pill.distal_multiome_hicar { color: #b45309; border-color: #fcd34d; background: rgba(245,158,11,0.08); }
+.lt-pill.proximity      { color: #2563eb; border-color: #93c5fd; background: rgba(59,130,246,0.08); }
+.lt-pill.multiome       { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
+.lt-pill.multiome_hicar { color: #b45309; border-color: #fcd34d; background: rgba(245,158,11,0.08); }
 
 /* ── Related datasets ─────────────────────────────────────────────────── */
 .related-group-label {
@@ -131,12 +130,8 @@
 
 {% block content %}
 
-{% set lt_labels = {
-  'tss_proximal_1kb':       'Proximal 1 kb',
-  'tss_distal_10kb':        'Distal 10 kb',
-  'distal_multiome':        'Distal + Multiome',
-  'distal_multiome_hicar':  'Distal + Multiome + HiCAR',
-} %}
+{% set _dist_labels = {'at_tss': 'At TSS', 'proximal': 'Proximal', 'distal': 'Distal'} %}
+{% set _ev_suffixes = {'proximity': '', 'multiome': ' · Multiome', 'multiome_hicar': ' · Multiome+HiCAR'} %}
 
 {% set source_labels = {
   'huangfu-tf_chipseq': 'ChIP-seq (Huangfu)',

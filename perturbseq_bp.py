@@ -2001,7 +2001,7 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
     if tf_name in _coef_rug_cache:
         return _coef_rug_cache[tf_name]
 
-    empty = {'tss_proximal_1kb': [], 'tss_distal_10kb': [], 'distal_multiome': [], 'distal_multiome_hicar': []}
+    empty = {'proximity': [], 'multiome': [], 'multiome_hicar': []}
     if not gene_coef:
         return empty
 
@@ -2020,11 +2020,10 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
             apg.gene_id,
             gt.gene_name,
             CASE
-                WHEN apg.distance_bp <= 1000 AND apg.mao_lt IS NULL THEN 'tss_proximal_1kb'
-                WHEN apg.mao_lt IN ('HiCAR+TSS', 'HiCAR')          THEN 'distal_multiome_hicar'
-                WHEN apg.mao_lt = 'TSS'                             THEN 'distal_multiome'
-                ELSE 'tss_distal_10kb'
-            END AS link_type
+                WHEN apg.mao_lt IN ('HiCAR+TSS', 'HiCAR') THEN 'multiome_hicar'
+                WHEN apg.mao_lt = 'TSS'                    THEN 'multiome'
+                ELSE 'proximity'
+            END AS evidence_type
         FROM tf_dataset_table td
         JOIN tf_peaks         tp  ON tp.dataset_id   = td.dataset_id
         JOIN atac_tf_overlaps ato ON ato.peak_id     = tp.peak_id
@@ -2037,14 +2036,11 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
         AND apg.gene_id IN ({ex_ph})
     """, (tf_name, *extreme_ids)).fetchall()
 
-    buckets: dict = {
-        'tss_proximal_1kb': {}, 'tss_distal_10kb': {},
-        'distal_multiome': {}, 'distal_multiome_hicar': {},
-    }
+    buckets: dict = {'proximity': {}, 'multiome': {}, 'multiome_hicar': {}}
     for r in linked_rows:
         coef = gene_coef.get(r['gene_id'])
         if coef is not None:
-            lt = r['link_type']
+            lt = r['evidence_type']
             bucket = round(coef, 2)
             if bucket not in buckets[lt]:
                 buckets[lt][bucket] = []
@@ -2485,14 +2481,20 @@ def api_search():
 
 # ── TF-Gene link detail page ──────────────────────────────────────────────────
 
-def _classify_link_type(distance_bp: int | None, mao_link_type: str | None) -> str:
-    if distance_bp is not None and distance_bp <= 1000:
-        return 'tss_proximal_1kb'
-    if mao_link_type in ('HiCAR+TSS', 'HiCAR'):
-        return 'distal_multiome_hicar'
+def _classify_evidence_type(mao_link_type: str | None) -> str:
+    if mao_link_type in ('HiCAR', 'HiCAR+TSS'):
+        return 'multiome_hicar'
     if mao_link_type == 'TSS':
-        return 'distal_multiome'
-    return 'tss_distal_10kb'
+        return 'multiome'
+    return 'proximity'
+
+
+def _classify_distance_label(distance_bp: int | None) -> str:
+    if distance_bp is None or distance_bp > 10000:
+        return 'distal'
+    if distance_bp <= 1000:
+        return 'at_tss'
+    return 'proximal'
 
 
 def _norm_chr(chrom: str) -> str:
@@ -2579,9 +2581,9 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
         link_key = (r['distance_bp'], r['mao_lt'])
         if link_key not in el['_seen_links']:
             el['_seen_links'].add(link_key)
-            link_type = _classify_link_type(r['distance_bp'], r['mao_lt'])
             el['e2g_links'].append({
-                'link_type':      link_type,
+                'evidence_type':  _classify_evidence_type(r['mao_lt']),
+                'distance_label': _classify_distance_label(r['distance_bp']),
                 'distance_to_tss': r['distance_bp'],
                 'correlation':    None,
                 'padj':           None,
@@ -2694,7 +2696,8 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
                 "mediating_tfs": set(),
                 "tss_dist":      dist,
                 "tss_dist_label": _format_tss_dist(dist),
-                "link_type":     _classify_link_type(dist, r["mao_lt"]),
+                "evidence_type":  _classify_evidence_type(r["mao_lt"]),
+                "distance_label": _classify_distance_label(dist),
                 "gr_chr":        None,
                 "gr_start":      None,
                 "gr_end":        None,
@@ -2810,7 +2813,8 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
             "chr":           _norm_chr(r["chr"]),
             "start":         r["start"],
             "end":           r["end"],
-            "link_type":     _classify_link_type(dist, r["mao_lt"]),
+            "evidence_type":  _classify_evidence_type(r["mao_lt"]),
+            "distance_label": _classify_distance_label(dist),
             "n_tfs":         tf_counts.get(r["atac_peak_id"], 0),
             "tss_dist":      dist,
             "tss_dist_label": _format_tss_dist(dist),
@@ -3115,7 +3119,7 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
     if not gene_id:
         return None
 
-    # Determine link_type and distance from atac_tss_links / multiome_atac_overlaps
+    # Determine evidence_type/distance from atac_tss_links / multiome_atac_overlaps
     link_row = db.execute("""
         SELECT distance_bp, NULL AS mao_lt FROM atac_tss_links
         WHERE atac_peak_id = ? AND gene_id = ?
@@ -3129,8 +3133,9 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
         return None
 
     dist = link_row["distance_bp"]
-    link_type = _classify_link_type(dist, link_row["mao_lt"])
-    dist_label = _format_tss_dist(dist)
+    evidence_type  = _classify_evidence_type(link_row["mao_lt"])
+    distance_label = _classify_distance_label(dist)
+    dist_label     = _format_tss_dist(dist)
 
     rows = db.execute("""
         SELECT DISTINCT
@@ -3166,7 +3171,8 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
     return {
         "peak":         peak,
         "gene":         gene,
-        "link_type":    link_type,
+        "evidence_type":  evidence_type,
+        "distance_label": distance_label,
         "dist_label":   dist_label,
         "mediating_tfs": sorted(tfs.values(), key=lambda t: t["tf"]),
     }
@@ -3186,7 +3192,8 @@ def element_gene_link_page(atac_peak_id, gene):
         "perturbseq/element_gene_link.html",
         peak=data["peak"],
         gene=gene,
-        link_type=data["link_type"],
+        evidence_type=data["evidence_type"],
+        distance_label=data["distance_label"],
         dist_label=data["dist_label"],
         mediating_tfs=data["mediating_tfs"],
         atac_counts=atac_counts,

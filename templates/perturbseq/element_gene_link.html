@@ -32,10 +32,9 @@
   letter-spacing: 0.2px; white-space: nowrap;
 }
 .egl-pill.dist { color: var(--el-blue);     border-color: #a5b0e8; background: rgba(74,86,176,0.07); }
-.egl-pill.tss_proximal_1kb      { color: var(--el-accent-2); border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
-.egl-pill.tss_distal_10kb       { color: #2563eb;            border-color: #93c5fd; background: rgba(59,130,246,0.08); }
-.egl-pill.distal_multiome       { color: #7c3aed;            border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
-.egl-pill.distal_multiome_hicar { color: #b45309;            border-color: #fcd34d; background: rgba(245,158,11,0.08); }
+.egl-pill.proximity      { color: #2563eb; border-color: #93c5fd; background: rgba(59,130,246,0.08); }
+.egl-pill.multiome       { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
+.egl-pill.multiome_hicar { color: #b45309; border-color: #fcd34d; background: rgba(245,158,11,0.08); }
 
 /* ── Breadcrumb back link ─────────────────────────────────────────── */
 .egl-back {
@@ -156,12 +155,8 @@
 </style>
 {% endblock %}
 
-{% set lt_labels = {
-  'tss_proximal_1kb':       'Proximal 1 kb',
-  'tss_distal_10kb':        'Distal 10 kb',
-  'distal_multiome':        'Distal · Multiome',
-  'distal_multiome_hicar':  'Distal · Multiome · HiCAR',
-} %}
+{% set _dist_labels = {'at_tss': 'At TSS', 'proximal': 'Proximal', 'distal': 'Distal'} %}
+{% set _ev_suffixes = {'proximity': '', 'multiome': ' · Multiome', 'multiome_hicar': ' · Multiome+HiCAR'} %}
 
 {% block content %}
 
@@ -176,7 +171,7 @@
   <a class="egl-gene" href="{{ url_for('perturbseq.gene_page', gene_name=gene) }}" style="text-decoration:none;color:var(--accent)">{{ gene }}</a>
 </div>
 <div class="egl-stat-row">
-  <span class="egl-pill {{ link_type }}">{{ lt_labels.get(link_type, link_type) }}</span>
+  <span class="egl-pill {{ evidence_type }}">{{ _dist_labels.get(distance_label, distance_label) }}{{ _ev_suffixes.get(evidence_type, '') }}</span>
   <span class="egl-pill dist">{{ dist_label }} to TSS</span>
   <span class="egl-pill dist" style="color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.07)">{{ mediating_tfs | length }} mediating TF{{ 's' if mediating_tfs | length != 1 else '' }}</span>
 </div>
