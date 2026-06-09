@@ -43,6 +43,11 @@ def load_network(level):
     return _cache[level]
 
 
+@app.route("/lab")
+def lab():
+    return render_template("lab/index.html")
+
+
 @app.route("/")
 def landing():
     return render_template("landing.html", last_updated=_fmt_time_ago(_LAST_COMMIT_TS))
