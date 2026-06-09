@@ -7,6 +7,8 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+import numpy as np
+from scipy.stats import gaussian_kde
 from flask import Blueprint, render_template, jsonify, request, g, redirect, url_for, abort, send_from_directory
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
@@ -43,7 +45,7 @@ def _fmt_time_ago(ts: int | None) -> str | None:
 
 _LAST_COMMIT_TS: int | None = _last_commit_ts()
 BW_DIR       = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
-BW_EXTRA_DIR = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
+BW_EXTRA_DIR = BW_DIR
 BW_RNA_DIR   = str(Path(__file__).resolve().parent / "data" / "bw" / "rna")
 GTF_DIR      = str(Path(__file__).resolve().parent / "data" / "gtf")
 
@@ -249,8 +251,15 @@ def _mfuzz_to_internal(name: str) -> str:
 _expressed_tfs: frozenset | None = None
 _lambert_tfs: frozenset | None = None
 _perturbed_tfs: frozenset | None = None
-_gene_name_map: dict | None = None
 _gene_pub_counts: dict | None = None
+
+def _query_db_raw(sql: str, params=()) -> list:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
 
 def _load_lambert_tfs() -> frozenset:
     global _lambert_tfs
@@ -270,39 +279,15 @@ def _load_gene_pub_counts() -> dict:
     global _gene_pub_counts
     if _gene_pub_counts is None:
         try:
-            conn = sqlite3.connect(DB_PATH)
-            try:
-                rows = conn.execute("""
-                    SELECT gt.gene_name, pc.publication_count
-                    FROM gene_publication_count pc
-                    JOIN gene_table gt ON pc.gene_id = gt.gene_id
-                """).fetchall()
-            finally:
-                conn.close()
+            rows = _query_db_raw("""
+                SELECT gt.gene_name, pc.publication_count
+                FROM gene_publication_count pc
+                JOIN gene_table gt ON pc.gene_id = gt.gene_id
+            """)
             _gene_pub_counts = {r[0]: r[1] for r in rows}
         except Exception:
             _gene_pub_counts = {}
     return _gene_pub_counts
-
-
-def _load_gene_name_map() -> dict:
-    global _gene_name_map
-    if _gene_name_map is None:
-        try:
-            path = Path(__file__).resolve().parent / "gene_name_map.tsv"
-            with open(path) as f:
-                _gene_name_map = {}
-                for line in f:
-                    parts = line.rstrip('\n').split('\t', 1)
-                    if len(parts) == 2:
-                        _gene_name_map[parts[0]] = parts[1]
-        except Exception:
-            _gene_name_map = {}
-    return _gene_name_map
-
-
-def get_tc_db():
-    return get_db()
 
 
 def _load_expressed_tfs() -> frozenset:
@@ -310,13 +295,9 @@ def _load_expressed_tfs() -> frozenset:
     global _expressed_tfs
     if _expressed_tfs is None:
         try:
-            conn = sqlite3.connect(DB_PATH)
-            try:
-                rows = conn.execute(
-                    "SELECT gene_name FROM gene_table WHERE in_perturbation_library=1"
-                ).fetchall()
-            finally:
-                conn.close()
+            rows = _query_db_raw(
+                "SELECT gene_name FROM gene_table WHERE in_perturbation_library=1"
+            )
             _expressed_tfs = frozenset(r[0] for r in rows)
         except Exception:
             _expressed_tfs = frozenset()
@@ -328,14 +309,10 @@ def _load_perturbed_tfs() -> frozenset:
     global _perturbed_tfs
     if _perturbed_tfs is None:
         try:
-            conn = sqlite3.connect(DB_PATH)
-            try:
-                rows = conn.execute(
-                    "SELECT DISTINCT gene_name FROM gsea_tf_table "
-                    "WHERE gene_set_collection='DE-hotspot_modules'"
-                ).fetchall()
-            finally:
-                conn.close()
+            rows = _query_db_raw(
+                "SELECT DISTINCT gene_name FROM gsea_tf_table "
+                "WHERE gene_set_collection='DE-hotspot_modules'"
+            )
             _perturbed_tfs = frozenset(r[0] for r in rows)
         except Exception:
             _perturbed_tfs = frozenset()
@@ -363,6 +340,19 @@ def close_db(exc):
         db.close()
 
 
+def _parse_sources_datasets(r) -> tuple:
+    """Parse sources_str and datasets_str fields from a DB row."""
+    sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
+    seen_ds: set = set()
+    datasets = []
+    for entry in (r['datasets_str'] or '').split(','):
+        parts = entry.split('|||')
+        if len(parts) == 4 and parts[0] not in seen_ds:
+            seen_ds.add(parts[0])
+            datasets.append({'id': parts[0], 'name': parts[1], 'cell_type': parts[2], 'source': parts[3]})
+    return sources, datasets
+
+
 def rows_to_dicts(rows):
     out = []
     for r in rows:
@@ -377,7 +367,7 @@ def rows_to_dicts(rows):
     return out
 
 
-_SPARK_TP_ORDER = ['ES_0h', 'DE_12h', 'DE_24h', 'DE_36h', 'DE_48h', 'DE_60h', 'DE_72h']
+_SPARK_TP_ORDER = _TP_ORDER
 
 def _spark_pts(values, w=120, h=36, pad=3):
     """Return (line_d, area_d) smooth SVG path strings (Catmull-Rom spline) or (None, None)."""
@@ -409,6 +399,13 @@ def _spark_pts(values, w=120, h=36, pad=3):
         d += f" C {cp1x:.1f},{cp1y:.1f} {cp2x:.1f},{cp2y:.1f} {p2[0]:.1f},{p2[1]:.1f}"
     area_d = d + f" L {pts[-1][0]:.1f},{bottom:.1f} L {pts[0][0]:.1f},{bottom:.1f} Z"
     return d, area_d
+
+
+def _attach_sparklines(items, expr_map, key='name'):
+    for item in items:
+        tp_dict = expr_map.get(item[key], {})
+        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
+        item['spark_line'], item['spark_area'] = _spark_pts(vals)
 
 
 def _all_modules_expr_map(db, source: str) -> dict:
@@ -478,7 +475,7 @@ def all_modules_page():
     clusters = []
     for cid in sorted(gc_sizes.keys()):
         genes = gc_genes_by_cluster[cid]
-        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
+        notable = _top_genes_by_pub(genes, n=5)
         regs = gc_regs_by_cluster.get(cid, [])[:3]
         clusters.append({
             'id': cid,
@@ -524,7 +521,7 @@ def all_modules_page():
     supermodules = []
     for mod_name, size in sup_rows:
         genes = sup_genes_by_mod.get(mod_name, [])
-        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
+        notable = _top_genes_by_pub(genes, n=5)
         regs = sup_regs_by_mod.get(mod_name, [])[:3]
         supermodules.append({
             'name': mod_name,
@@ -585,7 +582,7 @@ def all_modules_page():
     submodules = []
     for mod_name, size, supermodule in sub_rows:
         genes = sub_genes_by_mod.get(mod_name, [])
-        notable = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
+        notable = _top_genes_by_pub(genes, n=5)
         regs = sub_regs_by_mod.get(mod_name, [])[:3]
         submodules.append({
             'name': mod_name,
@@ -607,24 +604,15 @@ def all_modules_page():
         _mfuzz_to_internal(k): v
         for k, v in _all_modules_expr_map(db, 'mfuzz_k7').items()
     }
-    for c in clusters:
-        tp_dict = gc_expr_map.get(c['id'], {})
-        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
-        c['spark_line'], c['spark_area'] = _spark_pts(vals)
+    _attach_sparklines(clusters, gc_expr_map, key='id')
 
     # Supermodules — computed from bulk_expression
     sup_expr_map = _all_modules_expr_map(db, 'hotspot_supermodule')
-    for m in supermodules:
-        tp_dict = sup_expr_map.get(m['name'], {})
-        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
-        m['spark_line'], m['spark_area'] = _spark_pts(vals)
+    _attach_sparklines(supermodules, sup_expr_map)
 
     # Submodules — computed from bulk_expression
     sub_expr_map = _all_modules_expr_map(db, 'hotspot_submodule')
-    for m in submodules:
-        tp_dict = sub_expr_map.get(m['name'], {})
-        vals = [tp_dict.get(tp) for tp in _SPARK_TP_ORDER]
-        m['spark_line'], m['spark_area'] = _spark_pts(vals)
+    _attach_sparklines(submodules, sub_expr_map)
 
     # ── Sort all three lists by developmental peak timing ────────────────────
     def _peak_tp_idx(tp_dict):
@@ -672,13 +660,6 @@ def module_page(name):
 @perturbseq_bp.route("/submodule/<name>")
 def submodule_page(name):
     return redirect(url_for('perturbseq.module_page', name=name), 301)
-
-
-def _tp_order():
-    return ("ORDER BY CASE timepoint "
-            "WHEN 'ES_0h' THEN 1 WHEN 'DE_12h' THEN 2 WHEN 'DE_24h' THEN 3 "
-            "WHEN 'DE_36h' THEN 4 WHEN 'DE_48h' THEN 5 WHEN 'DE_60h' THEN 6 "
-            "WHEN 'DE_72h' THEN 7 ELSE 8 END")
 
 
 def _merge_pert_bind_edges(pert_rows, bind_map, id_key='tf'):
@@ -822,7 +803,7 @@ def _super_page(mod_name):
             sub_genes_map[mid].append(gname)
         for s in sub_rows:
             genes = sub_genes_map.get(s['sub_module_id'], [])
-            s['top_genes'] = sorted(genes, key=lambda g: pub_counts.get(g, 0), reverse=True)[:5]
+            s['top_genes'] = _top_genes_by_pub(genes, n=5)
             s['color'] = MODULE_COLORS.get(mod_name, '#4a56b0')
             s['within_mean_z'] = 0.0
     submodules = sub_rows
@@ -1386,22 +1367,16 @@ def gene_page(gene_name):
     if _tip_mods:
         _ph = ','.join('?' * len(_tip_mods))
         for _r in db.execute(
-            f"SELECT mt.module_name, md.title, md.standard, mt.source "
+            f"SELECT mt.module_name, md.title, md.standard "
             f"FROM module_description md "
             f"JOIN module_table mt ON md.module_id = mt.module_id "
             f"WHERE mt.module_name IN ({_ph})",
             list(_tip_mods),
         ).fetchall():
-            if _r['source'] == 'hotspot_submodule':
-                module_tooltips[_r['module_name']] = {
-                    'title': _r['title'],
-                    'desc': _r['standard'],
-                }
-            else:
-                module_tooltips[_r['module_name']] = {
-                    'title': _r['title'],
-                    'desc': _r['standard'],
-                }
+            module_tooltips[_r['module_name']] = {
+                'title': _r['title'],
+                'desc': _r['standard'],
+            }
 
     tfs, modules = _nav_lists(db)
     reg_elements     = _query_gene_elements(db, gene_name, gene_id=gene_id)
@@ -1608,7 +1583,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         0: f'gt.gene_name {safe_dir}',
         1: f'sub.module_name {safe_dir}',
         2: f'n_datasets {safe_dir}',
-        3: f'n_ctg {safe_dir}',
+        3: f'n_linked_peaks {safe_dir}',
         4: f'gdp.signed_pct_rank {safe_dir}',
         5: f'gdp.mean_coef {safe_dir}',
     }
@@ -1757,15 +1732,7 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
 
     data = []
     for r in rows:
-        sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
-        # Parse datasets_str: "id|||name|||cell_type,..." — deduplicate by dataset_id
-        seen_ds = set()
-        datasets = []
-        for entry in (r['datasets_str'] or '').split(','):
-            parts = entry.split('|||')
-            if len(parts) == 4 and parts[0] not in seen_ds:
-                seen_ds.add(parts[0])
-                datasets.append({'id': parts[0], 'name': parts[1], 'cell_type': parts[2], 'source': parts[3]})
+        sources, datasets = _parse_sources_datasets(r)
         data.append({
             'gene_name':   r['gene_name'],
             'submodule':   r['submodule'],
@@ -1892,14 +1859,7 @@ def api_tf_linked_genes_all(tf_name):
 
     data = []
     for r in rows:
-        sources = sorted(set((r['sources_str'] or '').split(','))) if r['sources_str'] else []
-        seen_ds = set()
-        datasets = []
-        for entry in (r['datasets_str'] or '').split(','):
-            parts = entry.split('|||')
-            if len(parts) == 4 and parts[0] not in seen_ds:
-                seen_ds.add(parts[0])
-                datasets.append({'id': parts[0], 'name': parts[1], 'cell_type': parts[2], 'source': parts[3]})
+        sources, datasets = _parse_sources_datasets(r)
         data.append({
             'gene_name':        r['gene_name'],
             'submodule':        r['submodule'],
@@ -2965,9 +2925,6 @@ def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
 
     Returns None if no gRNAs found for this TF.
     """
-    import numpy as np
-    from scipy.stats import gaussian_kde
-
     rows = db.execute("""
         SELECT gt.grna_id, gt.grna_name, d.coef
         FROM de_results d
