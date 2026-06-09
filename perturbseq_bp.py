@@ -1923,12 +1923,18 @@ def api_tf_linked_genes_all(tf_name):
 @perturbseq_bp.route("/api/tf/<tf_name>/coef-scatter-all")
 def api_tf_coef_scatter_all(tf_name):
     """Lightweight endpoint for the all-genes scatter canvas.
-    Returns compact array-of-arrays [[mean_z_coef, peak_score, is_outlier], ...]."""
+    Returns compact array-of-arrays [[mean_z_coef, peak_score, is_outlier, gene_name], ...].
+    Accepts ?score=A|B|C|D to select the binding_score column."""
     db = get_db()
     ds_ids = _tf_dataset_ids(db, tf_name)
     if not ds_ids:
         return jsonify({'d': []})
     ds_ph = ','.join('?' * len(ds_ids))
+
+    score = request.args.get('score', 'A')
+    if score not in ('A', 'B', 'C', 'D'):
+        score = 'A'
+    score_col = f'binding_score_{score}'
 
     rows = db.execute(f"""
         WITH tf_grnas AS (
@@ -1948,7 +1954,7 @@ def api_tf_coef_scatter_all(tf_name):
             FROM gene_de
         ),
         binding_scores AS (
-            SELECT gene_id, SUM(binding_score_A) AS peak_score
+            SELECT gene_id, SUM({score_col}) AS peak_score
             FROM tf_gene_binding_scores
             WHERE dataset_id IN ({ds_ph})
             GROUP BY gene_id
