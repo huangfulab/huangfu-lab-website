@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, jsonify, request, g, redirect, url
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/perturbseq')
 
-DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v4.db")
+DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v5.db")
 
 def _last_commit_ts() -> int | None:
     try:
@@ -1170,7 +1170,7 @@ def _go_page(term_name):
 
 
 def _query_tf_elements(db, tf_name: str) -> list:
-    """Return ATAC peaks bound by tf_name that also link to at least one gene region."""
+    """Return ATAC peaks bound by tf_name that also link to at least one gene."""
     ds_ids = _tf_dataset_ids(db, tf_name)
     if not ds_ids:
         return []
@@ -1180,11 +1180,14 @@ def _query_tf_elements(db, tf_name: str) -> list:
             ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end,
             gt.gene_name
         FROM tf_peaks          tp
-        JOIN atac_tf_overlaps  ato ON tp.peak_id         = ato.peak_id
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id   = ap.atac_peak_id
-        JOIN tf_gene_overlaps  tgo ON tp.peak_id         = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
-        JOIN gene_table             gt  ON gr.gene_id         = gt.gene_id
+        JOIN atac_tf_overlaps  ato ON tp.peak_id       = ato.peak_id
+        JOIN atac_peak_table   ap  ON ato.atac_peak_id = ap.atac_peak_id
+        JOIN (
+            SELECT atac_peak_id, gene_id FROM atac_tss_links
+            UNION ALL
+            SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps
+        ) apg ON apg.atac_peak_id = ap.atac_peak_id
+        JOIN gene_table        gt  ON apg.gene_id      = gt.gene_id
         WHERE tp.dataset_id IN ({ds_ph})
         ORDER BY ap.chr, ap.chrom_start, gt.gene_name
     """, ds_ids).fetchall()
@@ -1413,18 +1416,17 @@ def gene_page(gene_name):
     reg_elements     = _query_gene_elements(db, gene_name, gene_id=gene_id)
     tf_element_count = _count_tf_elements(db, gene_name) if is_tf else 0
     _locus_row = db.execute(
-        'SELECT chr, MIN(chrom_start) AS locus_start, MAX(chrom_end) AS locus_end '
-        "FROM gene_region_table WHERE gene_id=? AND gene_region_subtype IN ('proximal','distal') "
-        'GROUP BY chr ORDER BY (MAX(chrom_end)-MIN(chrom_start)) DESC LIMIT 1',
-        (gene_id,)).fetchone()
+        'SELECT ap.chr, MIN(ap.chrom_start) AS locus_start, MAX(ap.chrom_end) AS locus_end '
+        'FROM (SELECT atac_peak_id FROM atac_tss_links WHERE gene_id=? '
+        '      UNION SELECT atac_peak_id FROM multiome_atac_overlaps WHERE gene_id=?) apg '
+        'JOIN atac_peak_table ap ON apg.atac_peak_id = ap.atac_peak_id '
+        'GROUP BY ap.chr ORDER BY (MAX(ap.chrom_end)-MIN(ap.chrom_start)) DESC LIMIT 1',
+        (gene_id, gene_id)).fetchone()
     gene_locus = dict(_locus_row) if _locus_row else None
     if gene_locus:
         gene_locus['chr'] = _norm_chr(gene_locus['chr'])
         _tss_row = db.execute(
-            "SELECT (chrom_start + chrom_end) / 2 AS tss "
-            "FROM gene_region_table "
-            "WHERE gene_id=? AND gene_region_subtype='proximal' "
-            "LIMIT 1",
+            "SELECT tss_position AS tss FROM gene_tss_table WHERE gene_id=? ORDER BY tss_id LIMIT 1",
             (gene_id,)).fetchone()
         gene_locus['tss'] = _tss_row['tss'] if _tss_row else None
     go_terms = [
@@ -1467,10 +1469,11 @@ def _count_tf_elements(db, tf_name: str) -> int:
     ph = ','.join('?' * len(ds_ids))
     rows = db.execute(f"""
         SELECT DISTINCT ato.atac_peak_id
-        FROM tf_peaks          tp
-        JOIN atac_tf_overlaps  ato ON tp.peak_id = ato.peak_id
+        FROM tf_peaks         tp
+        JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
         WHERE tp.dataset_id IN ({ph})
-          AND EXISTS (SELECT 1 FROM tf_gene_overlaps WHERE peak_id = tp.peak_id)
+          AND (EXISTS (SELECT 1 FROM atac_tss_links       WHERE atac_peak_id = ato.atac_peak_id)
+            OR EXISTS (SELECT 1 FROM multiome_atac_overlaps WHERE atac_peak_id = ato.atac_peak_id))
         LIMIT 502
     """, ds_ids).fetchall()
     return len(rows) if len(rows) < 502 else -1
@@ -1496,11 +1499,13 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
         like = f'%{q}%'
         base_from = f"""
             FROM tf_peaks         tp
-            JOIN atac_tf_overlaps ato ON tp.peak_id        = ato.peak_id
-            JOIN atac_peak_table       ap  ON ato.atac_peak_id  = ap.atac_peak_id
-            JOIN tf_gene_overlaps tgo ON tp.peak_id        = tgo.peak_id
-            JOIN gene_region_table     gr  ON tgo.gene_region_id = gr.gene_region_id
-            JOIN gene_table            gt  ON gr.gene_id         = gt.gene_id
+            JOIN atac_tf_overlaps ato ON tp.peak_id       = ato.peak_id
+            JOIN atac_peak_table  ap  ON ato.atac_peak_id = ap.atac_peak_id
+            JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+                  UNION ALL
+                  SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+              ON apg.atac_peak_id = ap.atac_peak_id
+            JOIN gene_table       gt  ON apg.gene_id      = gt.gene_id
             WHERE tp.dataset_id IN ({ds_ph})
             GROUP BY ap.atac_peak_id
             HAVING (ap.chr LIKE ? OR GROUP_CONCAT(DISTINCT gt.gene_name) LIKE ?)
@@ -1532,10 +1537,11 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
     # Fast path (no search): use dataset_id IN (...) so idx_tf_peaks_dataset_id is hit.
     count_rows = db.execute(f"""
         SELECT DISTINCT ato.atac_peak_id
-        FROM tf_peaks          tp
-        JOIN atac_tf_overlaps  ato ON tp.peak_id = ato.peak_id
+        FROM tf_peaks         tp
+        JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
         WHERE tp.dataset_id IN ({ds_ph})
-          AND EXISTS (SELECT 1 FROM tf_gene_overlaps WHERE peak_id = tp.peak_id)
+          AND (EXISTS (SELECT 1 FROM atac_tss_links        WHERE atac_peak_id = ato.atac_peak_id)
+            OR EXISTS (SELECT 1 FROM multiome_atac_overlaps WHERE atac_peak_id = ato.atac_peak_id))
         LIMIT 502
     """, ds_ids).fetchall()
     filtered_count = len(count_rows) if len(count_rows) < 502 else -1
@@ -1545,11 +1551,12 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
 
     page_rows = db.execute(f"""
         SELECT DISTINCT ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end
-        FROM tf_peaks          tp
-        JOIN atac_tf_overlaps  ato ON tp.peak_id       = ato.peak_id
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id = ap.atac_peak_id
+        FROM tf_peaks         tp
+        JOIN atac_tf_overlaps ato ON tp.peak_id       = ato.peak_id
+        JOIN atac_peak_table  ap  ON ato.atac_peak_id = ap.atac_peak_id
         WHERE tp.dataset_id IN ({ds_ph})
-          AND EXISTS (SELECT 1 FROM tf_gene_overlaps WHERE peak_id = tp.peak_id)
+          AND (EXISTS (SELECT 1 FROM atac_tss_links        WHERE atac_peak_id = ato.atac_peak_id)
+            OR EXISTS (SELECT 1 FROM multiome_atac_overlaps WHERE atac_peak_id = ato.atac_peak_id))
         {order_clause}
         LIMIT ? OFFSET ?
     """, ds_ids + [length, start]).fetchall()
@@ -1560,15 +1567,13 @@ def _query_tf_elements_paged(db, tf_name: str, start: int, length: int,
     peak_ids = [r['atac_peak_id'] for r in page_rows]
     placeholders = ','.join('?' * len(peak_ids))
     gene_rows = db.execute(f"""
-        SELECT DISTINCT ato.atac_peak_id, gt.gene_name
-        FROM atac_tf_overlaps  ato
-        JOIN tf_peaks          tp  ON ato.peak_id        = tp.peak_id
-        JOIN tf_gene_overlaps  tgo ON ato.peak_id        = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
-        JOIN gene_table             gt  ON gr.gene_id         = gt.gene_id
-        WHERE ato.atac_peak_id IN ({placeholders})
-          AND tp.dataset_id IN ({ds_ph})
-    """, peak_ids + ds_ids).fetchall()
+        SELECT DISTINCT apg.atac_peak_id, gt.gene_name
+        FROM (SELECT atac_peak_id, gene_id FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+        JOIN gene_table gt ON apg.gene_id = gt.gene_id
+        WHERE apg.atac_peak_id IN ({placeholders})
+    """, peak_ids).fetchall()
     genes_by_peak: dict = {}
     for gr in gene_rows:
         genes_by_peak.setdefault(gr['atac_peak_id'], []).append(gr['gene_name'])
@@ -1623,21 +1628,6 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         return {'data': [], 'filtered': 0, 'total': 0}
     ds_ph = ','.join('?' * len(ds_ids))
 
-    sub_join = f"""
-        LEFT JOIN (
-            SELECT gm.gene_id, mo.module_name
-            FROM gene_module_table gm
-            JOIN module_table mo ON gm.module_id = mo.module_id
-            WHERE mo.source = 'hotspot_submodule' AND mo.module_name != 'unassigned'
-        ) sub ON tgl.gene_id = sub.gene_id
-        LEFT JOIN (
-            SELECT gm.gene_id, mo.module_name
-            FROM gene_module_table gm
-            JOIN module_table mo ON gm.module_id = mo.module_id
-            WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
-        ) sup ON tgl.gene_id = sup.gene_id
-    """
-
     # CTE that computes signed percentile rank (0=most downregulated, 1=most upregulated)
     # and abs percentile rank (for display bar). Only genes in the top or bottom 5% by
     # signed rank (i.e. strongest up- or down-regulated responders) are returned.
@@ -1656,7 +1646,15 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                    PERCENT_RANK() OVER (ORDER BY ABS(mean_coef)) AS de_pct_rank,
                    PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
             FROM gene_de
-        )
+        ),
+        tf_bound_genes AS (
+            SELECT DISTINCT apg.gene_id, tp.dataset_id
+            FROM tf_peaks tp
+            JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+            JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+                  UNION ALL
+                  SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+              ON apg.atac_peak_id = ato.atac_peak_id
     """
 
     if direction == 'up':
@@ -1668,22 +1666,38 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
 
     if source:
         source_clause = f"""AND tgl.gene_id IN (
-            SELECT DISTINCT tgl2.gene_id FROM tf_gene_links tgl2
-            JOIN tf_dataset_table td2 ON tgl2.dataset_id = td2.dataset_id
-            WHERE tgl2.dataset_id IN ({ds_ph}) AND td2.source = ?
+            SELECT DISTINCT tbl.gene_id FROM tf_bound_genes tbl
+            JOIN tf_dataset_table td2 ON tbl.dataset_id = td2.dataset_id
+            WHERE td2.source = ?
         )"""
-        src_params = ds_ids + [source]
+        src_params = [source]
     else:
         source_clause = ""
         src_params = []
 
+    de_cte_closed = de_cte + f"            WHERE tp.dataset_id IN ({ds_ph})\n        )\n"
+
+    sub_join = """
+        LEFT JOIN (
+            SELECT gm.gene_id, mo.module_name
+            FROM gene_module_table gm
+            JOIN module_table mo ON gm.module_id = mo.module_id
+            WHERE mo.source = 'hotspot_submodule' AND mo.module_name != 'unassigned'
+        ) sub ON tgl.gene_id = sub.gene_id
+        LEFT JOIN (
+            SELECT gm.gene_id, mo.module_name
+            FROM gene_module_table gm
+            JOIN module_table mo ON gm.module_id = mo.module_id
+            WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
+        ) sup ON tgl.gene_id = sup.gene_id
+    """
+
     total_row = db.execute(f"""
-        {de_cte}
+        {de_cte_closed}
         SELECT COUNT(DISTINCT tgl.gene_id)
-        FROM tf_gene_links tgl
+        FROM tf_bound_genes tgl
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
-        WHERE tgl.dataset_id IN ({ds_ph})
-        AND {de_filter}
+        WHERE {de_filter}
         {source_clause}
     """, [tf_name] + ds_ids + src_params).fetchone()
     total = total_row[0] if total_row else 0
@@ -1693,16 +1707,15 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         having_clause = "HAVING (gt.gene_name LIKE ? OR sub.module_name LIKE ?)"
         q_params = [like, like]
         count_row = db.execute(f"""
-            {de_cte}
+            {de_cte_closed}
             SELECT COUNT(*) FROM (
                 SELECT tgl.gene_id
-                FROM tf_gene_links tgl
+                FROM tf_bound_genes tgl
                 JOIN gene_table gt ON tgl.gene_id = gt.gene_id
                 JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
                 {sub_join}
                 JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
-                WHERE tgl.dataset_id IN ({ds_ph})
-                AND {de_filter}
+                WHERE {de_filter}
                 {source_clause}
                 GROUP BY tgl.gene_id, gt.gene_name
                 {having_clause}
@@ -1715,14 +1728,17 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
         filtered = total
 
     rows = db.execute(f"""
-        {de_cte}
+        {de_cte_closed}
         ,peak_counts AS (
-            SELECT gr.gene_id, COUNT(DISTINCT tp.peak_id) AS n_linked_peaks
+            SELECT apg.gene_id, COUNT(DISTINCT ato.atac_peak_id) AS n_linked_peaks
             FROM tf_peaks tp
-            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
-            JOIN gene_region_table gr ON tgo.gene_region_id = gr.gene_region_id
+            JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+            JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+                  UNION ALL
+                  SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+              ON apg.atac_peak_id = ato.atac_peak_id
             WHERE tp.dataset_id IN ({ds_ph})
-            GROUP BY gr.gene_id
+            GROUP BY apg.gene_id
         )
         SELECT gt.gene_name,
                sub.module_name AS submodule,
@@ -1734,14 +1750,13 @@ def _query_tf_linked_genes_paged(db, tf_name: str, start: int, length: int,
                gdp.mean_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
-        FROM tf_gene_links tgl
+        FROM tf_bound_genes tgl
         JOIN gene_table gt ON tgl.gene_id = gt.gene_id
         JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
         {sub_join}
         LEFT JOIN peak_counts pc ON tgl.gene_id = pc.gene_id
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
-        WHERE tgl.dataset_id IN ({ds_ph})
-        AND {de_filter}
+        WHERE {de_filter}
         {source_clause}
         GROUP BY tgl.gene_id, gt.gene_name
         {having_clause}
@@ -1814,58 +1829,39 @@ def api_tf_linked_genes_all(tf_name):
                    PERCENT_RANK() OVER (ORDER BY mean_coef)       AS signed_pct_rank
             FROM gene_de
         ),
-        peak_raw AS (
-            SELECT
-                gr.gene_id,
-                tp.peak_id,
-                gr.gene_region_subtype,
-                MIN(ptd.distance) AS min_dist_measured
+        tf_bound_genes AS (
+            SELECT DISTINCT apg.gene_id, tp.dataset_id
             FROM tf_peaks tp
-            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
-            JOIN gene_region_table gr  ON tgo.gene_region_id = gr.gene_region_id
-            LEFT JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
-            LEFT JOIN peak_tss_distances ptd
-                   ON ato.atac_peak_id = ptd.atac_peak_id AND ptd.gene_id = gr.gene_id
+            JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+            JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+                  UNION ALL
+                  SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+              ON apg.atac_peak_id = ato.atac_peak_id
             WHERE tp.dataset_id IN ({ds_ph})
-            GROUP BY gr.gene_id, tp.peak_id, gr.gene_region_subtype
         ),
-        -- Deduplicate: each (gene_id, peak_id) gets exactly one effective subtype.
-        -- Multiome takes priority; without multiome, use the non-multiome subtype.
-        peak_dedup AS (
-            SELECT
-                gene_id,
-                peak_id,
-                MIN(min_dist_measured) AS min_dist_measured,
-                CASE
-                    WHEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) = 1
-                    THEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN gene_region_subtype ELSE NULL END)
-                    ELSE MIN(gene_region_subtype)
-                END AS effective_subtype
-            FROM peak_raw
-            GROUP BY gene_id, peak_id
-        ),
-        peak_scores AS (
-            SELECT
-                gene_id,
-                COUNT(*) AS n_peaks,
-                SUM(CASE WHEN effective_subtype = 'proximal'          THEN 1 ELSE 0 END) AS n_proximal,
-                SUM(CASE WHEN effective_subtype = 'distal'            THEN 1 ELSE 0 END) AS n_distal,
-                SUM(CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) AS n_multiome,
-                SUM(
-                    CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
-                    * LOG(10) / LOG(
-                        COALESCE(
-                            min_dist_measured,
-                            CASE effective_subtype
-                                WHEN 'proximal' THEN 500
-                                WHEN 'distal'   THEN 5500
-                                ELSE 50000
-                            END
-                        ) + 10
-                    )
-                ) AS peak_score
-            FROM peak_dedup
+        binding_scores AS (
+            SELECT gene_id, SUM(binding_score_A) AS peak_score
+            FROM tf_gene_binding_scores
+            WHERE dataset_id IN ({ds_ph})
             GROUP BY gene_id
+        ),
+        peak_type_counts AS (
+            SELECT apg.gene_id,
+                   COUNT(DISTINCT ato.atac_peak_id) AS n_peaks,
+                   COUNT(DISTINCT CASE WHEN apg.distance_bp <= 1000 AND apg.mao_lt IS NULL
+                                       THEN ato.atac_peak_id END) AS n_proximal,
+                   COUNT(DISTINCT CASE WHEN apg.distance_bp > 1000 AND apg.mao_lt IS NULL
+                                       THEN ato.atac_peak_id END) AS n_distal,
+                   COUNT(DISTINCT CASE WHEN apg.mao_lt IS NOT NULL
+                                       THEN ato.atac_peak_id END) AS n_multiome
+            FROM tf_peaks tp
+            JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+            JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
+                  UNION ALL
+                  SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
+              ON apg.atac_peak_id = ato.atac_peak_id
+            WHERE tp.dataset_id IN ({ds_ph})
+            GROUP BY apg.gene_id
         )
         SELECT gt.gene_name,
                sub.module_name AS submodule,
@@ -1873,16 +1869,16 @@ def api_tf_linked_genes_all(tf_name):
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
                GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
-               COALESCE(ps.peak_score,   0.0) AS peak_score,
-               COALESCE(ps.n_peaks,     0)   AS n_peaks,
-               COALESCE(ps.n_proximal,  0)   AS n_proximal,
-               COALESCE(ps.n_distal,    0)   AS n_distal,
-               COALESCE(ps.n_multiome,  0)   AS n_multiome,
+               COALESCE(bs.peak_score,      0.0) AS peak_score,
+               COALESCE(ptc.n_peaks,        0)   AS n_peaks,
+               COALESCE(ptc.n_proximal,     0)   AS n_proximal,
+               COALESCE(ptc.n_distal,       0)   AS n_distal,
+               COALESCE(ptc.n_multiome,     0)   AS n_multiome,
                gdp.mean_coef,
                gdp.mean_z_coef,
                gdp.de_pct_rank,
                gdp.signed_pct_rank
-        FROM tf_gene_links tgl
+        FROM tf_bound_genes tgl
         JOIN gene_table gt ON tgl.gene_id = gt.gene_id
         JOIN tf_dataset_table td ON tgl.dataset_id = td.dataset_id
         LEFT JOIN (
@@ -1895,13 +1891,13 @@ def api_tf_linked_genes_all(tf_name):
             JOIN module_table mo ON gm.module_id = mo.module_id
             WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
         ) sup ON tgl.gene_id = sup.gene_id
-        LEFT JOIN peak_scores ps ON tgl.gene_id = ps.gene_id
+        LEFT JOIN binding_scores bs   ON tgl.gene_id = bs.gene_id
+        LEFT JOIN peak_type_counts ptc ON tgl.gene_id = ptc.gene_id
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
-        WHERE tgl.dataset_id IN ({ds_ph})
-        AND (gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)
+        WHERE (gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)
         GROUP BY tgl.gene_id, gt.gene_name
         ORDER BY gdp.signed_pct_rank ASC
-    """, [tf_name] + ds_ids + ds_ids).fetchall()
+    """, [tf_name] + ds_ids + ds_ids + ds_ids).fetchall()
 
     data = []
     for r in rows:
@@ -1960,51 +1956,20 @@ def api_tf_coef_scatter_all(tf_name):
                    PERCENT_RANK() OVER (ORDER BY mean_z_coef) AS signed_pct_rank
             FROM gene_de
         ),
-        peak_raw AS (
-            SELECT gr.gene_id, tp.peak_id, gr.gene_region_subtype,
-                   MIN(ptd.distance) AS min_dist_measured
-            FROM tf_peaks tp
-            JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
-            JOIN gene_region_table gr  ON tgo.gene_region_id = gr.gene_region_id
-            LEFT JOIN atac_tf_overlaps ato ON tp.peak_id = ato.peak_id
-            LEFT JOIN peak_tss_distances ptd
-                   ON ato.atac_peak_id = ptd.atac_peak_id AND ptd.gene_id = gr.gene_id
-            WHERE tp.dataset_id IN ({ds_ph})
-            GROUP BY gr.gene_id, tp.peak_id, gr.gene_region_subtype
-        ),
-        peak_dedup AS (
-            SELECT gene_id, peak_id,
-                   MIN(min_dist_measured) AS min_dist_measured,
-                   CASE
-                       WHEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN 1 ELSE 0 END) = 1
-                       THEN MAX(CASE WHEN gene_region_subtype LIKE '%multiome_peak' THEN gene_region_subtype ELSE NULL END)
-                       ELSE MIN(gene_region_subtype)
-                   END AS effective_subtype
-            FROM peak_raw
-            GROUP BY gene_id, peak_id
-        ),
-        peak_scores AS (
-            SELECT gene_id,
-                   SUM(
-                       CASE WHEN effective_subtype LIKE '%multiome_peak' THEN 3.0 ELSE 1.0 END
-                       * LOG(10) / LOG(
-                           COALESCE(min_dist_measured,
-                               CASE effective_subtype
-                                   WHEN 'proximal' THEN 500
-                                   WHEN 'distal'   THEN 5500
-                                   ELSE 50000 END) + 10)
-                   ) AS peak_score
-            FROM peak_dedup
+        binding_scores AS (
+            SELECT gene_id, SUM(binding_score_A) AS peak_score
+            FROM tf_gene_binding_scores
+            WHERE dataset_id IN ({ds_ph})
             GROUP BY gene_id
         )
         SELECT gdp.mean_z_coef,
-               COALESCE(ps.peak_score, 0.0) AS peak_score,
+               COALESCE(bs.peak_score, 0.0) AS peak_score,
                CASE WHEN gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05
                     THEN 1 ELSE 0 END AS is_outlier,
                gt.gene_name
         FROM gene_de_pct gdp
         JOIN gene_table gt ON gdp.gene_id = gt.gene_id
-        LEFT JOIN peak_scores ps ON gdp.gene_id = ps.gene_id
+        LEFT JOIN binding_scores bs ON gdp.gene_id = bs.gene_id
         WHERE gdp.mean_z_coef IS NOT NULL
     """, [tf_name] + ds_ids).fetchall()
 
@@ -2055,25 +2020,24 @@ def _get_linked_by_type(db, tf_name: str, gene_coef: dict) -> dict:
 
     linked_rows = db.execute(f"""
         SELECT DISTINCT
-            gr.gene_id,
+            apg.gene_id,
             gt.gene_name,
             CASE
-                WHEN gr.gene_region_subtype = 'proximal'
-                    THEN 'tss_proximal_1kb'
-                WHEN gr.multiome_hicar_support IS NOT NULL
-                     AND gr.multiome_hicar_support != 'no_HiCAR_support'
-                    THEN 'distal_multiome_hicar'
-                WHEN gr.multiome_hicar_support = 'no_HiCAR_support'
-                    THEN 'distal_multiome'
+                WHEN apg.distance_bp <= 1000 AND apg.mao_lt IS NULL THEN 'tss_proximal_1kb'
+                WHEN apg.mao_lt IN ('HiCAR+TSS', 'HiCAR')          THEN 'distal_multiome_hicar'
+                WHEN apg.mao_lt = 'TSS'                             THEN 'distal_multiome'
                 ELSE 'tss_distal_10kb'
             END AS link_type
         FROM tf_dataset_table td
-        JOIN tf_peaks          tp  ON tp.dataset_id     = td.dataset_id
-        JOIN tf_gene_overlaps  tgo ON tgo.peak_id       = tp.peak_id
-        JOIN gene_region_table gr  ON gr.gene_region_id = tgo.gene_region_id
-        JOIN gene_table        gt  ON gt.gene_id        = gr.gene_id
+        JOIN tf_peaks         tp  ON tp.dataset_id   = td.dataset_id
+        JOIN atac_tf_overlaps ato ON ato.peak_id     = tp.peak_id
+        JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
+          ON apg.atac_peak_id = ato.atac_peak_id
+        JOIN gene_table       gt  ON gt.gene_id      = apg.gene_id
         WHERE td.tf_gene_name = ?
-        AND gr.gene_id IN ({ex_ph})
+        AND apg.gene_id IN ({ex_ph})
     """, (tf_name, *extreme_ids)).fetchall()
 
     buckets: dict = {
@@ -2108,12 +2072,17 @@ def api_tf_coef_density(tf_name):
         return jsonify({'all_coefs': [], 'bound_coefs': []})
     gene_coef = _get_gene_coef(db, tf_name)
     ds_ph = ','.join('?' * len(ds_ids))
-    bound_rows = db.execute(
-        f"""SELECT DISTINCT tgl.gene_id, gt.gene_name
-            FROM tf_gene_links tgl
-            JOIN gene_table gt ON tgl.gene_id = gt.gene_id
-            WHERE tgl.dataset_id IN ({ds_ph})""",
-        ds_ids).fetchall()
+    bound_rows = db.execute(f"""
+        SELECT DISTINCT apg.gene_id, gt.gene_name
+        FROM tf_peaks tp
+        JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+        JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+          ON apg.atac_peak_id = ato.atac_peak_id
+        JOIN gene_table gt ON apg.gene_id = gt.gene_id
+        WHERE tp.dataset_id IN ({ds_ph})
+    """, ds_ids).fetchall()
     bound_id_to_name = {r['gene_id']: r['gene_name'] for r in bound_rows}
     bound_genes = [{'gene_name': bound_id_to_name[gid], 'coef': coef}
                    for gid, coef in gene_coef.items()
@@ -2399,10 +2368,14 @@ def api_gene_grna_coefs(gene_name):
         SELECT gr.gene_name AS tf_name, gr.grna_name, gr.active, dr.coef,
                PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank,
                CASE WHEN EXISTS (
-                   SELECT 1 FROM tf_gene_links tgl
-                   JOIN tf_dataset_table tdt ON tgl.dataset_id = tdt.dataset_id
+                   SELECT 1 FROM tf_dataset_table tdt
+                   JOIN tf_peaks tp ON tp.dataset_id = tdt.dataset_id
+                   JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
                    WHERE tdt.tf_gene_name = gr.gene_name
-                     AND tgl.gene_id = dr.gene_id
+                     AND (EXISTS (SELECT 1 FROM atac_tss_links
+                                  WHERE atac_peak_id = ato.atac_peak_id AND gene_id = dr.gene_id)
+                       OR EXISTS (SELECT 1 FROM multiome_atac_overlaps
+                                  WHERE atac_peak_id = ato.atac_peak_id AND gene_id = dr.gene_id))
                ) THEN 1 ELSE 0 END AS has_binding
         FROM de_results dr
         JOIN grna_table gr ON dr.grna_id = gr.grna_id
@@ -2523,14 +2496,14 @@ def api_search():
 
 # ── TF-Gene link detail page ──────────────────────────────────────────────────
 
-def _subtype_to_link_type(subtype: str, hicar_support: str) -> str:
-    if subtype == 'proximal':
+def _classify_link_type(distance_bp: int | None, mao_link_type: str | None) -> str:
+    if distance_bp is not None and distance_bp <= 1000:
         return 'tss_proximal_1kb'
-    if subtype == 'distal':
-        return 'tss_distal_10kb'
-    if hicar_support and hicar_support != 'no_HiCAR_support':
+    if mao_link_type in ('HiCAR+TSS', 'HiCAR'):
         return 'distal_multiome_hicar'
-    return 'distal_multiome'
+    if mao_link_type == 'TSS':
+        return 'distal_multiome'
+    return 'tss_distal_10kb'
 
 
 def _norm_chr(chrom: str) -> str:
@@ -2541,7 +2514,7 @@ def _norm_chr(chrom: str) -> str:
 
 
 def _format_tss_dist(dist: int | None) -> str | None:
-    """Human-readable distance label from peak_tss_distances.distance values."""
+    """Human-readable distance label for ATAC peak → TSS distance values."""
     if dist is None:
         return None
     if dist == 0:
@@ -2556,21 +2529,23 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
     gene_row = db.execute("SELECT gene_id FROM gene_table WHERE gene_name=? LIMIT 1", (gene,)).fetchone()
     if not gene_row:
         return []
+    gene_id = gene_row['gene_id']
     rows = db.execute("""
         SELECT
             ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end,
             tp.source  AS peak_source,
             td.dataset_id, td.dataset, td.cell_type,
-            gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.chrom_start AS gr_start, gr.chrom_end AS gr_end
+            apg.distance_bp, apg.mao_lt
         FROM tf_dataset_table td
-        JOIN tf_peaks          tp  ON td.dataset_id      = tp.dataset_id
-        JOIN tf_gene_overlaps  tgo ON tp.peak_id         = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
-        JOIN atac_tf_overlaps  ato ON tp.peak_id         = ato.peak_id
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id   = ap.atac_peak_id
-        WHERE td.tf_gene_name = ? AND gr.gene_id = ?
-    """, (tf, gene_row['gene_id'])).fetchall()
+        JOIN tf_peaks         tp  ON td.dataset_id    = tp.dataset_id
+        JOIN atac_tf_overlaps ato ON tp.peak_id       = ato.peak_id
+        JOIN atac_peak_table  ap  ON ato.atac_peak_id = ap.atac_peak_id
+        JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
+          ON apg.atac_peak_id = ap.atac_peak_id AND apg.gene_id = ?
+        WHERE td.tf_gene_name = ?
+    """, (gene_id, tf)).fetchall()
 
     by_peak: dict = {}
     for r in rows:
@@ -2608,17 +2583,13 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
                     'accession':  r['dataset'],
                 })
 
-        link_key = (r['gene_region_subtype'], r['multiome_hicar_support'])
+        link_key = (r['distance_bp'], r['mao_lt'])
         if link_key not in el['_seen_links']:
             el['_seen_links'].add(link_key)
-            link_type = _subtype_to_link_type(r['gene_region_subtype'], r['multiome_hicar_support'])
-            # distance_to_tss: midpoint of ATAC peak relative to midpoint of gene region
-            atac_mid = (r['start'] + r['end']) / 2
-            gr_mid   = (r['gr_start'] + r['gr_end']) / 2
-            dist = int(abs(atac_mid - gr_mid))
+            link_type = _classify_link_type(r['distance_bp'], r['mao_lt'])
             el['e2g_links'].append({
                 'link_type':      link_type,
-                'distance_to_tss': dist,
+                'distance_to_tss': r['distance_bp'],
                 'correlation':    None,
                 'padj':           None,
                 'hicar_score':    None,
@@ -2640,16 +2611,20 @@ def _query_tf_binding_peaks(db, tf: str, gene: str) -> list:
     gene_row = db.execute("SELECT gene_id FROM gene_table WHERE gene_name=? LIMIT 1", (gene,)).fetchone()
     if not gene_row:
         return []
+    gene_id = gene_row['gene_id']
     rows = db.execute("""
         SELECT DISTINCT
             tp.chr, tp.chrom_start AS start, tp.chrom_end AS end, tp.tf_peak_name,
             tp.source, td.dataset, td.cell_type, td.dataset_id
         FROM tf_dataset_table td
-        JOIN tf_peaks          tp  ON td.dataset_id      = tp.dataset_id
-        JOIN tf_gene_overlaps  tgo ON tp.peak_id         = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id = gr.gene_region_id
-        WHERE td.tf_gene_name = ? AND gr.gene_id = ?
-    """, (tf, gene_row['gene_id'])).fetchall()
+        JOIN tf_peaks         tp  ON td.dataset_id    = tp.dataset_id
+        JOIN atac_tf_overlaps ato ON ato.peak_id      = tp.peak_id
+        WHERE td.tf_gene_name = ?
+          AND (EXISTS (SELECT 1 FROM atac_tss_links
+                       WHERE atac_peak_id = ato.atac_peak_id AND gene_id = ?)
+            OR EXISTS (SELECT 1 FROM multiome_atac_overlaps
+                       WHERE atac_peak_id = ato.atac_peak_id AND gene_id = ?))
+    """, (tf, gene_id, gene_id)).fetchall()
     return [
         {
             "chr":       _norm_chr(r["chr"]),
@@ -2696,81 +2671,42 @@ def _query_element_tfs(db, atac_peak_id: int) -> list:
 
 
 def _query_element_genes(db, atac_peak_id: int) -> list:
-    # CTE avoids referencing outer-query alias inside a subquery ORDER BY,
-    # which is not supported by all SQLite versions.
     rows = db.execute("""
-        WITH peak_pos AS (
-            SELECT (chrom_start + chrom_end) / 2 AS mid
-            FROM atac_peak_table WHERE atac_peak_id = ?
-        )
         SELECT DISTINCT
             gtt.gene_name, gtt.gene_id,
-            gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.chr AS gr_chr, gr.chrom_start AS gr_start, gr.chrom_end AS gr_end,
+            apg.distance_bp, apg.mao_lt,
             td.tf_gene_name,
-            (SELECT mid FROM peak_pos) AS peak_mid,
-            (
-                SELECT (tss.chrom_start + tss.chrom_end) / 2
-                FROM gene_region_table tss
-                WHERE tss.gene_id = gr.gene_id
-                  AND tss.gene_region_subtype = 'proximal'
-                ORDER BY ABS((tss.chrom_start + tss.chrom_end) / 2 - (SELECT mid FROM peak_pos))
-                LIMIT 1
-            ) AS tss
-        FROM atac_tf_overlaps  ato
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id    = ap.atac_peak_id
-        JOIN tf_peaks          tp  ON ato.peak_id         = tp.peak_id
-        JOIN tf_dataset_table       td  ON tp.dataset_id        = td.dataset_id
-        JOIN tf_gene_overlaps  tgo ON tp.peak_id           = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id   = gr.gene_region_id
-        JOIN gene_table             gtt ON gr.gene_id            = gtt.gene_id
-        WHERE ato.atac_peak_id = ?
-    """, (atac_peak_id, atac_peak_id)).fetchall()
+            gts.tss_position AS tss
+        FROM (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
+        JOIN gene_table        gtt ON apg.gene_id      = gtt.gene_id
+        LEFT JOIN gene_tss_table gts ON gts.gene_id   = apg.gene_id
+        LEFT JOIN atac_tf_overlaps ato ON ato.atac_peak_id = apg.atac_peak_id
+        LEFT JOIN tf_peaks         tp  ON ato.peak_id      = tp.peak_id
+        LEFT JOIN tf_dataset_table td  ON tp.dataset_id    = td.dataset_id
+        WHERE apg.atac_peak_id = ?
+    """, (atac_peak_id,)).fetchall()
 
-    # Fetch pre-computed TSS distances (peak-edge to TSS) keyed by gene_id.
-    gene_ids = list({r["gene_id"] for r in rows})
-    tss_dists: dict = {}
-    if gene_ids:
-        placeholders = ",".join("?" * len(gene_ids))
-        tss_dists = {
-            r["gene_id"]: r["min_dist"]
-            for r in db.execute(f"""
-                SELECT gene_id, MIN(distance) AS min_dist
-                FROM peak_tss_distances
-                WHERE atac_peak_id = ? AND gene_id IN ({placeholders})
-                GROUP BY gene_id
-            """, [atac_peak_id] + gene_ids).fetchall()
-        }
-
-    # Build one entry per gene, keeping the gene region closest to the peak midpoint
-    # to determine link_type (a peak can overlap both proximal and distal regions).
     groups: dict = {}   # gene_name -> entry dict
-    best_gr_dist: dict = {}  # gene_name -> closest gr midpoint distance seen so far
     for r in rows:
         g = r["gene_name"]
-        gr_mid = (r["gr_start"] + r["gr_end"]) / 2
-        gr_dist = abs(r["peak_mid"] - gr_mid)
-        if g not in groups or gr_dist < best_gr_dist[g]:
-            gr_chr = _norm_chr(str(r["gr_chr"])) if r["gr_chr"] else None
-            tss = r["tss"] if r["tss"] is not None else (r["gr_start"] + r["gr_end"]) // 2
-            dist = tss_dists.get(r["gene_id"])
-            entry = groups.get(g) or {
+        dist = r["distance_bp"]
+        if g not in groups:
+            groups[g] = {
                 "gene":          g,
                 "mediating_tfs": set(),
                 "tss_dist":      dist,
                 "tss_dist_label": _format_tss_dist(dist),
+                "link_type":     _classify_link_type(dist, r["mao_lt"]),
+                "gr_chr":        None,
+                "gr_start":      None,
+                "gr_end":        None,
+                "tss":           r["tss"],
+                "tss_chr":       None,
             }
-            entry.update({
-                "link_type": _subtype_to_link_type(r["gene_region_subtype"], r["multiome_hicar_support"]),
-                "gr_chr":    gr_chr,
-                "gr_start":  r["gr_start"],
-                "gr_end":    r["gr_end"],
-                "tss":       tss,
-                "tss_chr":   gr_chr,
-            })
-            groups[g] = entry
-            best_gr_dist[g] = gr_dist
-        groups[g]["mediating_tfs"].add(r["tf_gene_name"])
+        if r["tf_gene_name"]:
+            groups[g]["mediating_tfs"].add(r["tf_gene_name"])
     result = [dict(g, mediating_tfs=sorted(t for t in g["mediating_tfs"] if t is not None)) for g in groups.values()]
     result.sort(key=lambda g: g["gene"])
     return result
@@ -2813,7 +2749,7 @@ def _query_atac_counts(db, atac_peak_id: int) -> list:
 
 
 def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
-    # Use gene_id (indexed) rather than gene_name (no index on gene_region_table).
+    # Use gene_id (indexed) to avoid a full table scan.
     # Callers that already resolved gene_id should pass it to avoid an extra lookup.
     if gene_id is None:
         row = db.execute(
@@ -2822,77 +2758,43 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
     if gene_id is None:
         return []
 
-    # Two-step to avoid the GROUP BY + COUNT(DISTINCT) over a massive 6-table join.
-    # Step 1: get distinct element rows without counting TFs (DISTINCT + no aggregation
-    # lets SQLite's hash early-terminate once it has seen each unique atac_peak_id).
+    # Step 1: get distinct ATAC peaks linked to this gene via atac_tss_links or
+    # multiome_atac_overlaps, taking the best (smallest distance) link per peak.
     rows = db.execute("""
         SELECT DISTINCT
             ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end,
-            gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.chrom_start AS gr_start, gr.chrom_end AS gr_end
-        FROM gene_region_table      gr
-        JOIN tf_gene_overlaps  tgo ON gr.gene_region_id = tgo.gene_region_id
-        JOIN tf_peaks          tp  ON tgo.peak_id       = tp.peak_id
-        JOIN atac_tf_overlaps  ato ON tp.peak_id        = ato.peak_id
-        JOIN atac_peak_table        ap  ON ato.atac_peak_id  = ap.atac_peak_id
-        WHERE gr.gene_id = ?
+            apg.distance_bp, apg.mao_lt
+        FROM (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
+              UNION ALL
+              SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
+        JOIN atac_peak_table ap ON ap.atac_peak_id = apg.atac_peak_id
+        WHERE apg.gene_id = ?
         ORDER BY ap.chr, ap.chrom_start
     """, (gene_id,)).fetchall()
 
     if not rows:
         return []
 
-    # Deduplicate: same ATAC peak can be linked via multiple gene regions (different
-    # TSSs or link types). Keep the link to the nearest gene region by midpoint distance
-    # so that a peak overlapping both a proximal and a distal region gets the proximal label.
-    best: dict = {}  # atac_peak_id -> (row, dist)
+    # Deduplicate: same ATAC peak can appear via both atac_tss_links and multiome_atac_overlaps.
+    # Keep the multiome link if present (it carries HiCAR info), otherwise keep TSS link.
+    best: dict = {}  # atac_peak_id -> row
     for r in rows:
         pid = r["atac_peak_id"]
-        peak_mid = (r["start"] + r["end"]) / 2
-        gr_mid   = (r["gr_start"] + r["gr_end"]) / 2
-        dist = abs(peak_mid - gr_mid)
-        if pid not in best or dist < best[pid][1]:
-            best[pid] = (r, dist)
-    rows = [v[0] for v in best.values()]
+        if pid not in best or (r["mao_lt"] is not None and best[pid]["mao_lt"] is None):
+            best[pid] = r
+    rows = list(best.values())
 
     peak_ids = [r["atac_peak_id"] for r in rows]
     placeholders = ",".join("?" * len(peak_ids))
 
-    # Fetch minimum TSS distance for each peak from peak_tss_distances (indexed on atac_peak_id).
-    tss_dists = {
-        r["atac_peak_id"]: r["min_dist"]
-        for r in db.execute(f"""
-            SELECT atac_peak_id, MIN(distance) AS min_dist
-            FROM peak_tss_distances
-            WHERE gene_id = ? AND atac_peak_id IN ({placeholders})
-            GROUP BY atac_peak_id
-        """, [gene_id] + peak_ids).fetchall()
-    }
-
-    # peak_tss_distances is incomplete for some distal peaks; compute fallback distances
-    # from gene_tss_table for any peaks that are missing.
-    missing_pids = [pid for pid in peak_ids if pid not in tss_dists]
-    if missing_pids:
-        tss_row = db.execute(
-            "SELECT tss_position FROM gene_tss_table WHERE gene_id=? ORDER BY tss_id LIMIT 1",
-            (gene_id,)
-        ).fetchone()
-        if tss_row:
-            tss_pos = tss_row["tss_position"]
-            peak_coords = {r["atac_peak_id"]: (r["start"], r["end"]) for r in rows}
-            for pid in missing_pids:
-                s, e = peak_coords[pid]
-                tss_dists[pid] = abs((s + e) // 2 - tss_pos)
-
     # Step 2: for each distinct element, count TFs via the atac_peak_id index.
-    # This is a tiny correlated query per element (indexed on atac_peak_id).
     tf_counts = {
         r["atac_peak_id"]: r["n_tfs"]
         for r in db.execute(f"""
             SELECT ato.atac_peak_id, COUNT(DISTINCT td.tf_gene_name) AS n_tfs
             FROM atac_tf_overlaps ato
-            JOIN tf_peaks         tp  ON ato.peak_id    = tp.peak_id
-            JOIN tf_dataset_table      td  ON tp.dataset_id  = td.dataset_id
+            JOIN tf_peaks         tp ON ato.peak_id   = tp.peak_id
+            JOIN tf_dataset_table td ON tp.dataset_id = td.dataset_id
             WHERE ato.atac_peak_id IN ({placeholders})
             GROUP BY ato.atac_peak_id
         """, peak_ids).fetchall()
@@ -2900,13 +2802,13 @@ def _query_gene_elements(db, gene: str, gene_id: str | None = None) -> list:
 
     result = []
     for r in rows:
-        dist = tss_dists.get(r["atac_peak_id"])
+        dist = r["distance_bp"]
         result.append({
             "atac_peak_id":  r["atac_peak_id"],
             "chr":           _norm_chr(r["chr"]),
             "start":         r["start"],
             "end":           r["end"],
-            "link_type":     _subtype_to_link_type(r["gene_region_subtype"], r["multiome_hicar_support"]),
+            "link_type":     _classify_link_type(dist, r["mao_lt"]),
             "n_tfs":         tf_counts.get(r["atac_peak_id"], 0),
             "tss_dist":      dist,
             "tss_dist_label": _format_tss_dist(dist),
@@ -2932,8 +2834,11 @@ def api_link_tfs():
 def api_link_genes():
     db = get_db()
     rows = db.execute(
-        "SELECT DISTINCT gt.gene_name FROM gene_region_table gr "
-        "JOIN gene_table gt ON gr.gene_id = gt.gene_id ORDER BY gt.gene_name"
+        "SELECT DISTINCT gt.gene_name "
+        "FROM (SELECT gene_id FROM atac_tss_links "
+        "      UNION SELECT gene_id FROM multiome_atac_overlaps) apg "
+        "JOIN gene_table gt ON apg.gene_id = gt.gene_id "
+        "ORDER BY gt.gene_name"
     ).fetchall()
     return jsonify([r[0] for r in rows])
 
@@ -3208,33 +3113,35 @@ def _query_element_gene_link(db, atac_peak_id: int, gene: str) -> dict | None:
     if not gene_id:
         return None
 
+    # Determine link_type and distance from atac_tss_links / multiome_atac_overlaps
+    link_row = db.execute("""
+        SELECT distance_bp, NULL AS mao_lt FROM atac_tss_links
+        WHERE atac_peak_id = ? AND gene_id = ?
+        UNION ALL
+        SELECT distance_to_tss, link_type FROM multiome_atac_overlaps
+        WHERE atac_peak_id = ? AND gene_id = ?
+        ORDER BY distance_bp LIMIT 1
+    """, (atac_peak_id, gene_id, atac_peak_id, gene_id)).fetchone()
+
+    if not link_row:
+        return None
+
+    dist = link_row["distance_bp"]
+    link_type = _classify_link_type(dist, link_row["mao_lt"])
+    dist_label = _format_tss_dist(dist)
+
     rows = db.execute("""
         SELECT DISTINCT
             td.tf_gene_name,
             td.dataset_id, td.cell_type, td.dataset,
             tp.source AS peak_source,
-            gr.gene_region_subtype, gr.multiome_hicar_support,
-            gr.chrom_start AS gr_start, gr.chrom_end AS gr_end,
             ato.overlap_bp
-        FROM atac_tf_overlaps  ato
-        JOIN tf_peaks          tp  ON ato.peak_id          = tp.peak_id
-        JOIN tf_dataset_table       td  ON tp.dataset_id        = td.dataset_id
-        JOIN tf_gene_overlaps  tgo ON tp.peak_id           = tgo.peak_id
-        JOIN gene_region_table      gr  ON tgo.gene_region_id   = gr.gene_region_id
-        WHERE ato.atac_peak_id = ? AND gr.gene_id = ?
+        FROM atac_tf_overlaps ato
+        JOIN tf_peaks         tp ON ato.peak_id    = tp.peak_id
+        JOIN tf_dataset_table td ON tp.dataset_id  = td.dataset_id
+        WHERE ato.atac_peak_id = ?
         ORDER BY td.tf_gene_name, td.cell_type
-    """, (atac_peak_id, gene_id)).fetchall()
-
-    if not rows:
-        return None
-
-    link_type = _subtype_to_link_type(rows[0]["gene_region_subtype"], rows[0]["multiome_hicar_support"])
-    dist_row = db.execute(
-        "SELECT MIN(distance) AS d FROM peak_tss_distances WHERE atac_peak_id=? AND gene_id=?",
-        (atac_peak_id, gene_id)
-    ).fetchone()
-    dist = dist_row["d"] if dist_row else None
-    dist_label = _format_tss_dist(dist)
+    """, (atac_peak_id,)).fetchall()
 
     tfs: dict = {}
     for r in rows:
@@ -3367,10 +3274,7 @@ def tf_gene_link_page(tf, gene):
     gene_tss = None
     if gene_row_data:
         _tss = db.execute(
-            "SELECT (chrom_start + chrom_end) / 2 AS tss, chr "
-            "FROM gene_region_table "
-            "WHERE gene_id=? AND gene_region_subtype='proximal' "
-            "LIMIT 1",
+            "SELECT tss_position AS tss, chr FROM gene_tss_table WHERE gene_id=? ORDER BY tss_id LIMIT 1",
             (gene_row_data['gene_id'],)).fetchone()
         if _tss:
             gene_tss = {'tss': _tss['tss'], 'chr': _norm_chr(str(_tss['chr']))}
@@ -3430,11 +3334,14 @@ def dataset_page(dataset_id):
     element_rows = rows_to_dicts(db.execute("""
         SELECT ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end,
                MAX(ato.overlap_bp) AS overlap_bp,
-               COUNT(DISTINCT tgo.gene_region_id) AS gene_count
+               COUNT(DISTINCT apg.gene_id) AS gene_count
         FROM atac_tf_overlaps ato
-        JOIN tf_peaks   tp ON ato.peak_id      = tp.peak_id
+        JOIN tf_peaks        tp ON ato.peak_id      = tp.peak_id
         JOIN atac_peak_table ap ON ato.atac_peak_id = ap.atac_peak_id
-        LEFT JOIN tf_gene_overlaps tgo ON tp.peak_id = tgo.peak_id
+        LEFT JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+                   UNION ALL
+                   SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+          ON apg.atac_peak_id = ato.atac_peak_id
         WHERE tp.dataset_id=?
         GROUP BY ap.atac_peak_id
         ORDER BY ap.chr, ap.chrom_start
