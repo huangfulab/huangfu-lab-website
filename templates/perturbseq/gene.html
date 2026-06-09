@@ -2134,16 +2134,18 @@ function initTfCoefScatter() {
     const hiAnnotT2    = hiAnnotG.append('text').attr('fill', '#ec4899').attr('font-size', 8.5).attr('opacity', 0.8);
 
     // ── Quadrant corner labels ──
-    g.append('text')
-      .attr('x', 4).attr('y', 14)
+    const _loLbl = g.append('text')
+      .attr('x', 4).attr('y', 10)
       .attr('text-anchor', 'start').attr('fill', '#3b82f6')
-      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7)
-      .text('← Genes downregulated by TF KD');
-    g.append('text')
-      .attr('x', W - 4).attr('y', 14)
+      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7);
+    _loLbl.append('tspan').text('← Genes downregulated');
+    _loLbl.append('tspan').attr('x', 4).attr('dy', '1.3em').text(`by ${GENE} KD`);
+    const _hiLbl = g.append('text')
+      .attr('x', W - 4).attr('y', 10)
       .attr('text-anchor', 'end').attr('fill', '#ec4899')
-      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7)
-      .text('Genes upregulated by TF KD →');
+      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7);
+    _hiLbl.append('tspan').text('Genes upregulated →');
+    _hiLbl.append('tspan').attr('x', W - 4).attr('dy', '1.3em').text(`by ${GENE} KD`);
 
     g.append('text').attr('x', W / 2).attr('y', H + 36)
       .attr('text-anchor', 'middle').attr('fill', 'var(--text-muted)').attr('font-size', 11)
