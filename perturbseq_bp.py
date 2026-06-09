@@ -2519,22 +2519,26 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
     if not gene_row:
         return []
     gene_id = gene_row['gene_id']
-    rows = db.execute("""
+    ds_ids = _tf_dataset_ids(db, tf)
+    if not ds_ids:
+        return []
+    ds_ph = ','.join('?' * len(ds_ids))
+    rows = db.execute(f"""
         SELECT
             ap.atac_peak_id, ap.chr, ap.chrom_start AS start, ap.chrom_end AS end,
             tp.source  AS peak_source,
             td.dataset_id, td.dataset, td.cell_type,
             apg.distance_bp, apg.mao_lt
-        FROM tf_dataset_table td
-        JOIN tf_peaks         tp  ON td.dataset_id    = tp.dataset_id
-        JOIN atac_tf_overlaps ato ON tp.peak_id       = ato.peak_id
-        JOIN atac_peak_table  ap  ON ato.atac_peak_id = ap.atac_peak_id
+        FROM tf_peaks tp
+        JOIN tf_dataset_table td ON td.dataset_id = tp.dataset_id
+        JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+        JOIN atac_peak_table  ap  ON ap.atac_peak_id = ato.atac_peak_id
         JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
               UNION ALL
               SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
           ON apg.atac_peak_id = ap.atac_peak_id AND apg.gene_id = ?
-        WHERE td.tf_gene_name = ?
-    """, (gene_id, tf)).fetchall()
+        WHERE tp.dataset_id IN ({ds_ph})
+    """, [gene_id] + ds_ids).fetchall()
 
     by_peak: dict = {}
     for r in rows:
@@ -2601,19 +2605,22 @@ def _query_tf_binding_peaks(db, tf: str, gene: str) -> list:
     if not gene_row:
         return []
     gene_id = gene_row['gene_id']
-    rows = db.execute("""
+    ds_ids = _tf_dataset_ids(db, tf)
+    if not ds_ids:
+        return []
+    ds_ph = ','.join('?' * len(ds_ids))
+    rows = db.execute(f"""
         SELECT DISTINCT
             tp.chr, tp.chrom_start AS start, tp.chrom_end AS end, tp.tf_peak_name,
             tp.source, td.dataset, td.cell_type, td.dataset_id
-        FROM tf_dataset_table td
-        JOIN tf_peaks         tp  ON td.dataset_id    = tp.dataset_id
-        JOIN atac_tf_overlaps ato ON ato.peak_id      = tp.peak_id
-        WHERE td.tf_gene_name = ?
-          AND (EXISTS (SELECT 1 FROM atac_tss_links
-                       WHERE atac_peak_id = ato.atac_peak_id AND gene_id = ?)
-            OR EXISTS (SELECT 1 FROM multiome_atac_overlaps
-                       WHERE atac_peak_id = ato.atac_peak_id AND gene_id = ?))
-    """, (tf, gene_id, gene_id)).fetchall()
+        FROM tf_peaks tp
+        JOIN tf_dataset_table td ON td.dataset_id = tp.dataset_id
+        JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
+        JOIN (SELECT atac_peak_id FROM atac_tss_links WHERE gene_id = ?
+              UNION SELECT atac_peak_id FROM multiome_atac_overlaps WHERE gene_id = ?) gp
+          ON gp.atac_peak_id = ato.atac_peak_id
+        WHERE tp.dataset_id IN ({ds_ph})
+    """, [gene_id, gene_id] + ds_ids).fetchall()
     return [
         {
             "chr":       _norm_chr(r["chr"]),
@@ -2701,18 +2708,12 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
     return result
 
 
-def _query_atac_counts(db, atac_peak_id: int) -> list:
-    """Return per-timepoint mean normalized_count + z-score with replicates."""
-    try:
-        rows = db.execute(
-            "SELECT sample_name AS sample, normalized_count, zscore FROM atac_peak_counts WHERE atac_peak_id=?",
-            (atac_peak_id,)
-        ).fetchall()
-    except Exception:
-        return []
+def _aggregate_atac_counts(rows) -> list:
+    """Aggregate a list of atac_peak_counts rows into per-timepoint dicts."""
     by_tp: dict = {}
     for r in rows:
-        tp = re.sub(r'_\d+$', '', r['sample'])
+        sample = r['sample_name'] if 'sample_name' in r.keys() else r['sample']
+        tp = re.sub(r'_\d+$', '', sample)
         by_tp.setdefault(tp, {'counts': [], 'zscores': []})
         if r['normalized_count'] is not None:
             by_tp[tp]['counts'].append(r['normalized_count'])
@@ -2734,6 +2735,18 @@ def _query_atac_counts(db, atac_peak_id: int) -> list:
             'z_replicates': [round(v, 4) for v in zscores],
         })
     return result
+
+
+def _query_atac_counts(db, atac_peak_id: int) -> list:
+    """Return per-timepoint mean normalized_count + z-score for a single peak."""
+    try:
+        rows = db.execute(
+            "SELECT sample_name, normalized_count, zscore FROM atac_peak_counts WHERE atac_peak_id=?",
+            (atac_peak_id,)
+        ).fetchall()
+    except Exception:
+        return []
+    return _aggregate_atac_counts(rows)
 
 
 
@@ -3239,8 +3252,18 @@ def tf_gene_link_page(tf, gene):
     db = get_db()
 
     elements = _query_tf_gene_link(db, tf, gene)
-    for el in elements:
-        el['atac_counts'] = _query_atac_counts(db, el['atac_peak_id'])
+    if elements:
+        peak_ids = [el['atac_peak_id'] for el in elements]
+        ph = ','.join('?' * len(peak_ids))
+        count_rows = db.execute(
+            f"SELECT atac_peak_id, sample_name, normalized_count, zscore "
+            f"FROM atac_peak_counts WHERE atac_peak_id IN ({ph})",
+            peak_ids).fetchall()
+        counts_by_peak: dict = {}
+        for r in count_rows:
+            counts_by_peak.setdefault(r['atac_peak_id'], []).append(r)
+        for el in elements:
+            el['atac_counts'] = _aggregate_atac_counts(counts_by_peak.get(el['atac_peak_id'], []))
     tf_peaks_data = _query_tf_binding_peaks(db, tf, gene)
 
     tf_row = resolve_gene(db, tf)
