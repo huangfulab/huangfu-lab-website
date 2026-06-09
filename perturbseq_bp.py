@@ -2591,14 +2591,18 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
                 'hicar_padj':     None,
             })
 
-    # Strip internal bookkeeping keys and sort by genomic position
+    # Strip internal bookkeeping keys, annotate TSS distance, sort closest-first
     elements = []
     for el in by_peak.values():
         el.pop('_seen_chips', None)
         el.pop('_seen_motifs', None)
         el.pop('_seen_links', None)
+        dists = [lnk['distance_to_tss'] for lnk in el['e2g_links'] if lnk['distance_to_tss'] is not None]
+        tss_dist = min(dists) if dists else None
+        el['tss_dist'] = tss_dist
+        el['tss_dist_label'] = _format_tss_dist(tss_dist)
         elements.append(el)
-    elements.sort(key=lambda e: (e['chr'], e['start']))
+    elements.sort(key=lambda e: (e['tss_dist'] if e['tss_dist'] is not None else 10**9))
     return elements
 
 

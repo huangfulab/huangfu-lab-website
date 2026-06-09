@@ -152,9 +152,10 @@
 .ev-node-pill-gene .ev-node-name { color: #fff; font-family: inherit; font-size: 15px; }
 .ev-node-detail { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 .ev-node-pill-gene .ev-node-detail { color: rgba(255,255,255,0.65); }
-.ev-node-pill-el { display: flex; align-items: center; gap: 16px; }
-.el-pill-text { flex: 0 0 auto; min-width: 0; }
+.ev-node-pill-el, .ev-node-pill-gene { display: flex; align-items: center; gap: 16px; }
+.el-pill-text, .gene-pill-text { flex: 0 0 auto; min-width: 0; }
 .el-sparkline { flex: 1 1 0; max-width: 160px; min-width: 60px; height: 40px; display: block; }
+.gene-sparkline { flex: 0 0 60px; width: 60px; height: 30px; display: block; margin-left: auto; opacity: 0.85; }
 .ev-link-legend { margin-top: 14px; display: flex; flex-direction: column; gap: 5px; }
 .ev-link-legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); }
 .ev-link-swatch { width: 22px; height: 3px; border-radius: 2px; flex-shrink: 0; }
@@ -319,24 +320,18 @@
 {% block content %}
 
 {# ── helpers ──────────────────────────────────────────────────────────── #}
-{% set _dist_labels  = {'at_tss': 'At TSS', 'proximal': 'Proximal', 'distal': 'Distal'} %}
-{% set _ev_suffixes  = {'proximity': '', 'multiome': ' · Multiome', 'multiome_hicar': ' · Multiome+HiCAR'} %}
 {% set _ev_labels    = {'proximity': 'Proximity', 'multiome': 'Multiome', 'multiome_hicar': 'Multiome+HiCAR'} %}
 {% set _ev_pill_cls  = {'proximity': 'proximity', 'multiome': 'multiome', 'multiome_hicar': 'hicar'} %}
 {% set ltype_colors  = {'proximity': '#3b82f6', 'multiome': '#8b5cf6', 'multiome_hicar': '#f59e0b'} %}
 
 {# collect evidence types and display combos present across all elements #}
-{% set ns = namespace(has_motif=false, chipseq_n=0, evidence_types=[], link_combos=[]) %}
+{% set ns = namespace(has_motif=false, chipseq_n=0, evidence_types=[]) %}
 {% for el in elements %}
   {% if el.motif %}{% set ns.has_motif = true %}{% endif %}
   {% set ns.chipseq_n = ns.chipseq_n + (el.chipseq | length) %}
   {% for e2g in el.e2g_links %}
     {% if e2g.evidence_type not in ns.evidence_types %}
       {% set ns.evidence_types = ns.evidence_types + [e2g.evidence_type] %}
-    {% endif %}
-    {% set combo = e2g.evidence_type ~ '|' ~ e2g.distance_label %}
-    {% if combo not in ns.link_combos %}
-      {% set ns.link_combos = ns.link_combos + [combo] %}
     {% endif %}
   {% endfor %}
 {% endfor %}
@@ -514,7 +509,7 @@
                style="color:inherit;text-decoration:none"
                title="Open element page">{{ el.element_id }}</a>
           </div>
-          <div class="ev-node-detail">{{ "{:,}".format(el.end - el.start) }} bp · {{ el.chr }}</div>
+          <div class="ev-node-detail">{{ el.tss_dist_label if el.tss_dist_label else '—' }}{% if el.tss_dist %} from TSS{% endif %}</div>
         </div>
         {% if el.atac_counts %}<svg class="el-sparkline" id="sparkline-el-{{ loop.index0 }}"></svg>{% endif %}
       </div>
@@ -529,19 +524,21 @@
     <div class="ev-col-header">Target Gene</div>
     <div class="ev-pill-stack">
       <div class="ev-node-pill ev-node-pill-gene" id="pill-gene">
-        <div class="ev-node-type">Gene</div>
-        <div class="ev-node-name">{{ gene }}</div>
-        <!-- {% if gene_desc %}<div class="ev-node-detail">{{ gene_desc }}</div>{% endif %} -->
+        <div class="gene-pill-text">
+          <div class="ev-node-type">Gene</div>
+          <div class="ev-node-name">{{ gene }}</div>
+        </div>
+        {% if gene_expr %}<svg class="gene-sparkline" id="sparkline-gene"></svg>{% endif %}
       </div>
     </div>
     <div class="ev-link-legend">
-      {% for combo in ns.link_combos %}
-        {% set ev = combo.split('|')[0] %}
-        {% set dl = combo.split('|')[1] %}
+      {% for ev in ['proximity', 'multiome', 'multiome_hicar'] %}
+        {% if ev in ns.evidence_types %}
       <div class="ev-link-legend-item" data-lt="{{ ev }}">
         <span class="ev-link-swatch" style="background:{{ ltype_colors.get(ev,'#6b7280') }}"></span>
-        {{ _dist_labels.get(dl, dl) }}{{ _ev_suffixes.get(ev, '') }}
+        {{ _ev_labels.get(ev, ev) }}
       </div>
+        {% endif %}
       {% endfor %}
     </div>
   </div>
@@ -565,10 +562,11 @@
     <span class="igv-locus-tag">{{ first_el.chr }}:{{ "{:,}".format(browser_start) }} – {{ "{:,}".format(browser_end) }}</span>
 
     <div class="igv-track-legend">
-      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#059669"></span>Proximal 1 kb</span>
-      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#2563eb"></span>Distal 10 kb</span>
-      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#7c3aed"></span>Multiome</span>
-      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:#b45309"></span>HiCAR</span>
+      {% for ev in ['proximity', 'multiome', 'multiome_hicar'] %}
+        {% if ev in ns.evidence_types %}
+      <span class="igv-track-swatch"><span class="igv-track-swatch-dot" style="background:{{ ltype_colors.get(ev,'#6b7280') }}"></span>{{ _ev_labels.get(ev, ev) }}</span>
+        {% endif %}
+      {% endfor %}
       <span class="igv-track-swatch" style="gap:2px">
         <span class="igv-track-swatch-dot" style="background:#6366f1"></span><span class="igv-track-swatch-dot" style="background:#34d399"></span><span class="igv-track-swatch-dot" style="background:#f87171"></span>
         ATAC-seq
@@ -1336,6 +1334,35 @@ let _igvBrowser = null;
     btn.classList.add('active');
     activeSrc = btn.dataset.source;
     applyEvFilters();
+  });
+})();
+
+/* ── Gene pill expression sparkline ─────────────────────────────────── */
+(function() {
+  if (typeof d3 === 'undefined' || !GENE_EXPR || !GENE_EXPR.length) return;
+  const svgEl = document.getElementById('sparkline-gene');
+  if (!svgEl) return;
+  const COLOR = '#10b981';
+  const W = Math.round(svgEl.getBoundingClientRect().width) || 60;
+  const H = 30, ml = 2, mr = 2, mt = 3, mb = 3;
+  const iW = W - ml - mr, iH = H - mt - mb;
+  svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
+  const tps  = GENE_EXPR.map(d => d.timepoint);
+  const vals = GENE_EXPR.map(d => d.mean_tpm ?? 0);
+  const x = d3.scalePoint().domain(tps).range([0, iW]).padding(0.15);
+  const y = d3.scaleLinear().domain([0, Math.max(d3.max(vals) * 1.08, 0.01)]).range([iH, 0]);
+  const g = d3.select(svgEl).append('g').attr('transform', `translate(${ml},${mt})`);
+  g.append('path').datum(GENE_EXPR)
+    .attr('fill', COLOR).attr('fill-opacity', 0.18)
+    .attr('d', d3.area().x(d => x(d.timepoint)).y0(iH).y1(d => y(d.mean_tpm ?? 0)).curve(d3.curveCatmullRom.alpha(0.5)));
+  g.append('path').datum(GENE_EXPR)
+    .attr('fill', 'none').attr('stroke', COLOR).attr('stroke-width', 1.5)
+    .attr('d', d3.line().x(d => x(d.timepoint)).y(d => y(d.mean_tpm ?? 0)).curve(d3.curveCatmullRom.alpha(0.5)));
+  GENE_EXPR.forEach(d => {
+    if (d.mean_tpm == null) return;
+    g.append('circle')
+      .attr('cx', x(d.timepoint)).attr('cy', y(d.mean_tpm))
+      .attr('r', 1.5).attr('fill', COLOR).attr('stroke', 'rgba(0,0,0,0.35)').attr('stroke-width', 0.6);
   });
 })();
 
