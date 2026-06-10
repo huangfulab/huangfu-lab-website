@@ -171,8 +171,12 @@
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em; color: var(--text-muted);
   background: var(--bg-elevated); border-bottom: 1px solid var(--border);
-  white-space: nowrap;
+  white-space: nowrap; cursor: pointer; user-select: none;
 }
+.gene-table th:hover { color: var(--text); }
+.sort-icon { margin-left: 4px; opacity: 0.4; font-style: normal; }
+.gene-table th[aria-sort="ascending"]  .sort-icon,
+.gene-table th[aria-sort="descending"] .sort-icon { opacity: 1; color: var(--el-blue); }
 .gene-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .gene-table tr:last-child td { border-bottom: none; }
 .gene-table tr[hidden] { display: none; }
@@ -413,15 +417,15 @@
     <table class="gene-table">
       <thead>
         <tr>
-          <th>Gene</th>
+          <th data-sort="gene" aria-sort="none"><span>Gene</span><i class="sort-icon">↕</i></th>
           <th>Expression</th>
-          <th>Dist. to TSS</th>
-          <th>Link type</th>
+          <th data-sort="dist" aria-sort="ascending"><span>Dist. to TSS</span><i class="sort-icon">↑</i></th>
+          <th data-sort="type" aria-sort="none"><span>Link type</span><i class="sort-icon">↕</i></th>
         </tr>
       </thead>
       <tbody id="gene-table-body">
         {% for g in genes %}
-        <tr data-gene="{{ g.gene | lower }}">
+        <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-type="{{ g.distance_label }}">
           <td><a class="gene-link-name" href="/perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
           <td style="padding:4px 12px"><svg class="linked-gene-spark" data-gene="{{ g.gene }}" width="90" height="40"></svg></td>
           <td class="gene-dist">{{ g.tss_dist_label }}</td>
@@ -601,6 +605,22 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     visibilityWindow:  -1,
     features:          interactFeatures,
   });
+  tracks.push({
+    name:        'This element',
+    type:        'annotation',
+    displayMode: 'EXPANDED',
+    height:       40,
+    color:        '#10b981',
+    features:     [{ chr: PEAK.chr, start: PEAK.start, end: PEAK.end, name: `${PEAK.chr}:${PEAK.start.toLocaleString()}–${PEAK.end.toLocaleString()}` }],
+  });
+  if (NEARBY_PEAKS.length) tracks.push({
+    name:        'Other elements',
+    type:        'annotation',
+    displayMode: 'COLLAPSED',
+    height:       24,
+    color:        '#d1d5db',
+    features:     NEARBY_PEAKS,
+  });
 
   const _BW_TRACKS = [
     { tp: 'ES_0h',  label: 'ES 0h',  color: '#6366f1' },
@@ -640,22 +660,6 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     autoscaleGroup:   'rna',
     visibilityWindow: -1,
   }));
-  tracks.push({
-    name:        'This element',
-    type:        'annotation',
-    displayMode: 'EXPANDED',
-    height:       40,
-    color:        '#10b981',
-    features:     [{ chr: PEAK.chr, start: PEAK.start, end: PEAK.end, name: `${PEAK.chr}:${PEAK.start.toLocaleString()}–${PEAK.end.toLocaleString()}` }],
-  });
-  if (NEARBY_PEAKS.length) tracks.push({
-    name:        'Other elements',
-    type:        'annotation',
-    displayMode: 'COLLAPSED',
-    height:       24,
-    color:        '#d1d5db',
-    features:     NEARBY_PEAKS,
-  });
   tracks.push({
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
@@ -720,16 +724,64 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
   }).catch(() => {});
 })();
 
-/* ── Linked genes table search ───────────────────────────────────── */
+/* ── Linked genes table sort + search ───────────────────────────── */
 (function() {
-  const input = document.getElementById('gene-table-search');
-  if (!input) return;
-  input.addEventListener('input', function() {
-    const q = this.value.trim().toLowerCase();
-    document.querySelectorAll('#gene-table-body tr').forEach(row => {
-      row.hidden = q && !row.dataset.gene.includes(q);
+  const tbody = document.getElementById('gene-table-body');
+  if (!tbody) return;
+
+  let sortCol = 'dist', sortDir = 1;
+
+  function sortRows() {
+    const rows = [...tbody.querySelectorAll('tr')];
+    rows.sort((a, b) => {
+      let va, vb;
+      if (sortCol === 'dist') {
+        va = parseFloat(a.dataset.dist);
+        vb = parseFloat(b.dataset.dist);
+        return (va - vb) * sortDir;
+      } else if (sortCol === 'gene') {
+        va = a.dataset.gene;
+        vb = b.dataset.gene;
+        return va.localeCompare(vb) * sortDir;
+      } else if (sortCol === 'type') {
+        const order = {at_tss: 0, proximal: 1, distal: 2};
+        va = order[a.dataset.type] ?? 9;
+        vb = order[b.dataset.type] ?? 9;
+        return (va - vb) * sortDir;
+      }
+      return 0;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+
+  document.querySelectorAll('.gene-table th[data-sort]').forEach(th => {
+    th.addEventListener('click', function() {
+      const col = this.dataset.sort;
+      if (sortCol === col) {
+        sortDir = -sortDir;
+      } else {
+        sortCol = col;
+        sortDir = 1;
+      }
+      document.querySelectorAll('.gene-table th[data-sort]').forEach(h => {
+        h.removeAttribute('aria-sort');
+        h.querySelector('.sort-icon').textContent = '↕';
+      });
+      this.setAttribute('aria-sort', sortDir === 1 ? 'ascending' : 'descending');
+      this.querySelector('.sort-icon').textContent = sortDir === 1 ? '↑' : '↓';
+      sortRows();
     });
   });
+
+  const input = document.getElementById('gene-table-search');
+  if (input) {
+    input.addEventListener('input', function() {
+      const q = this.value.trim().toLowerCase();
+      document.querySelectorAll('#gene-table-body tr').forEach(row => {
+        row.hidden = q && !row.dataset.gene.includes(q);
+      });
+    });
+  }
 })();
 
 /* ── TF binding filter ───────────────────────────────────────────── */

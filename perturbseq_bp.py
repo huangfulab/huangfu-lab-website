@@ -2671,7 +2671,7 @@ def _query_element_genes(db, atac_peak_id: int) -> list:
         if r["tf_gene_name"]:
             groups[g]["mediating_tfs"].add(r["tf_gene_name"])
     result = [dict(g, mediating_tfs=sorted(t for t in g["mediating_tfs"] if t is not None)) for g in groups.values()]
-    result.sort(key=lambda g: g["gene"])
+    result.sort(key=lambda g: (g["tss_dist"] if g["tss_dist"] is not None else 10**9))
     return result
 
 
