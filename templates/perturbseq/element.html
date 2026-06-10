@@ -338,6 +338,7 @@
   font-size: 13px;
   line-height: 1.7;
   color: var(--text-muted);
+  margin-bottom: 18px;
 }
 
 /* ── Accessibility chart ──────────────────────────────────────────────── */
@@ -411,9 +412,83 @@
   <span class="el-stat-pill genes">{{ genes | length }} linked gene{{ 's' if genes | length != 1 else '' }}</span>
 </div>
 
-<!-- ── Intro row: description + accessibility chart ──────────────────────── -->
+<!-- ── Description card (full width) ──────────────────────────────────────── -->
+<div class="el-description-card">{{ description }}</div>
+
+<!-- ── Intro row: linked genes + accessibility chart ──────────────────────── -->
 <div class="el-intro-row">
-  <div class="el-description-card">{{ description }}</div>
+  {% if genes %}
+  <div class="genes-section" style="margin-bottom:0">
+    <div class="genes-section-header">
+      <div class="el-panel-title">Linked Genes</div>
+      <div class="el-panel-count" id="gene-table-count">{{ genes | length }} gene{{ 's' if genes | length != 1 else '' }}</div>
+      {% if genes | length > 1 %}
+      <input class="gene-table-search" id="gene-table-search" type="text" placeholder="Search gene…" autocomplete="off">
+      {% endif %}
+    </div>
+    {% if genes | length > 1 %}
+    {% set _unique_dist = genes | map(attribute='distance_label') | unique | list %}
+    {% set _unique_ev   = genes | map(attribute='evidence_type')   | unique | list %}
+    {% if _unique_dist | length > 1 or _unique_ev | length > 1 %}
+    <div class="gene-filter-bar">
+      {% if _unique_dist | length > 1 %}
+      <div class="gene-filter-group">
+        <span class="gene-filter-label">Distance</span>
+        <div class="gene-filter-pills" id="gene-dist-filter">
+          <button class="gene-filter-pill active" data-dist-filter="">All</button>
+          {% for val in [('at_tss','At TSS'),('proximal','Proximal'),('distal','Distal')] %}
+          {% if val[0] in _unique_dist %}<button class="gene-filter-pill" data-dist-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if _unique_ev | length > 1 %}
+      <div class="gene-filter-group">
+        <span class="gene-filter-label">Link type</span>
+        <div class="gene-filter-pills" id="gene-ev-filter">
+          <button class="gene-filter-pill active" data-ev-filter="">All</button>
+          {% for val in [('proximity','Proximity'),('multiome','Multiome'),('multiome_hicar','Multiome+HiCAR')] %}
+          {% if val[0] in _unique_ev %}<button class="gene-filter-pill" data-ev-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+    <div class="gene-table-wrap">
+      <table class="gene-table">
+        <thead>
+          <tr>
+            <th data-sort="gene" aria-sort="none"><span>Gene</span><i class="sort-icon">↕</i></th>
+            <th>Expression</th>
+            <th data-sort="dist" aria-sort="ascending"><span>Dist. to TSS</span><i class="sort-icon">↑</i></th>
+            <th data-sort="distance" aria-sort="none"><span>Distance</span><i class="sort-icon">↕</i></th>
+            <th data-sort="evidence" aria-sort="none"><span>Link type</span><i class="sort-icon">↕</i></th>
+          </tr>
+        </thead>
+        <tbody id="gene-table-body">
+          {% for g in genes %}
+          <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-distance="{{ g.distance_label }}" data-evidence="{{ g.evidence_type }}">
+            <td><a class="gene-link-name" href="/perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
+            <td style="padding:4px 12px"><svg class="linked-gene-spark" data-gene="{{ g.gene }}" width="90" height="40"></svg></td>
+            <td class="gene-dist">{{ g.tss_dist_label }}</td>
+            <td><span class="dist-pill {{ g.distance_label }}">{{ _dist_labels.get(g.distance_label, g.distance_label) }}</span></td>
+            <td><span class="lt-pill {{ g.evidence_type }}">{{ _ev_labels.get(g.evidence_type, g.evidence_type) }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden">
+    <div style="padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--bg-elevated)">
+      <div class="el-panel-title">Linked Genes</div>
+    </div>
+    <div class="el-empty">No linked genes</div>
+  </div>
+  {% endif %}
   {% if atac_counts %}
   <div class="atac-chart-card">
     <div class="atac-chart-header">
@@ -429,82 +504,6 @@
   </div>
   {% endif %}
 </div>
-
-<!-- ── Linked genes section ──────────────────────────────────────────────── -->
-<hr class="section-divider">
-<p class="section-desc">Genes linked to this element by TSS proximity or chromatin conformation (Multiome / HiCAR data).</p>
-{% if genes %}
-<div class="genes-section">
-  <div class="genes-section-header">
-    <div class="el-panel-title">Linked Genes</div>
-    <div class="el-panel-count" id="gene-table-count">{{ genes | length }} gene{{ 's' if genes | length != 1 else '' }}</div>
-    {% if genes | length > 1 %}
-    <input class="gene-table-search" id="gene-table-search" type="text" placeholder="Search gene…" autocomplete="off">
-    {% endif %}
-  </div>
-  {% if genes | length > 1 %}
-  {% set _unique_dist = genes | map(attribute='distance_label') | unique | list %}
-  {% set _unique_ev   = genes | map(attribute='evidence_type')   | unique | list %}
-  {% if _unique_dist | length > 1 or _unique_ev | length > 1 %}
-  <div class="gene-filter-bar">
-    {% if _unique_dist | length > 1 %}
-    <div class="gene-filter-group">
-      <span class="gene-filter-label">Distance</span>
-      <div class="gene-filter-pills" id="gene-dist-filter">
-        <button class="gene-filter-pill active" data-dist-filter="">All</button>
-        {% for val in [('at_tss','At TSS'),('proximal','Proximal'),('distal','Distal')] %}
-        {% if val[0] in _unique_dist %}<button class="gene-filter-pill" data-dist-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-    {% if _unique_ev | length > 1 %}
-    <div class="gene-filter-group">
-      <span class="gene-filter-label">Link type</span>
-      <div class="gene-filter-pills" id="gene-ev-filter">
-        <button class="gene-filter-pill active" data-ev-filter="">All</button>
-        {% for val in [('proximity','Proximity'),('multiome','Multiome'),('multiome_hicar','Multiome+HiCAR')] %}
-        {% if val[0] in _unique_ev %}<button class="gene-filter-pill" data-ev-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-  {% endif %}
-  <div class="gene-table-wrap">
-    <table class="gene-table">
-      <thead>
-        <tr>
-          <th data-sort="gene" aria-sort="none"><span>Gene</span><i class="sort-icon">↕</i></th>
-          <th>Expression</th>
-          <th data-sort="dist" aria-sort="ascending"><span>Dist. to TSS</span><i class="sort-icon">↑</i></th>
-          <th data-sort="distance" aria-sort="none"><span>Distance</span><i class="sort-icon">↕</i></th>
-          <th data-sort="evidence" aria-sort="none"><span>Link type</span><i class="sort-icon">↕</i></th>
-        </tr>
-      </thead>
-      <tbody id="gene-table-body">
-        {% for g in genes %}
-        <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-distance="{{ g.distance_label }}" data-evidence="{{ g.evidence_type }}">
-          <td><a class="gene-link-name" href="/perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
-          <td style="padding:4px 12px"><svg class="linked-gene-spark" data-gene="{{ g.gene }}" width="90" height="40"></svg></td>
-          <td class="gene-dist">{{ g.tss_dist_label }}</td>
-          <td><span class="dist-pill {{ g.distance_label }}">{{ _dist_labels.get(g.distance_label, g.distance_label) }}</span></td>
-          <td><span class="lt-pill {{ g.evidence_type }}">{{ _ev_labels.get(g.evidence_type, g.evidence_type) }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% else %}
-<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:28px">
-  <div style="padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--bg-elevated)">
-    <div class="el-panel-title">Linked Genes</div>
-  </div>
-  <div class="el-empty">No linked genes</div>
-</div>
-{% endif %}
 
 <!-- ── Genome browser ────────────────────────────────────────────────────── -->
 <hr class="section-divider">
