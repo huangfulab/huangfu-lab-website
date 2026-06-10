@@ -203,6 +203,34 @@
 .lt-pill.multiome       { color: #7c3aed; border-color: #c4b5fd; background: rgba(139,92,246,0.08); }
 .lt-pill.multiome_hicar { color: #b45309; border-color: #fcd34d; background: rgba(245,158,11,0.08); }
 
+.dist-pill {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 10px; border: 1.5px solid; letter-spacing: 0.3px;
+  white-space: nowrap; width: fit-content;
+}
+.dist-pill.at_tss   { color: #059669; border-color: #6ee7b7; background: rgba(16,185,129,0.08); }
+.dist-pill.proximal { color: #4a56b0; border-color: #a5b0e8; background: rgba(74,86,176,0.07); }
+.dist-pill.distal   { color: #6b7280; border-color: #d1d5db; background: rgba(107,114,128,0.08); }
+
+/* ── Gene table filter bar ────────────────────────────────────────── */
+.gene-filter-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.gene-filter-group { display: flex; align-items: center; gap: 6px; }
+.gene-filter-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); white-space: nowrap; }
+.gene-filter-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+.gene-filter-pill {
+  font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-muted);
+  cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.gene-filter-pill:hover { border-color: var(--el-blue); color: var(--el-blue); }
+.gene-filter-pill.active { background: var(--el-blue); border-color: var(--el-blue); color: #fff; }
+
 .tf-chip-row { display: flex; gap: 5px; flex-wrap: wrap; }
 .tf-chip {
   font-size: 10.5px; font-weight: 600; padding: 2px 8px;
@@ -366,6 +394,7 @@
 {% block content %}
 
 {% set _dist_labels = {'at_tss': 'At TSS', 'proximal': 'Proximal', 'distal': 'Distal'} %}
+{% set _ev_labels   = {'proximity': 'Proximity', 'multiome': 'Multiome', 'multiome_hicar': 'Multiome+HiCAR'} %}
 {% set _ev_suffixes = {'proximity': '', 'multiome': ' · Multiome', 'multiome_hicar': ' · Multiome+HiCAR'} %}
 
 <!-- ── Header ─────────────────────────────────────────────────────────────── -->
@@ -408,11 +437,41 @@
 <div class="genes-section">
   <div class="genes-section-header">
     <div class="el-panel-title">Linked Genes</div>
-    <div class="el-panel-count">{{ genes | length }} gene{{ 's' if genes | length != 1 else '' }}</div>
+    <div class="el-panel-count" id="gene-table-count">{{ genes | length }} gene{{ 's' if genes | length != 1 else '' }}</div>
     {% if genes | length > 1 %}
     <input class="gene-table-search" id="gene-table-search" type="text" placeholder="Search gene…" autocomplete="off">
     {% endif %}
   </div>
+  {% if genes | length > 1 %}
+  {% set _unique_dist = genes | map(attribute='distance_label') | unique | list %}
+  {% set _unique_ev   = genes | map(attribute='evidence_type')   | unique | list %}
+  {% if _unique_dist | length > 1 or _unique_ev | length > 1 %}
+  <div class="gene-filter-bar">
+    {% if _unique_dist | length > 1 %}
+    <div class="gene-filter-group">
+      <span class="gene-filter-label">Distance</span>
+      <div class="gene-filter-pills" id="gene-dist-filter">
+        <button class="gene-filter-pill active" data-dist-filter="">All</button>
+        {% for val in [('at_tss','At TSS'),('proximal','Proximal'),('distal','Distal')] %}
+        {% if val[0] in _unique_dist %}<button class="gene-filter-pill" data-dist-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if _unique_ev | length > 1 %}
+    <div class="gene-filter-group">
+      <span class="gene-filter-label">Link type</span>
+      <div class="gene-filter-pills" id="gene-ev-filter">
+        <button class="gene-filter-pill active" data-ev-filter="">All</button>
+        {% for val in [('proximity','Proximity'),('multiome','Multiome'),('multiome_hicar','Multiome+HiCAR')] %}
+        {% if val[0] in _unique_ev %}<button class="gene-filter-pill" data-ev-filter="{{ val[0] }}">{{ val[1] }}</button>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
   <div class="gene-table-wrap">
     <table class="gene-table">
       <thead>
@@ -420,16 +479,18 @@
           <th data-sort="gene" aria-sort="none"><span>Gene</span><i class="sort-icon">↕</i></th>
           <th>Expression</th>
           <th data-sort="dist" aria-sort="ascending"><span>Dist. to TSS</span><i class="sort-icon">↑</i></th>
-          <th data-sort="type" aria-sort="none"><span>Link type</span><i class="sort-icon">↕</i></th>
+          <th data-sort="distance" aria-sort="none"><span>Distance</span><i class="sort-icon">↕</i></th>
+          <th data-sort="evidence" aria-sort="none"><span>Link type</span><i class="sort-icon">↕</i></th>
         </tr>
       </thead>
       <tbody id="gene-table-body">
         {% for g in genes %}
-        <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-type="{{ g.distance_label }}">
+        <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-distance="{{ g.distance_label }}" data-evidence="{{ g.evidence_type }}">
           <td><a class="gene-link-name" href="/perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
           <td style="padding:4px 12px"><svg class="linked-gene-spark" data-gene="{{ g.gene }}" width="90" height="40"></svg></td>
           <td class="gene-dist">{{ g.tss_dist_label }}</td>
-          <td><span class="lt-pill {{ g.evidence_type }}">{{ _dist_labels.get(g.distance_label, g.distance_label) }}{{ _ev_suffixes.get(g.evidence_type, '') }}</span></td>
+          <td><span class="dist-pill {{ g.distance_label }}">{{ _dist_labels.get(g.distance_label, g.distance_label) }}</span></td>
+          <td><span class="lt-pill {{ g.evidence_type }}">{{ _ev_labels.get(g.evidence_type, g.evidence_type) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -724,30 +785,46 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
   }).catch(() => {});
 })();
 
-/* ── Linked genes table sort + search ───────────────────────────── */
+/* ── Linked genes table sort + search + filter ──────────────────── */
 (function() {
   const tbody = document.getElementById('gene-table-body');
   if (!tbody) return;
 
   let sortCol = 'dist', sortDir = 1;
+  let filterGene = '', filterDist = '', filterEv = '';
+
+  const DIST_ORDER = {at_tss: 0, proximal: 1, distal: 2};
+  const EV_ORDER   = {proximity: 0, multiome: 1, multiome_hicar: 2};
+
+  function applyAll() {
+    let visible = 0;
+    tbody.querySelectorAll('tr').forEach(row => {
+      const show = (!filterGene || row.dataset.gene.includes(filterGene))
+                && (!filterDist || row.dataset.distance === filterDist)
+                && (!filterEv   || row.dataset.evidence  === filterEv);
+      row.hidden = !show;
+      if (show) visible++;
+    });
+    const countEl = document.getElementById('gene-table-count');
+    if (countEl) {
+      const total = tbody.querySelectorAll('tr').length;
+      countEl.textContent = visible === total
+        ? `${total} gene${total !== 1 ? 's' : ''}`
+        : `${visible} of ${total} genes`;
+    }
+  }
 
   function sortRows() {
     const rows = [...tbody.querySelectorAll('tr')];
     rows.sort((a, b) => {
-      let va, vb;
       if (sortCol === 'dist') {
-        va = parseFloat(a.dataset.dist);
-        vb = parseFloat(b.dataset.dist);
-        return (va - vb) * sortDir;
+        return (parseFloat(a.dataset.dist) - parseFloat(b.dataset.dist)) * sortDir;
       } else if (sortCol === 'gene') {
-        va = a.dataset.gene;
-        vb = b.dataset.gene;
-        return va.localeCompare(vb) * sortDir;
-      } else if (sortCol === 'type') {
-        const order = {at_tss: 0, proximal: 1, distal: 2};
-        va = order[a.dataset.type] ?? 9;
-        vb = order[b.dataset.type] ?? 9;
-        return (va - vb) * sortDir;
+        return a.dataset.gene.localeCompare(b.dataset.gene) * sortDir;
+      } else if (sortCol === 'distance') {
+        return ((DIST_ORDER[a.dataset.distance] ?? 9) - (DIST_ORDER[b.dataset.distance] ?? 9)) * sortDir;
+      } else if (sortCol === 'evidence') {
+        return ((EV_ORDER[a.dataset.evidence] ?? 9) - (EV_ORDER[b.dataset.evidence] ?? 9)) * sortDir;
       }
       return 0;
     });
@@ -757,12 +834,8 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
   document.querySelectorAll('.gene-table th[data-sort]').forEach(th => {
     th.addEventListener('click', function() {
       const col = this.dataset.sort;
-      if (sortCol === col) {
-        sortDir = -sortDir;
-      } else {
-        sortCol = col;
-        sortDir = 1;
-      }
+      sortDir = sortCol === col ? -sortDir : 1;
+      sortCol = col;
       document.querySelectorAll('.gene-table th[data-sort]').forEach(h => {
         h.removeAttribute('aria-sort');
         h.querySelector('.sort-icon').textContent = '↕';
@@ -773,15 +846,28 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     });
   });
 
-  const input = document.getElementById('gene-table-search');
-  if (input) {
-    input.addEventListener('input', function() {
-      const q = this.value.trim().toLowerCase();
-      document.querySelectorAll('#gene-table-body tr').forEach(row => {
-        row.hidden = q && !row.dataset.gene.includes(q);
-      });
-    });
-  }
+  document.getElementById('gene-table-search')?.addEventListener('input', function() {
+    filterGene = this.value.trim().toLowerCase();
+    applyAll();
+  });
+
+  document.getElementById('gene-dist-filter')?.addEventListener('click', e => {
+    const btn = e.target.closest('.gene-filter-pill');
+    if (!btn) return;
+    document.querySelectorAll('#gene-dist-filter .gene-filter-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterDist = btn.dataset.distFilter;
+    applyAll();
+  });
+
+  document.getElementById('gene-ev-filter')?.addEventListener('click', e => {
+    const btn = e.target.closest('.gene-filter-pill');
+    if (!btn) return;
+    document.querySelectorAll('#gene-ev-filter .gene-filter-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterEv = btn.dataset.evFilter;
+    applyAll();
+  });
 })();
 
 /* ── TF binding filter ───────────────────────────────────────────── */
