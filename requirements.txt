@@ -7,4 +7,4 @@ sqlalchemy==2.0.50
 itsdangerous==2.2.0
 requests==2.32.3
 scipy==1.17.1
-gunicorn
+gunicorn==26.0.0
