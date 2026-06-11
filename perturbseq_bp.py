@@ -2538,7 +2538,7 @@ def _query_tf_gene_link(db, tf: str, gene: str) -> list:
                     'accession':  r['dataset'],
                 })
 
-        link_key = (r['distance_bp'], r['mao_lt'])
+        link_key = _classify_evidence_type(r['mao_lt'])
         if link_key not in el['_seen_links']:
             el['_seen_links'].add(link_key)
             el['e2g_links'].append({
