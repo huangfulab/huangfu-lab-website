@@ -195,6 +195,52 @@ section:last-of-type { border-bottom: none; }
   padding: 0.15rem 0.6rem;
 }
 
+/* ── news ── */
+.news-list { display: flex; flex-direction: column; gap: 1rem; }
+.news-item {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 0 1rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--border);
+}
+.news-item:first-child { border-top: none; }
+.news-date {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-3);
+  padding-top: 0.2rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.news-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0.2rem;
+}
+.news-title a { color: inherit; }
+.news-title a:hover { color: var(--accent); text-decoration: none; }
+.news-content { font-size: 0.85rem; color: var(--text-2); }
+
+/* ── featured publications ── */
+.featured-block {
+  background: var(--accent-s);
+  border: 1px solid rgba(14,116,144,0.18);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.featured-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+.featured-block .pub-item { border-top-color: rgba(14,116,144,0.18); }
+.featured-block .pub-item:first-child { border-top: none; }
+
 /* ── publications ── */
 .pub-list { display: flex; flex-direction: column; gap: 0.1rem; }
 .pub-item {
@@ -451,6 +497,7 @@ footer {
     Huangfu Lab
   </a>
   <div class="nav-links">
+    {% if news %}<a href="#news">News</a>{% endif %}
     <a href="#research">Research</a>
     <a href="#team">Team</a>
     <a href="#projects">Projects</a>
@@ -464,8 +511,7 @@ footer {
     <div class="hero-eyebrow">Memorial Sloan Kettering Cancer Center</div>
     <h1>Huangfu Lab</h1>
     <p class="hero-desc">
-      The Huangfu Laboratory for Developmental and Stem Cell Biology is in the
-      Developmental Biology Program at the Sloan Kettering Institute, New York, NY.
+      {{ description.description | default('The Huangfu Laboratory for Developmental and Stem Cell Biology is in the Developmental Biology Program at the Sloan Kettering Institute, New York, NY.') }}
     </p>
     <div class="hero-buttons">
       <a class="btn btn-primary" href="#research">
@@ -491,12 +537,69 @@ footer {
 <!-- ── Main content ── -->
 <div class="page">
 
+  <!-- News (only rendered when there are entries) -->
+  {% if news %}
+  <section id="news">
+    <div class="section-header">
+      <h2>News</h2>
+      <span class="count">{{ news | length }}</span>
+    </div>
+    <div class="news-list">
+      {% for item in news %}
+      <div class="news-item">
+        <div class="news-date">{{ item.date }}</div>
+        <div>
+          <div class="news-title">
+            {% if item.link %}
+              <a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% else %}
+              {{ item.title }}
+            {% endif %}
+          </div>
+          {% if item.content %}
+          <div class="news-content">{{ item.content }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <!-- Research / Publications -->
   <section id="research">
     <div class="section-header">
       <h2>Research</h2>
       <span class="count">{{ citations | length }} publications</span>
     </div>
+
+    {% if featured_citations %}
+    <div class="featured-block">
+      <div class="featured-label">&#9733; Featured</div>
+      <div class="pub-list">
+        {% for pub in featured_citations %}
+        <div class="pub-item">
+          <div class="pub-year">{{ pub.date[:4] if pub.date else '—' }}</div>
+          <div class="pub-body">
+            <div class="pub-title">
+              {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title }}</a>
+              {% else %}{{ pub.title }}{% endif %}
+            </div>
+            <div class="pub-authors">
+              {% set authors = pub.authors or [] %}
+              {% for author in authors[:5] %}
+                {% if 'Huangfu' in author %}<span class="hl">{{ author }}</span>{% if not loop.last %}, {% endif %}
+                {% else %}{{ author }}{% if not loop.last %}, {% endif %}{% endif %}
+              {% endfor %}
+              {% if authors | length > 5 %}, <em>et al.</em>{% endif %}
+            </div>
+            <div class="pub-venue">{{ pub.publisher or '' }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="pub-list" id="pub-list">
       {% for pub in citations %}
@@ -545,7 +648,7 @@ footer {
       {% set role = member.role or '' %}
       {% set group = member.get('group', '') %}
       <div class="member-card">
-        <img class="member-img" src="/static/lab/photo.jpg" alt="{{ member.name }}">
+        <img class="member-img" src="{{ member.image_url if member.image_url else '/static/lab/photo.jpg' }}" alt="{{ member.name }}">
         <div class="member-info">
           <div class="member-name">{{ member.name }}</div>
           <div>
@@ -596,7 +699,7 @@ footer {
     <div class="project-grid">
       {% for project in projects %}
       <div class="project-card">
-        <img class="project-img" src="/static/lab/photo.jpg" alt="{{ project.title }}">
+        <img class="project-img" src="{{ project.image_url if project.image_url else '/static/lab/photo.jpg' }}" alt="{{ project.title }}">
         <div class="project-body">
           <div class="project-title">
             {% if project.link %}
@@ -632,10 +735,14 @@ footer {
     <div class="contact-grid">
       <div class="contact-info">
         <p>
-          The Huangfu Laboratory is located at the Sloan Kettering Institute,
-          part of Memorial Sloan Kettering Cancer Center in New York, NY.
+          {{ description.address | default('The Huangfu Laboratory is located at the Sloan Kettering Institute, part of Memorial Sloan Kettering Cancer Center in New York, NY.') }}
         </p>
         <div class="contact-buttons">
+          {% if description.contact_email %}
+          <a class="btn btn-outline" href="mailto:{{ description.contact_email }}">
+            {{ description.contact_email }}
+          </a>
+          {% endif %}
           <a class="btn btn-outline" href="https://orcid.org/0000-0002-1145-6199" target="_blank" rel="noopener">
             ORCID · 0000-0002-1145-6199
           </a>
@@ -648,7 +755,7 @@ footer {
         </div>
       </div>
       <div class="contact-map-placeholder">
-        Memorial Sloan Kettering Cancer Center<br>New York, NY
+        {{ description.address | default('Memorial Sloan Kettering Cancer Center') }}<br>New York, NY
       </div>
     </div>
   </section>
