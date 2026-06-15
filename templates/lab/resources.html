@@ -1,0 +1,21 @@
+{% extends "lab/base.html" %}
+{% block title %}Resources — Huangfu Lab{% endblock %}
+
+{% block content %}
+<section id="resources">
+  <p class="section-label">Resources</p>
+  <h2 class="section-title">Tools &amp; data</h2>
+  <p class="section-body">
+    We make our code, processed data, and analysis pipelines publicly available
+    to support reproducibility and community reuse.
+  </p>
+  <div class="resource-list">
+    <a class="resource-item" href="https://morphic.mskcc.org"><span class="r-icon">🧬</span><div><p class="r-label">MSK MorPhiC Project</p><p class="r-desc">Functional characterization of noncoding elements</p></div></a>
+    <a class="resource-item" href="#"><span class="r-icon">📦</span><div><p class="r-label">GitHub</p><p class="r-desc">Lab code, pipelines, and analysis scripts</p></div></a>
+    <a class="resource-item" href="#"><span class="r-icon">🗂️</span><div><p class="r-label">GEO Datasets</p><p class="r-desc">Raw and processed sequencing data</p></div></a>
+    <a class="resource-item" href="#"><span class="r-icon">📄</span><div><p class="r-label">Lab Protocols</p><p class="r-desc">CRISPR screening, hPSC differentiation, CUT&amp;RUN</p></div></a>
+    <a class="resource-item" href="#"><span class="r-icon">🎓</span><div><p class="r-label">Join the Lab</p><p class="r-desc">Openings for grad students, postdocs &amp; technicians</p></div></a>
+    <a class="resource-item" href="https://www.mskcc.org/research/ski/labs/danwei-huangfu"><span class="r-icon">🏥</span><div><p class="r-label">MSKCC Lab Page</p><p class="r-desc">Official page at Sloan Kettering Institute</p></div></a>
+  </div>
+</section>
+{% endblock %}

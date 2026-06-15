@@ -49,6 +49,36 @@ def lab():
     return render_template("lab/index.html")
 
 
+@app.route("/research")
+def lab_research():
+    return render_template("lab/research.html", current_page="research")
+
+
+@app.route("/publications")
+def lab_publications():
+    return render_template("lab/publications.html", current_page="publications")
+
+
+@app.route("/announcements")
+def lab_announcements():
+    return render_template("lab/announcements.html", current_page="announcements")
+
+
+@app.route("/team")
+def lab_team():
+    return render_template("lab/team.html", current_page="team")
+
+
+@app.route("/resources")
+def lab_resources():
+    return render_template("lab/resources.html", current_page="resources")
+
+
+@app.route("/contact")
+def lab_contact():
+    return render_template("lab/contact.html", current_page="contact")
+
+
 @app.route("/modules")
 def modules():
     return render_template("modules.html")

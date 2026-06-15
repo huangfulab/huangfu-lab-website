@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<title>{% block title %}Huangfu Lab — Developmental Biology · Sloan Kettering Institute{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+:root {
+  --font-body:      'Inter', system-ui, sans-serif;
+  --bg:             #ffffff;
+  --bg-alt:         #f9fafb;
+  --bg-card:        #ffffff;
+  --text:           #111827;
+  --text-secondary: #4b5563;
+  --text-muted:     #9ca3af;
+  --accent:         #1d4ed8;
+  --accent-hover:   #1e40af;
+  --accent-subtle:  rgba(29,78,216,0.07);
+  --border:         #e5e7eb;
+  --border-strong:  #d1d5db;
+  --nav-bg:         rgba(255,255,255,0.88);
+  --shadow-sm:      0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:      0 4px 16px rgba(0,0,0,0.09);
+  --card-hover-t:   translateY(-2px);
+  --radius:         10px;
+  --radius-sm:      7px;
+  --radius-pill:    20px;
+  --nav-height:     60px;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; font-size:16px; }
+
+body {
+  font-family:var(--font-body);
+  background:var(--bg); color:var(--text);
+  line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+
+/* ── Nav (floating pill) ──────────────────────────────────────────────── */
+nav {
+  position:fixed; top:14px; left:50%; right:auto; transform:translateX(-50%);
+  width:max-content; max-width:calc(100% - 48px);
+  height:var(--nav-height);
+  background:var(--nav-bg);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);
+  border-radius:50px;
+  box-shadow:0 4px 32px rgba(0,0,0,0.13);
+  z-index:100;
+  display:flex; align-items:center;
+  padding:0 20px; gap:0;
+}
+
+.nav-brand {
+  font-size:15px; font-weight:700;
+  color:var(--text); text-decoration:none;
+  letter-spacing:-.02em; white-space:nowrap; flex-shrink:0;
+}
+
+.nav-links {
+  display:flex; gap:2px; list-style:none; margin-left:20px;
+}
+.nav-links a {
+  font-size:13px; font-weight:500; color:var(--text-secondary);
+  text-decoration:none; padding:6px 11px; border-radius:var(--radius-sm);
+  transition:color .15s, background .15s; white-space:nowrap;
+}
+.nav-links a:hover,
+.nav-links a.active { color:var(--accent); background:var(--accent-subtle); }
+
+/* ── Main & sections ──────────────────────────────────────────────────── */
+main { padding-top:calc(var(--nav-height) + 28px); }
+
+section {
+  padding:88px 40px; max-width:1000px; margin:0 auto;
+}
+section+section { border-top:1px solid var(--border); }
+
+.section-label {
+  font-size:11px; font-weight:700; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); margin-bottom:12px;
+}
+.section-title {
+  font-size:2rem; font-weight:700; letter-spacing:-.03em;
+  line-height:1.2; color:var(--text); margin-bottom:16px;
+  font-family:var(--font-body);
+}
+.section-body {
+  font-size:15.5px; color:var(--text-secondary);
+  max-width:640px; line-height:1.75;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+#home { padding-top:100px; padding-bottom:88px; }
+
+.hero-eyebrow {
+  font-size:12px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); margin-bottom:18px;
+}
+.hero-title {
+  font-size:clamp(2.6rem,5vw,3.8rem); font-weight:700;
+  letter-spacing:-.04em; line-height:1.1; color:var(--text);
+  margin-bottom:24px; font-family:var(--font-body);
+}
+.hero-title span { color:var(--accent); }
+.hero-sub {
+  font-size:17px; color:var(--text-secondary); line-height:1.7;
+  max-width:560px; margin-bottom:36px;
+}
+.hero-tags { display:flex; flex-wrap:wrap; gap:8px; }
+.tag {
+  font-size:12px; font-weight:500; color:var(--text-secondary);
+  background:var(--bg-alt); border:1px solid var(--border);
+  padding:5px 12px; border-radius:var(--radius-pill);
+  letter-spacing:.01em;
+}
+
+/* ── Announcements ────────────────────────────────────────────────────── */
+.announce-list { margin-top:36px; display:flex; flex-direction:column; }
+.announce-item {
+  display:flex; gap:24px; align-items:baseline;
+  padding:18px 0; border-bottom:1px solid var(--border);
+}
+.announce-item:last-child { border-bottom:none; }
+.announce-date {
+  font-size:11.5px; font-weight:700; color:var(--accent);
+  white-space:nowrap; min-width:72px; letter-spacing:.03em;
+}
+.announce-text {
+  font-size:14.5px; color:var(--text-secondary); line-height:1.55;
+}
+.announce-text strong { color:var(--text); font-weight:600; }
+.announce-badge {
+  display:inline-block; font-size:10px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase;
+  background:var(--accent-subtle); color:var(--accent);
+  border:1px solid var(--accent); padding:1px 7px;
+  border-radius:var(--radius-pill); margin-left:8px; vertical-align:middle;
+}
+
+/* ── Research cards ───────────────────────────────────────────────────── */
+.card-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:20px; margin-top:40px;
+}
+.card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:28px 24px; box-shadow:var(--shadow-sm);
+  transition:box-shadow .2s, transform .2s;
+}
+.card:hover { box-shadow:var(--shadow-md); transform:var(--card-hover-t); }
+.card-icon { font-size:22px; margin-bottom:14px; }
+.card h3 {
+  font-size:15px; font-weight:600; color:var(--text);
+  margin-bottom:8px; letter-spacing:-.01em; font-family:var(--font-body);
+}
+.card p { font-size:13.5px; color:var(--text-secondary); line-height:1.65; }
+
+/* ── Publications ─────────────────────────────────────────────────────── */
+.pub-list { margin-top:40px; display:flex; flex-direction:column; }
+.pub-item {
+  padding:24px 0; border-bottom:1px solid var(--border);
+  display:grid; grid-template-columns:1fr auto; gap:16px 24px; align-items:start;
+}
+.pub-item:last-child { border-bottom:none; }
+.pub-title { font-size:14.5px; font-weight:600; color:var(--text); margin-bottom:5px; line-height:1.45; }
+.pub-authors { font-size:13px; color:var(--text-muted); margin-bottom:4px; }
+.pub-journal { font-size:12.5px; font-style:italic; color:var(--text-secondary); }
+.pub-year { font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap; padding-top:3px; }
+
+/* ── Team ─────────────────────────────────────────────────────────────── */
+.team-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:16px; margin-top:40px;
+}
+.member-card {
+  text-align:center; padding:24px 16px;
+  border:1px solid var(--border); border-radius:var(--radius);
+  background:var(--bg-card); box-shadow:var(--shadow-sm);
+  transition:box-shadow .2s;
+}
+.member-avatar {
+  width:60px; height:60px; border-radius:50%;
+  background:var(--bg-alt); border:2px solid var(--border);
+  margin:0 auto 14px; display:flex; align-items:center;
+  justify-content:center; font-size:22px;
+}
+.member-name { font-size:13.5px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.member-role { font-size:11.5px; color:var(--text-muted); }
+
+/* ── Resources ────────────────────────────────────────────────────────── */
+.resource-list {
+  margin-top:40px; display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px;
+}
+.resource-item {
+  display:flex; align-items:center; gap:14px; padding:16px 18px;
+  border:1px solid var(--border); border-radius:var(--radius);
+  background:var(--bg-card); text-decoration:none; color:var(--text);
+  transition:border-color .15s, box-shadow .15s;
+}
+.resource-item:hover { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-subtle); }
+.resource-item .r-icon { font-size:20px; flex-shrink:0; }
+.resource-item .r-label { font-size:13.5px; font-weight:600; }
+.resource-item .r-desc { font-size:12px; color:var(--text-muted); }
+
+/* ── Contact ──────────────────────────────────────────────────────────── */
+.contact-block { margin-top:40px; display:grid; grid-template-columns:1fr 1fr; gap:48px; }
+.contact-label {
+  font-size:11px; font-weight:700; letter-spacing:.10em;
+  text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;
+}
+.contact-value { font-size:14.5px; color:var(--text); line-height:1.65; }
+.contact-value a { color:var(--accent); text-decoration:none; }
+.contact-value a:hover { text-decoration:underline; }
+
+/* ── View-all link ────────────────────────────────────────────────────── */
+.view-all {
+  display:inline-flex; align-items:center; gap:6px;
+  margin-top:32px; font-size:13.5px; font-weight:600;
+  color:var(--accent); text-decoration:none;
+  transition:gap .15s;
+}
+.view-all:hover { gap:10px; }
+.view-all::after { content:'→'; }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+footer {
+  border-top:1px solid var(--border); padding:28px 40px;
+  text-align:center; font-size:12.5px; color:var(--text-muted);
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width:960px) {
+  .nav-links { display:none; }
+}
+@media (max-width:720px) {
+  section { padding:60px 20px; }
+  .contact-block { grid-template-columns:1fr; gap:28px; }
+}
+
+</style>
+</head>
+<body>
+
+<nav id="main-nav">
+  <a class="nav-brand" href="/lab">Huangfu Lab</a>
+  <ul class="nav-links">
+    <li><a href="/research"{% if current_page == 'research' %} class="active"{% endif %}>Research</a></li>
+    <li><a href="/publications"{% if current_page == 'publications' %} class="active"{% endif %}>Publications</a></li>
+    <li><a href="/announcements"{% if current_page == 'announcements' %} class="active"{% endif %}>Announcements</a></li>
+    <li><a href="/team"{% if current_page == 'team' %} class="active"{% endif %}>Team</a></li>
+    <li><a href="/resources"{% if current_page == 'resources' %} class="active"{% endif %}>Resources</a></li>
+    <li><a href="/contact"{% if current_page == 'contact' %} class="active"{% endif %}>Contact</a></li>
+  </ul>
+</nav>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<footer>
+  &copy; 2025 Huangfu Lab &nbsp;·&nbsp; Developmental Biology Program &nbsp;·&nbsp; Sloan Kettering Institute, MSKCC
+</footer>
+
+</body>
+</html>

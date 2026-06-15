@@ -1,0 +1,44 @@
+{% extends "lab/base.html" %}
+{% block title %}Research — Huangfu Lab{% endblock %}
+
+{% block content %}
+<section id="research">
+  <p class="section-label">Research</p>
+  <h2 class="section-title">What we work on</h2>
+  <p class="section-body">
+    Our lab combines genome-scale CRISPR screening, functional epigenomics, and
+    computational genomics in hPSCs to dissect the regulatory logic of cell-fate
+    decisions in development and disease.
+  </p>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">◈</div>
+      <h3>Pancreatic Development &amp; &beta; Cell Biology</h3>
+      <p>We study the transcriptional and epigenetic programs that drive pancreatic
+         lineage commitment and &beta; cell maturation, using hPSC differentiation as a
+         tractable human model.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3>Genome-Scale CRISPR Screening</h3>
+      <p>We develop and apply large-scale CRISPRi and knockout screens to systematically
+         identify genes and regulatory elements controlling cell identity across
+         developmental transitions.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">◎</div>
+      <h3>Epigenetic Regulation &amp; DNA Methylation</h3>
+      <p>We investigate how noncoding regulatory elements — particularly DNA methylation
+         valleys and developmental enhancers — are established and maintained to
+         control gene expression.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">◻</div>
+      <h3>Therapeutic Strategies for Diabetes</h3>
+      <p>Mechanistic insights from our developmental studies directly inform cell-based
+         and gene-therapy approaches for the prevention and reversal of type 1 and
+         type 2 diabetes.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
