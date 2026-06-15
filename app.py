@@ -12,7 +12,7 @@ app.register_blueprint(perturbseq_bp)
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
-_CITATIONS_PATH = Path("/data1/huangfud/torred1/sandbox/sandbox018-huangfu_lab_website/Huangfu-lab-website/_data/citations.yaml")
+_CITATIONS_PATH = Path(__file__).resolve().parent / "citations.yaml"
 def _clean_citation(c):
     if c.get("publisher"):
         c["publisher"] = html.unescape(c["publisher"])
