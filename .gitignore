@@ -6,6 +6,7 @@ copy.sh
 archive
 data_copy.sh
 data
+!data/team.json
 *.tar.gz
 pkg_versions.py
 plots

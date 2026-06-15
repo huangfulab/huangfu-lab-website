@@ -9,37 +9,37 @@
     A multidisciplinary team of biologists, computational scientists, and
     clinician-scientists united by curiosity about how genomes encode cell identity.
   </p>
+
   <div class="team-grid">
-    <div class="member-card"><div class="member-avatar">👩‍🔬</div><p class="member-name">Danwei Huangfu</p><p class="member-role">Principal Investigator</p></div>
-    <div class="member-card"><div class="member-avatar">🧬</div><p class="member-name">Julian Pulecio</p><p class="member-role">Sr. Research Scientist</p></div>
-    <div class="member-card"><div class="member-avatar">🧬</div><p class="member-name">Dapeng Yang</p><p class="member-role">Sr. Research Scientist</p></div>
-    <div class="member-card"><div class="member-avatar">🧬</div><p class="member-name">Xian Zhang</p><p class="member-role">Sr. Research Scientist</p></div>
-    <div class="member-card"><div class="member-avatar">💻</div><p class="member-name">Hyein Cho</p><p class="member-role">Sr. Computational Biologist</p></div>
-    <div class="member-card"><div class="member-avatar">🧬</div><p class="member-name">Georgina Berrozpe</p><p class="member-role">Sr. Research Scientist</p></div>
-    <div class="member-card"><div class="member-avatar">🔬</div><p class="member-name">Laura Pereira</p><p class="member-role">Scientific Research Lead</p></div>
-    <div class="member-card"><div class="member-avatar">🔬</div><p class="member-name">Tamara Casteels</p><p class="member-role">Research Fellow</p></div>
-    <div class="member-card"><div class="member-avatar">🔬</div><p class="member-name">Tingfeng Guo</p><p class="member-role">Research Fellow</p></div>
-    <div class="member-card"><div class="member-avatar">🔬</div><p class="member-name">Pallavi Mohapatra</p><p class="member-role">Research Fellow</p></div>
-    <div class="member-card"><div class="member-avatar">🔬</div><p class="member-name">Xianming Wang</p><p class="member-role">Research Fellow</p></div>
-    <div class="member-card"><div class="member-avatar">📊</div><p class="member-name">Denis Torre</p><p class="member-role">Research Scholar</p></div>
-    <div class="member-card"><div class="member-avatar">📊</div><p class="member-name">Nan Zhang</p><p class="member-role">Research Associate</p></div>
-    <div class="member-card"><div class="member-avatar">📊</div><p class="member-name">Hanuman Kale</p><p class="member-role">Research Scholar</p></div>
-    <div class="member-card"><div class="member-avatar">📊</div><p class="member-name">Jielin Yan</p><p class="member-role">Research Scholar</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Dingyu Liu</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Samuel Kaplan</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Jiahui Hazel Zhao</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Inbal Caspi</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Gary Dixon</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Kihyun Lee</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🎓</div><p class="member-name">Bess Rosen</p><p class="member-role">Graduate Student</p></div>
-    <div class="member-card"><div class="member-avatar">🧪</div><p class="member-name">Sharon Adeniyi</p><p class="member-role">Research Technician</p></div>
-    <div class="member-card"><div class="member-avatar">🧪</div><p class="member-name">Breanna Williams</p><p class="member-role">Research Technician</p></div>
-    <div class="member-card"><div class="member-avatar">🧪</div><p class="member-name">Arushi Rana</p><p class="member-role">Research Technician</p></div>
-    <div class="member-card"><div class="member-avatar">🧪</div><p class="member-name">Sricharan Kannan</p><p class="member-role">Research Technician</p></div>
-    <div class="member-card"><div class="member-avatar">🧪</div><p class="member-name">Robert Rickert</p><p class="member-role">Research Technician</p></div>
-    <div class="member-card"><div class="member-avatar">💻</div><p class="member-name">Nan Hu</p><p class="member-role">Computational Biologist</p></div>
-    <div class="member-card"><div class="member-avatar">🗂️</div><p class="member-name">Chia Chan</p><p class="member-role">Lab Manager</p></div>
-    <div class="member-card"><div class="member-avatar">🗂️</div><p class="member-name">Adonis C. John</p><p class="member-role">Research Admin Lead</p></div>
+    {% for member in team if not member.alumni %}
+    <div class="member-card">
+      {% if member.image %}
+      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}">
+      {% else %}
+      <div class="member-photo member-photo-placeholder"></div>
+      {% endif %}
+      <p class="member-name">{{ member.name }}</p>
+      <p class="member-role">{{ member.role }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h3 class="subsection-title">Alumni</h3>
+  <div class="team-grid team-grid-alumni">
+    {% for member in team if member.alumni %}
+    <div class="member-card member-card-alumni">
+      {% if member.image %}
+      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}">
+      {% else %}
+      <div class="member-photo member-photo-placeholder"></div>
+      {% endif %}
+      <p class="member-name">{{ member.name }}</p>
+      <p class="member-role">{{ member.role }}</p>
+      {% if member.years %}
+      <p class="member-years">{{ member.years }}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}

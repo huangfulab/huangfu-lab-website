@@ -175,23 +175,37 @@ section+section { border-top:1px solid var(--border); }
 
 /* ── Team ─────────────────────────────────────────────────────────────── */
 .team-grid {
-  display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
   gap:16px; margin-top:40px;
 }
+.team-grid-alumni {
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:12px;
+}
 .member-card {
-  text-align:center; padding:24px 16px;
+  text-align:center; padding:20px 14px;
   border:1px solid var(--border); border-radius:var(--radius);
   background:var(--bg-card); box-shadow:var(--shadow-sm);
   transition:box-shadow .2s;
 }
-.member-avatar {
-  width:60px; height:60px; border-radius:50%;
-  background:var(--bg-alt); border:2px solid var(--border);
-  margin:0 auto 14px; display:flex; align-items:center;
-  justify-content:center; font-size:22px;
+.member-card-alumni { opacity:.85; }
+.member-photo {
+  width:80px; height:80px; border-radius:50%; object-fit:cover;
+  border:2px solid var(--border); margin:0 auto 12px; display:block;
 }
-.member-name { font-size:13.5px; font-weight:600; color:var(--text); margin-bottom:3px; }
-.member-role { font-size:11.5px; color:var(--text-muted); }
+.member-photo-placeholder {
+  width:80px; height:80px; border-radius:50%;
+  background:var(--bg-alt); border:2px solid var(--border);
+  margin:0 auto 12px;
+}
+.subsection-title {
+  font-size:18px; font-weight:700; color:var(--text);
+  margin-top:56px; margin-bottom:0; padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+}
+.member-name { font-size:13px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.member-role { font-size:11px; color:var(--text-muted); margin-bottom:2px; }
+.member-years { font-size:10.5px; color:var(--text-muted); font-style:italic; }
 
 /* ── Resources ────────────────────────────────────────────────────────── */
 .resource-list {

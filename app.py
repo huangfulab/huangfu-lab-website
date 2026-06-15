@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify
+import json
 import os
 import yaml
 import html
@@ -79,9 +80,14 @@ def lab_announcements():
     return render_template("lab/announcements.html", current_page="announcements")
 
 
+_TEAM_PATH = Path(__file__).resolve().parent / "data" / "team.json"
+with open(_TEAM_PATH) as _tf:
+    _TEAM = json.load(_tf)  # flat list; each entry has alumni: true/false
+
+
 @app.route("/team")
 def lab_team():
-    return render_template("lab/team.html", current_page="team")
+    return render_template("lab/team.html", current_page="team", team=_TEAM)
 
 
 @app.route("/resources")
