@@ -1317,7 +1317,7 @@ requestAnimationFrame(() => {
   const sparks = [...document.querySelectorAll('svg.atac-spark[data-peak-id]')];
   const promises = sparks.map(svgEl => {
     const peakId = svgEl.dataset.peakId;
-    return fetch(`/perturbseq/api/atac-counts/${peakId}`)
+    return fetch(`/tf-perturbseq/api/atac-counts/${peakId}`)
       .then(r => r.ok ? r.json() : [])
       .then(counts => renderSparkline(svgEl, counts))
       .catch(() => { svgEl.parentElement.dataset.score = '0'; });
@@ -1680,7 +1680,7 @@ function initTfCoefDensityLegacy() {
       .on('mouseover', showTip2)
       .on('mousemove', moveTip2)
       .on('mouseout', () => { rugTip2.style.display = 'none'; })
-      .on('click', (_, d) => { window.location.href = `/perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
+      .on('click', (_, d) => { window.location.href = `/tf-perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
     g.append('text').attr('x', -6).attr('y', rugY2 + RUG / 2).attr('text-anchor', 'end').attr('dominant-baseline', 'middle').attr('font-size', '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7).text('TF-bound');
     const xAxisG = g.append('g').attr('transform', `translate(0,${xAxisY})`).attr('class', 'axis');
     g.append('text').attr('x', W / 2).attr('y', xAxisY + 30).attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', 'var(--text-muted)').attr('opacity', 0.8).text('Perturb-seq regression coefficient');
@@ -1723,7 +1723,7 @@ function initTfCoefDensityLegacy() {
     card.appendChild(svg.node());
   }
 
-  fetch(`/perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-density`)
+  fetch(`/tf-perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-density`)
     .then(r => r.json())
     .then(data => {
       if (data && data.all_coefs && data.all_coefs.length >= 2) {
@@ -1854,7 +1854,7 @@ function initTfCoefLollipop() {
       tooltip.style.display = 'block';
       placeTooltip(tooltip, event);
     }
-    points.on('mouseover', showTooltip).on('mousemove', event => placeTooltip(tooltip, event)).on('mouseout', () => { tooltip.style.display = 'none'; }).on('click', (_, d) => { window.location.href = `/perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
+    points.on('mouseover', showTooltip).on('mousemove', event => placeTooltip(tooltip, event)).on('mouseout', () => { tooltip.style.display = 'none'; }).on('click', (_, d) => { window.location.href = `/tf-perturbseq/gene/${encodeURIComponent(d.gene_name)}`; });
 
     function mkBtn(title, html, fn) {
       const btn = document.createElement('button');
@@ -1901,7 +1901,7 @@ function initTfCoefLollipop() {
     card.appendChild(svg.node());
   }
 
-  fetch(`/perturbseq/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
+  fetch(`/tf-perturbseq/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
     .then(r => r.json())
     .then(resp => {
       if (loadingEl) loadingEl.style.display = 'none';
@@ -2231,7 +2231,7 @@ function initTfCoefScatter() {
 
   function fetchAndDraw(score) {
     chartArea.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--text-muted);font-size:13px">Loading…</div>';
-    fetch(`/perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-scatter-all?score=${score}`)
+    fetch(`/tf-perturbseq/api/tf/${encodeURIComponent(GENE)}/coef-scatter-all?score=${score}`)
       .then(r => r.json())
       .then(resp => { drawChart(resp.d || []); })
       .catch(() => { wrap.style.display = 'none'; });
@@ -2451,7 +2451,7 @@ function initTfCoefScatter() {
     page = 1; render();
   });
 
-  fetch(`/perturbseq/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
+  fetch(`/tf-perturbseq/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
     .then(r => r.json())
     .then(resp => { allData = resp.data || []; render(); })
     .catch(() => {
@@ -2615,7 +2615,7 @@ function initTfCoefScatter() {
 
   // ── Client-side mode (small TFs) ──────────────────────────────────────────
   function initClientSide() {
-    fetch(`/perturbseq/api/tf-elements/${encodeURIComponent(GENE)}`)
+    fetch(`/tf-perturbseq/api/tf-elements/${encodeURIComponent(GENE)}`)
       .then(r => r.json())
       .then(data => {
         setCount(data.length);
@@ -2669,7 +2669,7 @@ function initTfCoefScatter() {
 
     function fetchPage() {
       const params = new URLSearchParams({ start: (page - 1) * perPage, length: perPage, q: search, order_col: orderCol, order_dir: orderDir });
-      fetch(`/perturbseq/api/tf-elements/${encodeURIComponent(GENE)}?${params}`)
+      fetch(`/tf-perturbseq/api/tf-elements/${encodeURIComponent(GENE)}?${params}`)
         .then(r => r.json())
         .then(resp => {
           const tbody = document.getElementById('sst-tbody');
@@ -2843,7 +2843,7 @@ function initTfCoefScatter() {
     name:           `${bw.label} (ATAC)`,
     type:           'wig',
     format:         'bigwig',
-    url:            `/perturbseq/bw/${bw.tp}-atacseq.bw`,
+    url:            `/tf-perturbseq/bw/${bw.tp}-atacseq.bw`,
     color:          bw.color,
     height:         40,
     autoscaleGroup: 'atac',
@@ -2852,7 +2852,7 @@ function initTfCoefScatter() {
     name:             `${t.label} (RNA)`,
     type:             'wig',
     format:           'bigwig',
-    url:              `/perturbseq/bw-rna/${t.file}`,
+    url:              `/tf-perturbseq/bw-rna/${t.file}`,
     color:            t.color,
     height:           40,
     autoscaleGroup:   'rna',
@@ -3504,7 +3504,7 @@ function initTfCoefScatter() {
   }
 
   show(loadingEl);
-  fetch(`/perturbseq/api/gene/${encodeURIComponent(GENE)}/grna-coefs`)
+  fetch(`/tf-perturbseq/api/gene/${encodeURIComponent(GENE)}/grna-coefs`)
     .then(r => r.json())
     .then(resp => {
       loadingEl.style.display = 'none';

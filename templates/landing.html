@@ -587,7 +587,7 @@
       const q = input.value.trim();
       if (!q) { hide(); return; }
       try {
-        const r = await fetch(`/perturbseq/api/search?q=${encodeURIComponent(q)}`);
+        const r = await fetch(`/tf-perturbseq/api/search?q=${encodeURIComponent(q)}`);
         items = await r.json();
         render();
       } catch { hide(); }

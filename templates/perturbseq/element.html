@@ -695,7 +695,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     name:          `${bw.label} (ATAC)`,
     type:          'wig',
     format:        'bigwig',
-    url:           `/perturbseq/bw/${bw.tp}-atacseq.bw`,
+    url:           `/tf-perturbseq/bw/${bw.tp}-atacseq.bw`,
     color:         bw.color,
     height:         40,
     autoscaleGroup: 'atac',
@@ -714,7 +714,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     name:             `${t.label} (RNA)`,
     type:             'wig',
     format:           'bigwig',
-    url:              `/perturbseq/bw-rna/${t.file}`,
+    url:              `/tf-perturbseq/bw-rna/${t.file}`,
     color:            t.color,
     height:           40,
     autoscaleGroup:   'rna',
@@ -1004,7 +1004,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
 
   function fetchExpr(geneName) {
     if (exprCache[geneName]) return Promise.resolve(exprCache[geneName]);
-    return fetch(`/perturbseq/api/gene/${encodeURIComponent(geneName)}`)
+    return fetch(`/tf-perturbseq/api/gene/${encodeURIComponent(geneName)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && d.expr) { exprCache[geneName] = d.expr; return d.expr; } return null; });
   }

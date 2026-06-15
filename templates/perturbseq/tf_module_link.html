@@ -615,12 +615,12 @@ drawExprChart('tf-expr-chart', TF_EXPR, '#4a56b0');
   makeSelector({
     inputId: 'tf-sel-input', dropdownId: 'tf-sel-dropdown', current: TF_NAME,
     getOptions: () => allTFs,
-    onSelect: tf => { window.location.href = `/perturbseq/tf-module/${encodeURIComponent(tf)}/${encodeURIComponent(MODULE_NAME)}`; },
+    onSelect: tf => { window.location.href = `/tf-perturbseq/tf-module/${encodeURIComponent(tf)}/${encodeURIComponent(MODULE_NAME)}`; },
   });
   makeSelector({
     inputId: 'mod-sel-input', dropdownId: 'mod-sel-dropdown', current: MODULE_NAME,
     getOptions: () => allModules,
-    onSelect: mod => { window.location.href = `/perturbseq/tf-module/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(mod)}`; },
+    onSelect: mod => { window.location.href = `/tf-perturbseq/tf-module/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(mod)}`; },
   });
 })();
 </script>

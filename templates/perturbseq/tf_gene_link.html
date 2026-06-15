@@ -805,7 +805,7 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     });
   }
 
-  fetch(`/perturbseq/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
+  fetch(`/tf-perturbseq/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(d => renderDESection('coef-grid-de', 'coef-loading-de', d.de, GENE_NAME))
     .catch(() => {
@@ -1129,12 +1129,12 @@ let _igvBrowser = null;
   });
   _ATAC_TRACKS.forEach(bw => tracks.push({
     name: `${bw.label} (ATAC)`, type: 'wig', format: 'bigwig',
-    url:  `/perturbseq/bw/${bw.tp}-atacseq.bw`,
+    url:  `/tf-perturbseq/bw/${bw.tp}-atacseq.bw`,
     color: bw.color, height: 40, autoscaleGroup: 'atac',
   }));
   _RNA_TRACKS.forEach(t => tracks.push({
     name: `${t.label} (RNA)`, type: 'wig', format: 'bigwig',
-    url:  `/perturbseq/bw-rna/${t.file}`,
+    url:  `/tf-perturbseq/bw-rna/${t.file}`,
     color: t.color, height: 40, autoscaleGroup: 'rna', visibilityWindow: -1,
   }));
   tracks.push({
@@ -1249,14 +1249,14 @@ let _igvBrowser = null;
     inputId: 'tf-sel-input', dropdownId: 'tf-sel-dropdown',
     current: currentTF,
     getOptions: () => allTFs,
-    onSelect: tf => { window.location.href = `/perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(currentGene)}`; },
+    onSelect: tf => { window.location.href = `/tf-perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(currentGene)}`; },
   });
 
   makeSelector({
     inputId: 'gene-sel-input', dropdownId: 'gene-sel-dropdown',
     current: currentGene,
     getOptions: () => allGenes,
-    onSelect: gene => { window.location.href = `/perturbseq/link/${encodeURIComponent(currentTF)}/${encodeURIComponent(gene)}`; },
+    onSelect: gene => { window.location.href = `/tf-perturbseq/link/${encodeURIComponent(currentTF)}/${encodeURIComponent(gene)}`; },
   });
 })();
 
