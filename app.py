@@ -1,5 +1,8 @@
 from flask import Flask, render_template, jsonify
 import os
+import re
+import yaml
+import glob
 import pandas as pd
 from pathlib import Path
 from perturbseq_bp import perturbseq_bp, _fmt_time_ago, _LAST_COMMIT_TS
@@ -8,6 +11,41 @@ app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
+
+LAB_JEKYLL_SRC = Path("/data1/huangfud/torred1/sandbox/sandbox018-huangfu_lab_website/Huangfu-lab-website")
+
+def _load_lab_data():
+    # Publications
+    citations_path = LAB_JEKYLL_SRC / "_data" / "citations.yaml"
+    with open(citations_path) as f:
+        raw = yaml.safe_load(f) or []
+    citations = sorted(
+        [c for c in raw if c.get("date")],
+        key=lambda c: c["date"],
+        reverse=True,
+    )
+
+    # Team members
+    members = []
+    for md_path in sorted(glob.glob(str(LAB_JEKYLL_SRC / "_members" / "*.md"))):
+        with open(md_path) as f:
+            content = f.read()
+        m = re.match(r"^---\n(.*?)\n---\n?(.*)", content, re.DOTALL)
+        if m:
+            meta = yaml.safe_load(m.group(1)) or {}
+            meta["bio"] = m.group(2).strip()
+            members.append(meta)
+    # PI first, then rest
+    members.sort(key=lambda x: (x.get("role") != "principal-investigator", x.get("name", "")))
+
+    # Projects
+    projects_path = LAB_JEKYLL_SRC / "_data" / "projects.yaml"
+    with open(projects_path) as f:
+        projects = yaml.safe_load(f) or []
+
+    return citations, members, projects
+
+CITATIONS, MEMBERS, PROJECTS = _load_lab_data()
 
 
 def load_network(level):
@@ -46,6 +84,14 @@ def load_network(level):
 @app.route("/lab")
 def lab():
     return render_template("lab/index.html")
+
+
+@app.route("/lab_homepage_github")
+def lab_homepage_github():
+    return render_template("lab/github_homepage.html",
+                           citations=CITATIONS,
+                           members=MEMBERS,
+                           projects=PROJECTS)
 
 
 @app.route("/")
