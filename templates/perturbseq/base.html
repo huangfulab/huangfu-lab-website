@@ -5,6 +5,13 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}DE TF-PerturbSeq Browser{% endblock %}</title>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-GC188JTM9K"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-GC188JTM9K');
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/perturbseq.css') }}">
     <script>window.MODULE_COLORS = {{ module_colors | tojson }};</script>
     <script src="{{ url_for('static', filename='cytoscape.min.js') }}"></script>
