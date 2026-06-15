@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light" data-layout="default">
+<html lang="en" data-theme="light" data-layout="floating">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -580,24 +580,6 @@ footer {
   </ul>
   <div class="nav-selectors">
     <div class="sel-group">
-      <span class="sel-label">Layout</span>
-      <div class="sel-wrap">
-        <select class="sel-select" id="layout-select">
-          <option value="default">Default</option>
-          <option value="centered">Centered</option>
-          <option value="sidebar">Sidebar</option>
-          <option value="compact">Compact</option>
-          <option value="floating">Floating</option>
-          <option value="minimal">Minimal</option>
-          <option value="wide">Wide</option>
-          <option value="editorial">Editorial</option>
-          <option value="immersive">Immersive</option>
-          <option value="two-row">Two-row</option>
-        </select>
-      </div>
-    </div>
-    <span class="sel-sep">|</span>
-    <div class="sel-group">
       <span class="sel-label">Theme</span>
       <div class="sel-wrap">
         <select class="sel-select" id="theme-select">
@@ -917,25 +899,18 @@ footer {
 const html = document.documentElement;
 
 /* ── Theme select ─────────────────────────────────────────────────────── */
-const themeSelect  = document.getElementById('theme-select');
-const layoutSelect = document.getElementById('layout-select');
+const themeSelect = document.getElementById('theme-select');
 
 themeSelect.addEventListener('change', () => {
   html.dataset.theme = themeSelect.value;
 });
 
-layoutSelect.addEventListener('change', () => {
-  html.dataset.layout = layoutSelect.value;
-  nav.classList.remove('scrolled');
-});
-
-/* ── Keyboard shortcuts (← → themes, ↑ ↓ layouts) ─────────────────── */
-const themeVals  = Array.from(themeSelect.options).map(o => o.value);
-const layoutVals = Array.from(layoutSelect.options).map(o => o.value);
+/* ── Keyboard shortcuts (← → themes) ───────────────────────────────── */
+const themeVals = Array.from(themeSelect.options).map(o => o.value);
 
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-  const n = themeVals.length, m = layoutVals.length;
+  const n = themeVals.length;
   if (e.key === 'ArrowRight') {
     themeSelect.selectedIndex = (themeSelect.selectedIndex + 1) % n;
     html.dataset.theme = themeVals[themeSelect.selectedIndex];
@@ -944,26 +919,8 @@ document.addEventListener('keydown', e => {
     themeSelect.selectedIndex = (themeSelect.selectedIndex - 1 + n) % n;
     html.dataset.theme = themeVals[themeSelect.selectedIndex];
   }
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    layoutSelect.selectedIndex = (layoutSelect.selectedIndex + 1) % m;
-    html.dataset.layout = layoutVals[layoutSelect.selectedIndex];
-  }
-  if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    layoutSelect.selectedIndex = (layoutSelect.selectedIndex - 1 + m) % m;
-    html.dataset.layout = layoutVals[layoutSelect.selectedIndex];
-  }
 });
 
-/* ── Immersive layout: fade nav in on scroll ──────────────────────────── */
-const nav = document.getElementById('main-nav');
-window.addEventListener('scroll', () => {
-  if (html.dataset.layout === 'immersive')
-    nav.classList.toggle('scrolled', window.scrollY > 80);
-  else
-    nav.classList.remove('scrolled');
-}, { passive: true });
 </script>
 </body>
 </html>
