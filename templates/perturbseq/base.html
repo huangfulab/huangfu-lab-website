@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{% block meta_description %}DE TF-PerturbSeq Browser — explore transcription factor perturbation effects on gene modules during human definitive endoderm differentiation.{% endblock %}">
+    <meta property="og:title" content="{{ self.title() }}">
+    <meta property="og:description" content="{{ self.meta_description() }}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <link rel="canonical" href="{{ request.url }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <title>{% block title %}DE TF-PerturbSeq Browser{% endblock %}</title>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GC188JTM9K"></script>
     <script>
@@ -11,6 +17,20 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-GC188JTM9K');
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      "name": "DE TF-PerturbSeq Browser",
+      "description": "Transcription factor perturbation effects during human definitive endoderm differentiation",
+      "url": "{{ request.host_url }}tf-perturbseq",
+      "creator": {
+        "@type": "Organization",
+        "name": "Huangfu Lab",
+        "url": "{{ request.host_url }}"
+      }
+    }
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/perturbseq.css') }}">
     <script>window.MODULE_COLORS = {{ module_colors | tojson }};</script>

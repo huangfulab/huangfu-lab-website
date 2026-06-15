@@ -122,6 +122,25 @@ def api_network(level):
     return jsonify(load_network(level))
 
 
+@app.route("/robots.txt")
+def robots_txt():
+    from flask import request as _req
+    sitemap_url = _req.host_url.rstrip("/") + "/sitemap.xml"
+    body = f"User-agent: *\nAllow: /\nSitemap: {sitemap_url}\n"
+    return body, 200, {"Content-Type": "text/plain"}
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    urls = [
+        "/", "/research", "/publications", "/announcements",
+        "/team", "/resources", "/contact",
+        "/tf-perturbseq", "/modules", "/network",
+    ]
+    xml = render_template("sitemap.xml", urls=urls)
+    return xml, 200, {"Content-Type": "application/xml"}
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     app.run(debug=True, host="0.0.0.0", port=port)

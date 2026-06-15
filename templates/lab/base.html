@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{% block meta_description %}Huangfu Lab studies developmental biology and human pluripotent stem cells at the Sloan Kettering Institute, MSKCC.{% endblock %}">
+<meta property="og:title" content="{{ self.title() }}">
+<meta property="og:description" content="{{ self.meta_description() }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ request.url }}">
+<link rel="canonical" href="{{ request.url }}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <title>{% block title %}Huangfu Lab — Developmental Biology · Sloan Kettering Institute{% endblock %}</title>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GC188JTM9K"></script>
@@ -11,6 +17,19 @@
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-GC188JTM9K');
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ResearchOrganization",
+  "name": "Huangfu Lab",
+  "description": "Developmental biology and stem cell research at the Sloan Kettering Institute",
+  "url": "{{ request.host_url }}",
+  "parentOrganization": {
+    "@type": "Organization",
+    "name": "Memorial Sloan Kettering Cancer Center"
+  }
+}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
