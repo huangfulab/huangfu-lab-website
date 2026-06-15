@@ -1,5 +1,7 @@
 from flask import Flask, render_template, jsonify
 import os
+import yaml
+import html
 import pandas as pd
 from pathlib import Path
 from perturbseq_bp import perturbseq_bp
@@ -8,6 +10,19 @@ app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
+
+_CITATIONS_PATH = Path("/data1/huangfud/torred1/sandbox/sandbox018-huangfu_lab_website/Huangfu-lab-website/_data/citations.yaml")
+def _clean_citation(c):
+    if c.get("publisher"):
+        c["publisher"] = html.unescape(c["publisher"])
+    return c
+
+with open(_CITATIONS_PATH) as _f:
+    _ALL_CITATIONS = sorted(
+        [_clean_citation(c) for c in (yaml.safe_load(_f) or []) if c.get("date")],
+        key=lambda c: c["date"],
+        reverse=True,
+    )
 
 
 def load_network(level):
@@ -46,7 +61,7 @@ def load_network(level):
 @app.route("/")
 @app.route("/lab")
 def lab():
-    return render_template("lab/index.html")
+    return render_template("lab/index.html", citations=_ALL_CITATIONS[:3])
 
 
 @app.route("/research")
@@ -56,7 +71,7 @@ def lab_research():
 
 @app.route("/publications")
 def lab_publications():
-    return render_template("lab/publications.html", current_page="publications")
+    return render_template("lab/publications.html", current_page="publications", citations=_ALL_CITATIONS)
 
 
 @app.route("/announcements")

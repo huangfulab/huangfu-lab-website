@@ -57,30 +57,20 @@
   <h2 class="section-title">Selected work</h2>
   <p class="section-body">Recent publications from the lab.</p>
   <div class="pub-list">
+    {% for pub in citations %}
     <div class="pub-item">
       <div>
-        <p class="pub-title">Human pancreatic progenitor organoids define genetic and epigenetic barriers to early PDAC transformation</p>
-        <p class="pub-authors">Zhang X, Wong W, Cho HS, et al., Huangfu D</p>
-        <p class="pub-journal">Developmental Cell</p>
+        <p class="pub-title">
+          {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title }}</a>{% else %}{{ pub.title }}{% endif %}
+        </p>
+        <p class="pub-authors">
+          {% for author in pub.authors %}{% if 'Danwei Huangfu' in author %}<b>{{ author }}</b>{% else %}{{ author }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+        </p>
+        <p class="pub-journal">{{ pub.publisher or '' }}</p>
       </div>
-      <span class="pub-year">2026</span>
+      <span class="pub-year">{{ pub.date[:4] if pub.date else '—' }}</span>
     </div>
-    <div class="pub-item">
-      <div>
-        <p class="pub-title">Glucose transporters are key components of the human glucostat</p>
-        <p class="pub-authors">Caspi I, Tremmel DM, Pulecio J, et al.</p>
-        <p class="pub-journal">Diabetes</p>
-      </div>
-      <span class="pub-year">2024</span>
-    </div>
-    <div class="pub-item">
-      <div>
-        <p class="pub-title">Dynamic network-guided CRISPRi screen identifies CTCF-loop-constrained nonlinear enhancer gene regulatory activity during cell state transitions</p>
-        <p class="pub-authors">Luo R, Yan J, Oh JW, et al.</p>
-        <p class="pub-journal">Nature Genetics</p>
-      </div>
-      <span class="pub-year">2023</span>
-    </div>
+    {% endfor %}
   </div>
   <a class="view-all" href="/publications">View all publications</a>
 </section>
