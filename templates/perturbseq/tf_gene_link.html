@@ -485,7 +485,7 @@
           <div class="ev-node-type">ChIP-Seq</div>
           <div class="ev-node-name" style="font-family:inherit">{{ ds.cell_type }}</div>
           <div class="ev-node-detail">
-            <a href="/perturbseq/dataset/{{ ds.dataset_id }}" style="color:inherit"
+            <a href="/tf-perturbseq/dataset/{{ ds.dataset_id }}" style="color:inherit"
                onclick="event.stopPropagation()">{{ ds.accession }}</a>
           </div>
         </div>
@@ -505,7 +505,7 @@
         <div class="el-pill-text">
           <div class="ev-node-type">Element {{ loop.index }}</div>
           <div class="ev-node-name">
-            <a href="/perturbseq/element/{{ el.atac_peak_id }}"
+            <a href="/tf-perturbseq/element/{{ el.atac_peak_id }}"
                style="color:inherit;text-decoration:none"
                title="Open element page">{{ el.element_id }}</a>
           </div>
@@ -1141,8 +1141,8 @@ let _igvBrowser = null;
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
     format:           'gtf',
-    url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
-    indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    url:              '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
     displayMode:      'EXPANDED',
     height:            140,
     color:             '#6b7280',
@@ -1170,8 +1170,8 @@ let _igvBrowser = null;
 
   let allTFs = [], allGenes = [];
   Promise.all([
-    fetch('/perturbseq/api/link-tfs').then(r => r.json()),
-    fetch('/perturbseq/api/link-genes').then(r => r.json()),
+    fetch('/tf-perturbseq/api/link-tfs').then(r => r.json()),
+    fetch('/tf-perturbseq/api/link-genes').then(r => r.json()),
   ]).then(([tfs, genes]) => { allTFs = tfs; allGenes = genes; });
 
   function makeSelector({ inputId, dropdownId, current, getOptions, onSelect }) {

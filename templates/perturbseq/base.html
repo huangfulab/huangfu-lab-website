@@ -38,7 +38,7 @@
             const q = input.value.trim();
             if (!q) { hide(); return; }
             try {
-                const r = await fetch('/perturbseq/api/search?q=' + encodeURIComponent(q));
+                const r = await fetch('/tf-perturbseq/api/search?q=' + encodeURIComponent(q));
                 items = await r.json();
                 render();
             } catch { hide(); }
@@ -89,8 +89,8 @@
         hide();
         if (typeof item === 'object' && item.url) window.location.href = item.url;
         else if (type === 'module' || type === 'submodule')
-                                 window.location.href = '/perturbseq/module/' + encodeURIComponent(name);
-        else                     window.location.href = '/perturbseq/gene/'   + encodeURIComponent(name);
+                                 window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(name);
+        else                     window.location.href = '/tf-perturbseq/gene/'   + encodeURIComponent(name);
     }
 
     function hide() { dropdown.classList.remove('open'); items = []; activeIdx = -1; }

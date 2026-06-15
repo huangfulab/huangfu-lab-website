@@ -718,7 +718,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
       data-link_type="{{ el.evidence_type }}"
       data-n_tfs="{{ el.n_tfs }}">
     <td><svg class="atac-spark" data-peak-id="{{ el.atac_peak_id }}" style="display:block"></svg></td>
-    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}"
+    <td><a href="/tf-perturbseq/element/{{ el.atac_peak_id }}"
            style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"
            >{{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}</a></td>
     <td>{{ el.tss_dist_label if el.tss_dist_label else '—' }}</td>
@@ -737,7 +737,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
       <span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1.5px solid;letter-spacing:0.3px;margin-left:3px;color:#b45309;border-color:#fcd34d;background:rgba(245,158,11,0.08)">HiCAR</span>
       {% endif %}
     </td>
-    <td><a href="/perturbseq/element/{{ el.atac_peak_id }}#tf-binding-panel"
+    <td><a href="/tf-perturbseq/element/{{ el.atac_peak_id }}#tf-binding-panel"
            style="font-weight:600;color:var(--accent);text-decoration:none">{{ el.n_tfs }}</a></td>
   </tr>
   {% endfor %}
@@ -941,7 +941,7 @@ const cyInstances = {};
   cyInstances['tf-super'] = cy;
 
   cy.on('tap', 'node[type="module"]', evt => {
-    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+    window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(evt.target.id());
   });
 
   function applyCyFilter() {
@@ -968,7 +968,7 @@ const cyInstances = {};
               : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
   }, { barId:'tf-reg-filter-bar', countId:'tf-reg-count', searchKey:'module', onChange: applyCyFilter });
 
@@ -1101,7 +1101,7 @@ const cyInstances = {};
               : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td>${dot}<a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.id)}" data-mod-tip="${r.id}" data-mod-color="${window.MODULE_COLORS?.[r.id]||''}">${r.id}</a></td><td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="/tf-perturbseq/module/${encodeURIComponent(r.id)}" data-mod-tip="${r.id}" data-mod-color="${window.MODULE_COLORS?.[r.id]||''}">${r.id}</a></td><td><a class="node-link" href="/tf-perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
   }
 
@@ -1197,7 +1197,7 @@ const cyInstances = {};
   cyInstances['tf-sub'] = cy;
 
   cy.on('tap', 'node[type="submodule"]', evt => {
-    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+    window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(evt.target.id());
   });
 
   function applyCyFilter() {
@@ -1947,9 +1947,9 @@ function _makeLinkCard(attachTo) {
       `<div><span style="font-weight:700;color:${color}">${displayName}</span>${headerExtra || ''}</div>` +
       `<div class="lc-desc" style="font-size:11px;color:var(--text-muted);font-style:italic;margin:3px 0 5px;line-height:1.45"></div>` +
       `<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">` +
-        `<a href="/perturbseq/gene/${encodeURIComponent(displayName)}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
+        `<a href="/tf-perturbseq/gene/${encodeURIComponent(displayName)}" style="${LINK_S}background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.22)"` +
           ` onmouseenter="this.style.background='rgba(74,86,176,0.18)'" onmouseleave="this.style.background='rgba(74,86,176,0.08)'">${displayName} ↗</a>` +
-        `<a href="/perturbseq/link/${encodeURIComponent(tfName)}/${encodeURIComponent(targetGene)}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
+        `<a href="/tf-perturbseq/link/${encodeURIComponent(tfName)}/${encodeURIComponent(targetGene)}" style="${LINK_S}background:rgba(5,150,105,0.08);color:#059669;border:1px solid rgba(5,150,105,0.22)"` +
           ` onmouseenter="this.style.background='rgba(5,150,105,0.18)'" onmouseleave="this.style.background='rgba(5,150,105,0.08)'">${tfName}→${targetGene} ↗</a>` +
       `</div>`;
     el.appendChild(body);
@@ -2311,15 +2311,15 @@ function initTfCoefScatter() {
   wrapEl.style.display = '';
 
   function rowHtml(r) {
-    const gLink = `<a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
+    const gLink = `<a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.gene_name)}">${r.gene_name}</a>`;
     let modLink = '';
     if (r.supermodule || r.submodule) {
       const mc = (window.MODULE_COLORS && window.MODULE_COLORS[r.supermodule]) || '#9098b8';
       const superPill = r.supermodule
-        ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
+        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
         : '';
       const subPill = r.submodule
-        ? `<a class="intro-tag submodule-tag" href="/perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
+        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
         : '';
       modLink = superPill + subPill;
     }
@@ -2344,7 +2344,7 @@ function initTfCoefScatter() {
     const scoreCell = r.peak_score > 0
       ? `<td><span class="lg-score-tip" data-score="${encodeURIComponent(scoreDetails)}" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;font-weight:600;color:#7c3aed;cursor:help;border-bottom:1px dashed #c4b5fd">${r.peak_score.toFixed(2)}</span></td>`
       : `<td style="color:var(--text-muted);font-size:12px">—</td>`;
-    const linkPill = `<a href="/perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
+    const linkPill = `<a href="/tf-perturbseq/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
     return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${scoreCell}<td style="white-space:nowrap">${linkPill}</td></tr>`;
   }
 
@@ -2607,10 +2607,10 @@ function initTfCoefScatter() {
     if (wrapEl) wrapEl.style.display = '';
   }
   function elLink(el) {
-    return `<a href="/perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`;
+    return `<a href="/tf-perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`;
   }
   function geneLinks(genes) {
-    return genes.map(g => `<a href="/perturbseq/gene/${g}" style="${geneStyle}">${g}</a>`).join(', ');
+    return genes.map(g => `<a href="/tf-perturbseq/gene/${g}" style="${geneStyle}">${g}</a>`).join(', ');
   }
 
   // ── Client-side mode (small TFs) ──────────────────────────────────────────
@@ -2624,7 +2624,7 @@ function initTfCoefScatter() {
           data: {
             headings: ['Element', 'Size', 'Linked genes'],
             data: data.map(el => [
-              `<a href="/perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`,
+              `<a href="/tf-perturbseq/element/${el.atac_peak_id}" style="${monoStyle}">${el.chr}:${el.start.toLocaleString()}–${el.end.toLocaleString()}</a>`,
               `${(el.end - el.start).toLocaleString()} bp`,
               geneLinks(el.linked_genes),
             ]),
@@ -2862,8 +2862,8 @@ function initTfCoefScatter() {
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
     format:           'gtf',
-    url:              '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
-    indexURL:         '/perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    url:              '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
     displayMode:      'EXPANDED',
     height:            140,
     color:             '#6b7280',
@@ -2956,7 +2956,7 @@ function initTfCoefScatter() {
         ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(74,86,176,0.10);color:#4a56b0">Yes</span>'
         : '<span style="color:var(--text-muted);font-size:12px">—</span>';
       const linkPill = tf =>
-        `<a href="/perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(GENE)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.25);white-space:nowrap;text-decoration:none">${tf} → ${GENE}</a>`;
+        `<a href="/tf-perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(GENE)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(74,86,176,0.08);color:#4a56b0;border:1px solid rgba(74,86,176,0.25);white-space:nowrap;text-decoration:none">${tf} → ${GENE}</a>`;
 
       const colDef = isGeneLevel
         ? [
@@ -2982,13 +2982,13 @@ function initTfCoefScatter() {
       }).join('');
 
       const trs = pageRows.map(d => isGeneLevel ? `<tr>
-        <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
+        <td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
         <td>${coefSpan(d.coef)}</td>
         <td>${bindBadge(d.has_binding)}</td>
         <td>${effectPill(d) || '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>
         <td style="white-space:nowrap">${linkPill(d.tf_name)}</td>
       </tr>` : `<tr>
-        <td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
+        <td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(d.tf_name)}">${d.tf_name}</a></td>
         <td style="font-family:'SF Mono','Fira Code',monospace;font-size:11px">${d.grna_name}</td>
         <td>${coefSpan(d.coef)}</td>
         <td>${bindBadge(d.has_binding)}</td>
@@ -3535,14 +3535,14 @@ function initTfCoefScatter() {
           tr.dataset.mean_coef       = String(d.coef);
           tr.dataset.signed_pct_rank = String(d.signed_pct_rank);
           tr.innerHTML =
-            `<td><a href="/perturbseq/gene/${encodeURIComponent(d.tf_name)}"` +
+            `<td><a href="/tf-perturbseq/gene/${encodeURIComponent(d.tf_name)}"` +
               ` style="font-weight:600;color:var(--accent);text-decoration:none">${d.tf_name}</a></td>` +
             `<td class="reg-tf-coef-td" style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px">${coefSpan(d.coef)}</td>` +
             `<td class="reg-tf-bind-td">${d.has_binding
               ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:0.3px;background:rgba(74,86,176,0.10);color:#4a56b0">Yes</span>'
               : '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>` +
             `<td class="reg-tf-de-td">${pill || '<span style="color:var(--text-muted);font-size:12px">—</span>'}</td>` +
-            `<td><a href="/perturbseq/link/${encodeURIComponent(d.tf_name)}/${encodeURIComponent(GENE)}"` +
+            `<td><a href="/tf-perturbseq/link/${encodeURIComponent(d.tf_name)}/${encodeURIComponent(GENE)}"` +
               ` style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-size:11px;font-weight:600;white-space:nowrap;padding:2px 8px;border-radius:10px;background:rgba(74,86,176,0.10);color:#4a56b0;border:1.5px solid rgba(74,86,176,0.25);transition:background 0.12s"` +
               ` onmouseover="this.style.background='rgba(74,86,176,0.2)'" onmouseout="this.style.background='rgba(74,86,176,0.10)'"` +
               `>${d.tf_name} → ${GENE}</a></td>`;

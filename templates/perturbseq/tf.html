@@ -152,7 +152,7 @@
   <details class="submod-accordion">
     <summary>
       <span class="submod-acc-mod">
-        <a class="node-link" href="/perturbseq/module/{{ mod }}"
+        <a class="node-link" href="/tf-perturbseq/module/{{ mod }}"
            data-mod-tip="{{ mod }}" data-mod-color="{{ module_colors.get(mod, '#4a56b0') }}"
            onclick="event.stopPropagation()">{{ mod }}</a>
       </span>
@@ -169,7 +169,7 @@
     </summary>
     <div class="submod-grid" style="padding:10px 0 4px 16px">
       {% for s in subs %}
-      <a class="submod-card" href="/perturbseq/submodule/{{ s.id }}">
+      <a class="submod-card" href="/tf-perturbseq/submodule/{{ s.id }}">
         <span class="submod-card-swatch" style="background:{{ s.color }}"></span>
         <span class="submod-card-id">{{ s.id }}</span>
         <span class="submod-card-meta">{{ s.n_genes }} genes</span>
@@ -268,7 +268,7 @@ const { makeFilterSortTable, MODULE_COLORS } = TFNetwork;
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  const resp = await fetch('/perturbseq/api/tf/' + encodeURIComponent(TF));
+  const resp = await fetch('/tf-perturbseq/api/tf/' + encodeURIComponent(TF));
   const data = await resp.json();
 
   const bindMap = new Map(data.binding.map(e => [e.module, e]));
@@ -334,7 +334,7 @@ async function main() {
     layout:{name:'cose',idealEdgeLength:100,nodeRepulsion:4000,gravity:0.4,numIter:400,animate:false}
   });
   cy.on('tap','node[type="module"]', evt => {
-    window.location.href = '/perturbseq/module/' + encodeURIComponent(evt.target.id());
+    window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(evt.target.id());
   });
 
   // Table
@@ -343,7 +343,7 @@ async function main() {
               : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><a class="node-link" href="/perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td>
+      <td><a class="node-link" href="/tf-perturbseq/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td>
       <td>${dir}</td>
       <td>${r.mean_NES   != null ? r.mean_NES.toFixed(3)      : '—'}</td>
       <td>${r.n_sig_gRNA != null ? r.n_sig_gRNA               : '—'}</td>
@@ -366,7 +366,7 @@ async function main() {
       if (content.dataset.loaded) return;
       content.dataset.loaded = '1';
       try {
-        const mr = await fetch('/perturbseq/api/module/' + encodeURIComponent(mod));
+        const mr = await fetch('/tf-perturbseq/api/module/' + encodeURIComponent(mod));
         const md = await mr.json();
         let html = '';
         if (md.enrichment && md.enrichment.length) {
@@ -376,7 +376,7 @@ async function main() {
         }
         if (md.genes && md.genes.length) {
           html += `<h4>Genes (${md.genes.length})</h4><div class="gene-list">`;
-          md.genes.forEach(g => html += `<a class="gene-chip" href="/perturbseq/gene/${encodeURIComponent(g)}" style="text-decoration:none;color:inherit">${g}</a>`);
+          md.genes.forEach(g => html += `<a class="gene-chip" href="/tf-perturbseq/gene/${encodeURIComponent(g)}" style="text-decoration:none;color:inherit">${g}</a>`);
           html += '</div>';
         }
         content.innerHTML = html || '<p>No additional data.</p>';

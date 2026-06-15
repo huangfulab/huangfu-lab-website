@@ -180,7 +180,7 @@
 {# ── Breadcrumb ──────────────────────────────────────────────────── #}
 {% if parent %}
 <div class="mod-crumb">
-  <a href="/perturbseq/module/{{ parent }}" data-mod-tip="{{ parent }}" data-mod-color="{{ card_color }}">{{ parent }}</a>
+  <a href="/tf-perturbseq/module/{{ parent }}" data-mod-tip="{{ parent }}" data-mod-color="{{ card_color }}">{{ parent }}</a>
   <span class="mod-crumb-sep">›</span>
 </div>
 {% endif %}
@@ -221,12 +221,12 @@
           {% endif %}
           {% if desc.highlight_genes %}
           <span><strong>Notable genes:</strong>
-            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/tf-perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.top_tfs %}
           <span><strong>Top TFs:</strong>
-            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/tf-perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
         </div>
@@ -246,17 +246,17 @@
           {% endif %}
           {% if desc.highlight_genes %}
           <span><strong>Notable genes:</strong>
-            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/tf-perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.top_tfs %}
           <span><strong>Top TFs:</strong>
-            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/tf-perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.similar_submodules %}
           <span><strong>Similar submodules:</strong>
-            {% for s in desc.similar_submodules %}<a class="intro-tag submodule-tag" href="/perturbseq/module/{{ s.name }}" style="background:{{ s.color }};color:#fff;">{{ s.name }}</a> {% endfor %}
+            {% for s in desc.similar_submodules %}<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/{{ s.name }}" style="background:{{ s.color }};color:#fff;">{{ s.name }}</a> {% endfor %}
           </span>
           {% endif %}
         </div>
@@ -277,12 +277,12 @@
           {% endif %}
           {% if desc.highlight_genes %}
           <span><strong>Notable genes:</strong>
-            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+            {% for g in desc.highlight_genes %}<a class="intro-tag gene-tag" href="/tf-perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
           </span>
           {% endif %}
           {% if desc.top_tfs %}
           <span><strong>Top TFs:</strong>
-            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
+            {% for t in desc.top_tfs %}<a class="intro-tag tf-tag" href="/tf-perturbseq/gene/{{ t }}">{{ t }}</a> {% endfor %}
           </span>
           {% endif %}
         </div>
@@ -295,7 +295,7 @@
       {% if not desc and notable_genes %}
       <div class="intro-highlights" style="margin-top:10px">
         <span><strong>Notable genes:</strong>
-          {% for g in notable_genes %}<a class="intro-tag gene-tag" href="/perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
+          {% for g in notable_genes %}<a class="intro-tag gene-tag" href="/tf-perturbseq/gene/{{ g }}">{{ g }}</a> {% endfor %}
         </span>
       </div>
       {% endif %}
@@ -368,11 +368,11 @@
         {% for s in submodules %}
         <tr>
           <td>
-            <a class="node-link" data-mod-tip="{{ s.id }}" data-mod-color="{{ s.color }}" href="/perturbseq/module/{{ s.id }}" style="display:inline-flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:{{ s.color }};flex-shrink:0"></span>{{ s.id }}</a>
+            <a class="node-link" data-mod-tip="{{ s.id }}" data-mod-color="{{ s.color }}" href="/tf-perturbseq/module/{{ s.id }}" style="display:inline-flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:{{ s.color }};flex-shrink:0"></span>{{ s.id }}</a>
           </td>
           <td>{{ s.n_genes }}</td>
           <td style="white-space:normal">
-            {% for g in s.top_genes %}<a class="gene-chip" href="/perturbseq/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a> {% endfor %}
+            {% for g in s.top_genes %}<a class="gene-chip" href="/tf-perturbseq/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a> {% endfor %}
           </td>
         </tr>
         {% endfor %}
@@ -568,7 +568,7 @@
       <tbody>
         {% for tf in top_tfs %}
         <tr>
-          <td><a class="node-link" href="/perturbseq/gene/{{ tf.tf }}">{{ tf.tf }}</a></td>
+          <td><a class="node-link" href="/tf-perturbseq/gene/{{ tf.tf }}">{{ tf.tf }}</a></td>
           <td>{{ '∞' if tf.odds_ratio >= 1e300 else "%.1f"|format(tf.odds_ratio) }}</td>
           <td>{{ "%.2e"|format(tf.fdr) }}</td>
           <td><span class="intro-tag {{ 'term-tag' if tf.source == 'footprint' else 'gene-tag' }}">{{ tf.source }}</span></td>
@@ -792,7 +792,7 @@ const PROFILE     = {{ profile    | tojson }};
     layout: {name:'preset', animate:false}
   });
   cy.on('tap', 'node[type="tf"]', evt => {
-    window.location.href = '/perturbseq/gene/' + encodeURIComponent(evt.target.id());
+    window.location.href = '/tf-perturbseq/gene/' + encodeURIComponent(evt.target.id());
   });
 
   const tbody    = document.querySelector('#gc-tf-table tbody');
@@ -845,7 +845,7 @@ const PROFILE     = {{ profile    | tojson }};
         ? (r.nes > 0 ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
         : '<span style="color:var(--text-muted)">—</span>';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td class="${hasNES?(r.nes>0?'nes-pos':'nes-neg'):''}">${hasNES?r.nes.toFixed(3):'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding||''}</td><td>${r.odds_ratio!=null?r.odds_ratio.toFixed(2):'—'}</td>`;
+      tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td class="${hasNES?(r.nes>0?'nes-pos':'nes-neg'):''}">${hasNES?r.nes.toFixed(3):'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding||''}</td><td>${r.odds_ratio!=null?r.odds_ratio.toFixed(2):'—'}</td>`;
       tbody.appendChild(tr);
     });
     if (countEl) countEl.textContent = `${d.length} of ${gcTFs.length}`;
@@ -983,7 +983,7 @@ const PROFILE     = {{ profile    | tojson }};
     d.slice(page * PAGE, (page + 1) * PAGE).forEach(r => {
       const tr = document.createElement('tr');
       const type = TFNetwork.tfStatusBadge(r.tf_status);
-      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${type}</td><td>${r.pubs || '—'}</td>`;
+      tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${type}</td><td>${r.pubs || '—'}</td>`;
       tb.appendChild(tr);
     });
     const pag = document.getElementById('gc-gene-pagination');
@@ -1023,10 +1023,10 @@ async function main() {
   const enc = encodeURIComponent(NAME);
   const isSub = MODULE_TYPE === 'sub';
   const [data, aux] = await Promise.all([
-    fetch('/perturbseq/api/module/' + enc).then(r => r.json()),
+    fetch('/tf-perturbseq/api/module/' + enc).then(r => r.json()),
     isSub
-      ? fetch('/perturbseq/api/module/' + enc + '/enrichment').then(r => r.json())
-      : fetch('/perturbseq/api/module/' + enc + '/detail').then(r => r.json()),
+      ? fetch('/tf-perturbseq/api/module/' + enc + '/enrichment').then(r => r.json())
+      : fetch('/tf-perturbseq/api/module/' + enc + '/detail').then(r => r.json()),
   ]);
   const detail = isSub ? null : aux;
   const bindMap = new Map(data.binding.map(e=>[e.tf,e]));
@@ -1093,13 +1093,13 @@ async function main() {
     ],
     layout:{name:'preset',animate:false}
   });
-  cy.on('tap','node[type="tf"]',evt=>{window.location.href='/perturbseq/gene/'+encodeURIComponent(evt.target.id());});
+  cy.on('tap','node[type="tf"]',evt=>{window.location.href='/tf-perturbseq/gene/'+encodeURIComponent(evt.target.id());});
   // TF table
   makeFilterSortTable(document.getElementById('reg-table'), allRows, r=>{
     const dir=r.direction==='Up'?'<span class="direction-up">↑ Up</span>':r.direction==='Down'?'<span class="direction-down">↓ Down</span>':'—';
     const tr=document.createElement('tr');
     const or_s=r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML=`<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!==null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!==null?r.n_sig_gRNA:'—'}</td><td>${r.padj!==null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML=`<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!==null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!==null?r.n_sig_gRNA:'—'}</td><td>${r.padj!==null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
   }, { barId:'filter-bar', countId:'filter-count', searchId:'tf-search', onChange:applyCyFilter });
   // Sync filter bar + search to Cytoscape network
@@ -1222,9 +1222,9 @@ async function main() {
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.submoduleColor};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>`
         : '';
       const subCell = r.submodule
-        ? `${dot}<a class="node-link" href="/perturbseq/submodule/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
+        ? `${dot}<a class="node-link" href="/tf-perturbseq/submodule/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
         : '<span style="color:var(--text-muted)">—</span>';
-      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${subCell}</td><td>${r.pubs || '—'}</td>`;
+      tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${subCell}</td><td>${r.pubs || '—'}</td>`;
       tb.appendChild(tr);
     });
     const pag = document.getElementById('gene-pagination');
@@ -1317,7 +1317,7 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
     d.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(r => {
       const tr = document.createElement('tr');
       const typeHtml = tfStatusBadge(r.tf_status);
-      tr.innerHTML = `<td><a class="node-link" href="/perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${r.pubs || '—'}</td>`;
+      tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${r.pubs || '—'}</td>`;
       tb.appendChild(tr);
     });
     const countEl = document.getElementById('sub-gene-count');
@@ -1372,7 +1372,7 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
 })();
 
 (async function() {
-  const resp=await fetch('/perturbseq/api/submodule/'+encodeURIComponent(SUBMODULE_ID)+'/gene_network');
+  const resp=await fetch('/tf-perturbseq/api/submodule/'+encodeURIComponent(SUBMODULE_ID)+'/gene_network');
   const data=await resp.json();
   if(!data.edges||!data.edges.length) return;
   const allEdges=data.edges, zMin=data.z_min, zMax=data.z_max, zDefault=data.z_p75;
@@ -1400,7 +1400,7 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
   });
   cy.nodes().forEach(n=>n.data('sz',nodeSize(totalStrength[n.id()]||0,maxStr)));
   cy.nodes().forEach(n=>{if(top5.has(n.id()))n.style({'label':n.id(),'text-background-opacity':0.9});});
-  cy.on('tap','node',evt=>{window.location.href='/perturbseq/gene/'+encodeURIComponent(evt.target.id());});
+  cy.on('tap','node',evt=>{window.location.href='/tf-perturbseq/gene/'+encodeURIComponent(evt.target.id());});
   cy.on('mouseover','node',evt=>{evt.target.style({'label':evt.target.id(),'text-background-opacity':0.9});});
   cy.on('mouseout','node',evt=>{if(top5.has(evt.target.id()))return;evt.target.style({'label':'','text-background-opacity':0});});
   const repSlider=document.getElementById('rep-slider'),repVal=document.getElementById('rep-val');

@@ -90,6 +90,11 @@ def lab_team():
     return render_template("lab/team.html", current_page="team", team=_TEAM)
 
 
+@app.route("/tf-perturbseq")
+def tf_perturbseq():
+    return render_template("landing.html")
+
+
 @app.route("/resources")
 def lab_resources():
     return render_template("lab/resources.html", current_page="resources")

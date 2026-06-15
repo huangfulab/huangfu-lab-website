@@ -556,8 +556,8 @@ drawExprChart('tf-expr-chart', TF_EXPR, '#4a56b0');
 (function() {
   let allTFs = [], allModules = [];
   Promise.all([
-    fetch('/perturbseq/api/link-tfs').then(r => r.json()),
-    fetch('/perturbseq/api/link-modules').then(r => r.json()),
+    fetch('/tf-perturbseq/api/link-tfs').then(r => r.json()),
+    fetch('/tf-perturbseq/api/link-modules').then(r => r.json()),
   ]).then(([tfs, mods]) => { allTFs = tfs; allModules = mods; });
 
   function makeSelector({ inputId, dropdownId, current, getOptions, onSelect }) {

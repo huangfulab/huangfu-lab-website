@@ -147,7 +147,7 @@
 <!-- ── Hero ──────────────────────────────────────────────────────────────── -->
 <div class="ds-hero">
   <div class="ds-title-row">
-    <a class="ds-tf-link" href="/perturbseq/gene/{{ ds.tf_gene_name }}">{{ ds.tf_gene_name }}</a>
+    <a class="ds-tf-link" href="/tf-perturbseq/gene/{{ ds.tf_gene_name }}">{{ ds.tf_gene_name }}</a>
     <span class="ds-accession">{{ ds.dataset }}</span>
   </div>
   <div class="ds-badge-row">
@@ -198,7 +198,7 @@
       <tbody>
         {% for g in gene_rows %}
         <tr>
-          <td><a href="/perturbseq/gene/{{ g.gene_name }}">{{ g.gene_name }}</a></td>
+          <td><a href="/tf-perturbseq/gene/{{ g.gene_name }}">{{ g.gene_name }}</a></td>
           <td>
             <span class="lt-pill {{ g.gene_region_subtype }}">
               {{ lt_labels.get(g.gene_region_subtype, g.gene_region_subtype | replace('_',' ')) }}
@@ -235,7 +235,7 @@
         {% for el in element_rows %}
         <tr>
           <td>
-            <a href="/perturbseq/element/{{ el.atac_peak_id }}">
+            <a href="/tf-perturbseq/element/{{ el.atac_peak_id }}">
               {{ el.chr }}:{{ "{:,}".format(el.start) }}–{{ "{:,}".format(el.end) }}
             </a>
           </td>
@@ -272,7 +272,7 @@
     {% endif %}
     <div class="related-row">
       <span class="related-celltype">{{ r.cell_type }}</span>
-      <a href="/perturbseq/dataset/{{ r.dataset_id }}">{{ r.dataset }}</a>
+      <a href="/tf-perturbseq/dataset/{{ r.dataset_id }}">{{ r.dataset }}</a>
       <span class="ds-badge source {{ source_cls.get(r.source, '') }}" style="margin-left:auto">
         {{ source_labels.get(r.source, r.source) }}
       </span>
