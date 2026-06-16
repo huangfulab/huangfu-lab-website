@@ -21,7 +21,7 @@
     "start_year": null,
     "years": null,
     "image": "dapeng-yang.jpg",
-    "alumni": false
+    "alumni": true
   },
   {
     "name": "Xian Zhang",
@@ -117,6 +117,14 @@
     "start_year": 2025,
     "years": null,
     "image": "jiahui-zhao.jpg",
+    "alumni": false
+  },
+  {
+    "name": "Anella Lefebvre",
+    "role": "Graduate Research Assistant",
+    "start_year": 2025,
+    "years": null,
+    "image": "",
     "alumni": false
   },
   {

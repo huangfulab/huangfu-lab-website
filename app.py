@@ -80,7 +80,7 @@ def load_network(level):
 @app.route("/")
 @app.route("/lab")
 def lab():
-    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:5], announcements=_ANNOUNCEMENTS[:5])
+    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:5], announcements=_load_announcements()[:5])
 
 
 @app.route("/research")
@@ -95,21 +95,24 @@ def lab_publications():
 
 @app.route("/announcements")
 def lab_announcements():
-    return render_template("lab/announcements.html", current_page="announcements", announcements=_ANNOUNCEMENTS)
+    return render_template("lab/announcements.html", current_page="announcements", announcements=_load_announcements())
 
 
 _TEAM_PATH = Path(__file__).resolve().parent / "static" / "json" / "team.json"
-with open(_TEAM_PATH) as _tf:
-    _TEAM = json.load(_tf)  # flat list; each entry has alumni: true/false
-
 _ANNOUNCEMENTS_PATH = Path(__file__).resolve().parent / "static" / "json" / "announcements.json"
-with open(_ANNOUNCEMENTS_PATH) as _af:
-    _ANNOUNCEMENTS = json.load(_af)
+
+def _load_team():
+    with open(_TEAM_PATH) as f:
+        return json.load(f)
+
+def _load_announcements():
+    with open(_ANNOUNCEMENTS_PATH) as f:
+        return json.load(f)
 
 
 @app.route("/team")
 def lab_team():
-    return render_template("lab/team.html", current_page="team", team=_TEAM)
+    return render_template("lab/team.html", current_page="team", team=_load_team())
 
 
 @app.route("/tf-perturbseq")
