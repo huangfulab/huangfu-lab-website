@@ -457,7 +457,7 @@
         <span class="ev-summary-pill-label">TF Binding Evidence</span>
         <span class="ev-summary-pill-sub">
           {%- if not has_binding_evidence -%}No binding evidence found
-          {%- elif ns_tip.chip_ids | length == 0 -%}No ChIP-seq data for this TF
+          {%- elif ns_tip.chip_ids | length == 0 -%}No ChIP-seq binding data available
           {%- else -%}{{ ns_tip.chip_ids | length }} ChIP-seq dataset{{ 's' if ns_tip.chip_ids | length != 1 else '' }} · {{ ns_chip.chip_elements }} bound element{{ 's' if ns_chip.chip_elements != 1 else '' }}
           {%- endif -%}
         </span>
