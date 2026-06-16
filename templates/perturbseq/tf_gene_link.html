@@ -312,16 +312,27 @@
 .ev-summary-pill.yes { background: rgba(16,185,129,0.12); color: #059669; border-color: #6ee7b7; }
 .ev-summary-pill.no  { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
 .ev-summary-pill svg { flex-shrink: 0; }
-.ev-summary-caret { opacity: 0.6; flex-shrink: 0; }
 
 /* ── Evidence pill tooltip ─────────────────────────────────────────── */
 #ev-pill-tip {
   display: none; position: fixed; z-index: 9999;
   width: 300px; border-radius: var(--radius); background: var(--bg-card);
   border: 1px solid var(--border); border-left: 4px solid #059669;
-  box-shadow: 0 4px 18px rgba(0,0,0,.13); overflow: hidden;
-  font-family: inherit;
+  box-shadow: 0 4px 18px rgba(0,0,0,.13); overflow: visible;
+  font-family: inherit; --caret-x: 20px;
 }
+/* caret arrow — points toward the pill */
+#ev-pill-tip::before, #ev-pill-tip::after {
+  content: ''; position: absolute;
+  left: var(--caret-x); transform: translateX(-50%);
+  border: 7px solid transparent; pointer-events: none;
+}
+/* tooltip below pill → arrow points up */
+#ev-pill-tip:not(.tip-above)::before { top: -7px; border-top: none; border-bottom-color: var(--border); }
+#ev-pill-tip:not(.tip-above)::after  { top: -5px; border-top: none; border-bottom-color: var(--bg-card); border-width: 6px; }
+/* tooltip above pill → arrow points down */
+#ev-pill-tip.tip-above::before { bottom: -7px; border-bottom: none; border-top-color: var(--border); }
+#ev-pill-tip.tip-above::after  { bottom: -5px; border-bottom: none; border-top-color: var(--bg-card); border-width: 6px; }
 #ev-pill-tip a { color: var(--accent); text-decoration: none; }
 #ev-pill-tip a:hover { text-decoration: underline; }
 #ev-pill-tip-title {
@@ -434,7 +445,6 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
       Binding evidence
-      <svg class="ev-summary-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </span>
     <span id="ev-pill-perturbation" class="ev-summary-pill {{ 'yes' if has_perturbation_evidence else 'no' }}">
       {% if has_perturbation_evidence %}
@@ -443,7 +453,6 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
       Perturbation evidence
-      <svg class="ev-summary-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </span>
   </div>
 
@@ -1505,11 +1514,17 @@ let _igvBrowser = null;
     const pad = 8, W = window.innerWidth, H = window.innerHeight;
     const r  = el.getBoundingClientRect();
     const tw = tip.offsetWidth, th = tip.offsetHeight;
-    let x = r.left, y = r.bottom + 6;
-    if (y + th > H - pad) y = r.top - th - 6;
+    let x = r.left, y = r.bottom + 8;
+    const above = y + th > H - pad;
+    if (above) y = r.top - th - 8;
     if (x + tw > W - pad) x = r.right - tw;
-    tip.style.left = Math.max(pad, x) + 'px';
-    tip.style.top  = Math.max(pad, y) + 'px';
+    x = Math.max(pad, x);
+    /* align caret with horizontal center of the pill */
+    const caretX = Math.round((r.left + r.right) / 2 - x);
+    tip.style.setProperty('--caret-x', caretX + 'px');
+    tip.classList.toggle('tip-above', above);
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
   }
 
   function row(label, valHtml) {
