@@ -273,7 +273,7 @@
   function resolveTarget(target) {
     const a = target.closest('a[href]');
     if (!a) return null;
-    const m = a.getAttribute('href').match(/\/perturbseq\/link\/([^/?#]+)\/([^/?#]+)/);
+    const m = a.getAttribute('href').match(/\/tf-perturbseq\/link\/([^/?#]+)\/([^/?#]+)/);
     if (!m) return null;
     return { el: a, tf: decodeURIComponent(m[1]), gene: decodeURIComponent(m[2]) };
   }
