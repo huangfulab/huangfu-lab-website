@@ -477,8 +477,9 @@
           {%- else -%}
             {%- set _n_up   = perturbation_evidence | selectattr('direction','eq','up')   | list | length -%}
             {%- set _n_down = perturbation_evidence | selectattr('direction','eq','down') | list | length -%}
-            {%- if _n_up > 0 and _n_down == 0 -%}↑ upregulated on {{ tf }} KD
-            {%- elif _n_down > 0 and _n_up == 0 -%}↓ downregulated on {{ tf }} KD
+            {%- set _n_total = perturbation_evidence | length -%}
+            {%- if _n_up > 0 and _n_down == 0 -%}↑ upregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}
+            {%- elif _n_down > 0 and _n_up == 0 -%}↓ downregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}
             {%- else -%}{{ _n_up }}↑ {{ _n_down }}↓ mixed direction on {{ tf }} KD
             {%- endif -%}
           {%- endif -%}
