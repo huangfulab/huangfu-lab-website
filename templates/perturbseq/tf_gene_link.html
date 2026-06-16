@@ -303,15 +303,18 @@
 /* ── Evidence summary pills ────────────────────────────────────────── */
 .ev-summary-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ev-summary-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600; padding: 5px 13px;
-  border-radius: 20px; border: 1.5px solid; letter-spacing: 0.2px;
-  white-space: nowrap; cursor: pointer; transition: filter 0.12s;
+  display: inline-flex; align-items: flex-start; gap: 7px;
+  font-size: 12px; font-weight: 600; padding: 6px 13px;
+  border-radius: 14px; border: 1.5px solid; letter-spacing: 0.2px;
+  cursor: pointer; transition: filter 0.12s;
 }
 .ev-summary-pill:hover { filter: brightness(0.92); }
 .ev-summary-pill.yes { background: rgba(16,185,129,0.12); color: #059669; border-color: #6ee7b7; }
 .ev-summary-pill.no  { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
-.ev-summary-pill svg { flex-shrink: 0; }
+.ev-summary-pill svg { flex-shrink: 0; margin-top: 1px; }
+.ev-summary-pill-text { display: flex; flex-direction: column; gap: 1px; }
+.ev-summary-pill-label { line-height: 1.3; }
+.ev-summary-pill-sub { font-size: 10px; font-weight: 500; opacity: 0.75; line-height: 1.3; }
 
 /* ── Evidence pill tooltip ─────────────────────────────────────────── */
 #ev-pill-tip {
@@ -437,6 +440,12 @@
     {% endfor %}
   {% endfor %}
 
+  {# ── Count elements with ChIP-seq support ── #}
+  {% set ns_chip = namespace(chip_elements=0) %}
+  {% for el in elements %}
+    {% if el.chipseq | length > 0 %}{% set ns_chip.chip_elements = ns_chip.chip_elements + 1 %}{% endif %}
+  {% endfor %}
+
   <div class="ev-summary-row" style="margin-left:auto">
     <span id="ev-pill-binding" class="ev-summary-pill {{ 'yes' if has_binding_evidence else 'no' }}">
       {% if has_binding_evidence %}
@@ -444,7 +453,15 @@
       {% else %}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
-      Binding evidence
+      <span class="ev-summary-pill-text">
+        <span class="ev-summary-pill-label">TF Binding Evidence</span>
+        <span class="ev-summary-pill-sub">
+          {%- if not has_binding_evidence -%}No binding evidence found
+          {%- elif ns_tip.chip_ids | length == 0 -%}No ChIP-seq data for this TF
+          {%- else -%}{{ ns_tip.chip_ids | length }} ChIP-seq dataset{{ 's' if ns_tip.chip_ids | length != 1 else '' }} · {{ ns_chip.chip_elements }} bound element{{ 's' if ns_chip.chip_elements != 1 else '' }}
+          {%- endif -%}
+        </span>
+      </span>
     </span>
     <span id="ev-pill-perturbation" class="ev-summary-pill {{ 'yes' if has_perturbation_evidence else 'no' }}">
       {% if has_perturbation_evidence %}
@@ -452,7 +469,14 @@
       {% else %}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
-      Perturbation evidence
+      <span class="ev-summary-pill-text">
+        <span class="ev-summary-pill-label">Perturbation Evidence</span>
+        <span class="ev-summary-pill-sub">
+          {%- if not has_perturbation_evidence -%}Not significantly responsive
+          {%- else -%}{{ perturbation_evidence | length }} gRNA{{ 's' if perturbation_evidence | length != 1 else '' }} significant
+          {%- endif -%}
+        </span>
+      </span>
     </span>
   </div>
 
