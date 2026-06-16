@@ -314,7 +314,8 @@
 .ev-summary-pill svg { flex-shrink: 0; margin-top: 1px; }
 .ev-summary-pill-text { display: flex; flex-direction: column; gap: 1px; }
 .ev-summary-pill-label { line-height: 1.3; }
-.ev-summary-pill-sub { font-size: 10px; font-weight: 500; opacity: 0.75; line-height: 1.3; }
+.ev-summary-pill-sub  { font-size: 10px; font-weight: 500; opacity: 0.75; line-height: 1.3; }
+.ev-summary-pill-desc { font-size: 9.5px; font-weight: 400; opacity: 0.6;  line-height: 1.3; }
 
 /* ── Evidence pill tooltip ─────────────────────────────────────────── */
 #ev-pill-tip {
@@ -470,21 +471,23 @@
       {% else %}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
+      {%- set _n_up    = perturbation_evidence | selectattr('direction','eq','up')   | list | length -%}
+      {%- set _n_down  = perturbation_evidence | selectattr('direction','eq','down') | list | length -%}
+      {%- set _n_total = perturbation_evidence | length -%}
       <span class="ev-summary-pill-text">
         <span class="ev-summary-pill-label">Perturbation Evidence</span>
-        <span class="ev-summary-pill-sub">
-          {%- if not gene_in_de -%}Not sufficiently expressed in DE
-          {%- elif not has_perturbation_evidence -%}Not differentially expressed on KD
-          {%- else -%}
-            {%- set _n_up   = perturbation_evidence | selectattr('direction','eq','up')   | list | length -%}
-            {%- set _n_down = perturbation_evidence | selectattr('direction','eq','down') | list | length -%}
-            {%- set _n_total = perturbation_evidence | length -%}
-            {%- if _n_up > 0 and _n_down == 0 -%}↑ upregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}
-            {%- elif _n_down > 0 and _n_up == 0 -%}↓ downregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}
-            {%- else -%}{{ _n_up }}↑ {{ _n_down }}↓ mixed direction on {{ tf }} KD
-            {%- endif -%}
-          {%- endif -%}
-        </span>
+        {% if not gene_in_de %}
+        <span class="ev-summary-pill-sub">Not sufficiently expressed in DE</span>
+        {% elif not has_perturbation_evidence %}
+        <span class="ev-summary-pill-sub">Not differentially expressed on KD</span>
+        {% elif _n_up > 0 and _n_down == 0 %}
+        <span class="ev-summary-pill-sub">↑ upregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}</span>
+        {% elif _n_down > 0 and _n_up == 0 %}
+        <span class="ev-summary-pill-sub">↓ downregulated on {{ tf }} KD · {{ _n_total }} gRNA{{ 's' if _n_total != 1 else '' }}</span>
+        {% else %}
+        <span class="ev-summary-pill-sub">Inconclusive</span>
+        <span class="ev-summary-pill-desc">{{ _n_up }} gRNA{{ 's' if _n_up != 1 else '' }} up, {{ _n_down }} gRNA{{ 's' if _n_down != 1 else '' }} down on {{ tf }} KD</span>
+        {% endif %}
       </span>
     </span>
   </div>
