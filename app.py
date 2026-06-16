@@ -98,11 +98,11 @@ def lab_announcements():
     return render_template("lab/announcements.html", current_page="announcements", announcements=_ANNOUNCEMENTS)
 
 
-_TEAM_PATH = Path(__file__).resolve().parent / "static" / "team.json"
+_TEAM_PATH = Path(__file__).resolve().parent / "static" / "json" / "team.json"
 with open(_TEAM_PATH) as _tf:
     _TEAM = json.load(_tf)  # flat list; each entry has alumni: true/false
 
-_ANNOUNCEMENTS_PATH = Path(__file__).resolve().parent / "static" / "announcements.json"
+_ANNOUNCEMENTS_PATH = Path(__file__).resolve().parent / "static" / "json" / "announcements.json"
 with open(_ANNOUNCEMENTS_PATH) as _af:
     _ANNOUNCEMENTS = json.load(_af)
 
