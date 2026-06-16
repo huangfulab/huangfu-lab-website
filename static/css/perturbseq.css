@@ -379,6 +379,7 @@ a.node-link:hover { color: var(--accent-hover); }
     min-width: 0;
     max-height: 60vh;
     overflow-y: auto;
+    overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card);
