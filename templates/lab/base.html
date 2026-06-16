@@ -8,6 +8,11 @@
 <meta property="og:description" content="{{ self.meta_description() }}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{{ request.url }}">
+<meta property="og:image" content="{{ request.host_url }}static/img/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ self.title() }}">
+<meta name="twitter:description" content="{{ self.meta_description() }}">
+<meta name="twitter:image" content="{{ request.host_url }}static/img/og-image.png">
 <link rel="canonical" href="{{ request.url }}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <title>{% block title %}Huangfu Lab — Developmental Biology · Sloan Kettering Institute{% endblock %}</title>

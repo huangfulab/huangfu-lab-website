@@ -3,7 +3,7 @@
     "name": "Danwei Huangfu",
     "role": "Principal Investigator",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "danwei-huangfu.jpg",
     "alumni": false
   },
@@ -11,7 +11,7 @@
     "name": "Julian Pulecio",
     "role": "Sr. Research Scientist",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "julian-pulecio.jpg",
     "alumni": false
   },
@@ -19,7 +19,7 @@
     "name": "Dapeng Yang",
     "role": "Sr. Research Scientist",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "dapeng-yang.jpg",
     "alumni": true
   },
@@ -27,7 +27,7 @@
     "name": "Xian Zhang",
     "role": "Sr. Research Scientist",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "xian-zhang.jpg",
     "alumni": false
   },
@@ -35,7 +35,7 @@
     "name": "Adonis C. John",
     "role": "Lead, Research Administrative Assistant",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "adonis-john.jpg",
     "alumni": false
   },
@@ -43,7 +43,7 @@
     "name": "Tamara Casteels",
     "role": "Research Fellow",
     "start_year": 2022,
-    "years": null,
+    "years": "",
     "image": "tamara-casteels.jpg",
     "alumni": false
   },
@@ -51,7 +51,7 @@
     "name": "Tingfeng Guo",
     "role": "Research Fellow",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "tingfeng-guo.jpg",
     "alumni": false
   },
@@ -59,7 +59,7 @@
     "name": "Nan Hu",
     "role": "Computational Biologist",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "nan-hu.jpg",
     "alumni": false
   },
@@ -67,7 +67,7 @@
     "name": "Dingyu Liu",
     "role": "Graduate Research Assistant",
     "start_year": 2019,
-    "years": null,
+    "years": "",
     "image": "dingyu-liu.jpg",
     "alumni": false
   },
@@ -75,7 +75,7 @@
     "name": "Pallavi Mohapatra",
     "role": "Research Fellow",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "pallavi-mohapatra.jpg",
     "alumni": false
   },
@@ -83,7 +83,7 @@
     "name": "Denis Torre",
     "role": "Research Scholar",
     "start_year": 2024,
-    "years": null,
+    "years": "",
     "image": "denis-torre.png",
     "alumni": false
   },
@@ -91,7 +91,7 @@
     "name": "Xianming Wang",
     "role": "Research Fellow",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "xianming-wang.jpg",
     "alumni": false
   },
@@ -99,7 +99,7 @@
     "name": "Breanna Williams",
     "role": "Research Technician",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "breanna-williams.jpg",
     "alumni": false
   },
@@ -107,7 +107,7 @@
     "name": "Nan Zhang",
     "role": "Research Associate",
     "start_year": 2021,
-    "years": null,
+    "years": "",
     "image": "nan-zhang.jpg",
     "alumni": false
   },
@@ -115,7 +115,7 @@
     "name": "Jiahui Hazel Zhao",
     "role": "Graduate Research Assistant",
     "start_year": 2025,
-    "years": null,
+    "years": "",
     "image": "jiahui-zhao.jpg",
     "alumni": false
   },
@@ -123,7 +123,7 @@
     "name": "Anella Lefebvre",
     "role": "Graduate Research Assistant",
     "start_year": 2025,
-    "years": null,
+    "years": "",
     "image": "",
     "alumni": false
   },
@@ -131,15 +131,15 @@
     "name": "Jeyaram Ravichandran Damodaran",
     "role": "Sr. Research Technician",
     "start_year": 2021,
-    "years": "2021–2023",
+    "years": "",
     "image": "jeyaram-damodaran.jpg",
     "alumni": true
   },
   {
     "name": "Renhe Luo",
-    "role": "Vector Engineering Research Scientist, Roche",
+    "role": "Graduate Research Assistant",
     "start_year": 2016,
-    "years": "2016–2024",
+    "years": "",
     "image": "renhe-luo.jpg",
     "alumni": true
   },
@@ -147,7 +147,7 @@
     "name": "Hyein Cho",
     "role": "Sr. Computational Biologist",
     "start_year": 2021,
-    "years": null,
+    "years": "",
     "image": "hyein-cho.jpg",
     "alumni": true
   },
@@ -155,7 +155,7 @@
     "name": "Georgina Berrozpe",
     "role": "Sr. Research Scientist",
     "start_year": 2022,
-    "years": null,
+    "years": "",
     "image": "georgina-berrozpe.jpg",
     "alumni": true
   },
@@ -163,7 +163,7 @@
     "name": "Hanuman Kale",
     "role": "Research Scholar",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "hanuman-kale.jpg",
     "alumni": true
   },
@@ -171,7 +171,7 @@
     "name": "Jielin Yan",
     "role": "Research Scholar",
     "start_year": 2018,
-    "years": null,
+    "years": "",
     "image": "jielin-yan.jpg",
     "alumni": true
   },
@@ -179,7 +179,7 @@
     "name": "Samuel Kaplan",
     "role": "Graduate Research Assistant",
     "start_year": 2018,
-    "years": null,
+    "years": "",
     "image": "samuel-kaplan.jpg",
     "alumni": true
   },
@@ -187,7 +187,7 @@
     "name": "Inbal Caspi",
     "role": "Graduate Research Assistant",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "inbal-caspi.jpg",
     "alumni": true
   },
@@ -195,7 +195,7 @@
     "name": "Gary Dixon",
     "role": "Graduate Research Assistant",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "gary-dixon.jpg",
     "alumni": true
   },
@@ -203,7 +203,7 @@
     "name": "Kihyun Lee",
     "role": "Graduate Research Assistant",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "kihyun-lee.jpg",
     "alumni": true
   },
@@ -211,7 +211,7 @@
     "name": "Bess Rosen",
     "role": "Graduate Research Assistant",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "bess-rosen.jpg",
     "alumni": true
   },
@@ -219,7 +219,7 @@
     "name": "Sharon Adeniyi",
     "role": "Research Technician",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "sharon-adeniyi.jpg",
     "alumni": true
   },
@@ -227,7 +227,7 @@
     "name": "Arushi Rana",
     "role": "Research Technician",
     "start_year": 2022,
-    "years": null,
+    "years": "",
     "image": "arushi-rana.png",
     "alumni": true
   },
@@ -235,7 +235,7 @@
     "name": "Sricharan Kannan",
     "role": "Research Technician",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": "sricharan-kannan.jpg",
     "alumni": true
   },
@@ -243,7 +243,7 @@
     "name": "Robert Rickert",
     "role": "Research Technician",
     "start_year": 2017,
-    "years": null,
+    "years": "",
     "image": "robert-rickert.jpg",
     "alumni": true
   },
@@ -251,7 +251,7 @@
     "name": "Chia Chan",
     "role": "Lab Manager",
     "start_year": 2024,
-    "years": null,
+    "years": "",
     "image": "chia-chan.jpg",
     "alumni": true
   },
@@ -259,7 +259,7 @@
     "name": "Laura Pereira",
     "role": "Scientific Research Lead",
     "start_year": 2023,
-    "years": null,
+    "years": "",
     "image": null,
     "alumni": true
   },
@@ -267,7 +267,7 @@
     "name": "Chew-Li Soh",
     "role": "Research Fellow",
     "start_year": null,
-    "years": null,
+    "years": "",
     "image": "chewli-soh.jpg",
     "alumni": true
   },
@@ -275,7 +275,7 @@
     "name": "Qing Li",
     "role": "Resident Physician, Case Western Reserve University",
     "start_year": 2012,
-    "years": "2012–2019",
+    "years": "",
     "image": "qing-li.jpg",
     "alumni": true
   },
@@ -283,7 +283,7 @@
     "name": "Abhijit Shukla",
     "role": "Research Fellow",
     "start_year": 2015,
-    "years": "2015–2018",
+    "years": "",
     "image": null,
     "alumni": true
   },
@@ -291,7 +291,7 @@
     "name": "Zengrong Zhu",
     "role": "Research Associate",
     "start_year": 2011,
-    "years": "2011–2016",
+    "years": "",
     "image": "zengrong-zhu.jpg",
     "alumni": true
   },
@@ -299,7 +299,7 @@
     "name": "Zhong-Dong Shi",
     "role": "Research Fellow",
     "start_year": 2010,
-    "years": "2010–2016",
+    "years": "",
     "image": "zhongdong-shi.jpg",
     "alumni": true
   },
@@ -307,7 +307,7 @@
     "name": "Federico Gonzalez-Grassi",
     "role": "Research Fellow",
     "start_year": 2011,
-    "years": "2011–2015",
+    "years": "",
     "image": "federico-gonzalez-grassi.jpg",
     "alumni": true
   },
@@ -315,7 +315,7 @@
     "name": "Nipun Verma",
     "role": "Graduate Research Assistant",
     "start_year": 2012,
-    "years": "2012–2017",
+    "years": "",
     "image": "nipun-verma.jpg",
     "alumni": true
   },
@@ -323,7 +323,7 @@
     "name": "Virginia Teijeiro",
     "role": "Graduate Research Assistant",
     "start_year": 2011,
-    "years": "2011–2017",
+    "years": "",
     "image": "virginia-teijeiro.jpg",
     "alumni": true
   },
@@ -331,7 +331,7 @@
     "name": "Tracey Leonardo",
     "role": "Research Technician",
     "start_year": 2015,
-    "years": "2015–2017",
+    "years": "",
     "image": null,
     "alumni": true
   },
@@ -339,7 +339,7 @@
     "name": "Katherine Lelli",
     "role": "Research Fellow",
     "start_year": 2012,
-    "years": "2012–2013",
+    "years": "",
     "image": "katherine-lelli.jpg",
     "alumni": true
   },
@@ -347,7 +347,7 @@
     "name": "Daniela C. Georgieva",
     "role": "Research Technician",
     "start_year": 2010,
-    "years": "2010–2013",
+    "years": "",
     "image": "daniela-georgieva.jpg",
     "alumni": true
   }

@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify
 import json
 import os
+import sqlite3
 import yaml
 import html
 import pandas as pd
@@ -155,13 +156,39 @@ def robots_txt():
     return body, 200, {"Content-Type": "text/plain"}
 
 
+_SITEMAP_DB_PATH = Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v5.db"
+
 @app.route("/sitemap.xml")
 def sitemap_xml():
     urls = [
         "/", "/research", "/publications", "/announcements",
         "/team", "/resources", "/contact",
-        "/tf-perturbseq", "/modules", "/network",
+        "/tf-perturbseq", "/tf-perturbseq/all-modules", "/modules", "/network",
     ]
+    try:
+        conn = sqlite3.connect(str(_SITEMAP_DB_PATH))
+        genes = [r[0] for r in conn.execute(
+            "SELECT gene_name FROM gene_table ORDER BY gene_name"
+        ).fetchall()]
+        urls.extend(f"/tf-perturbseq/gene/{g}" for g in genes)
+        supermodules = [r[0] for r in conn.execute(
+            "SELECT module_name FROM module_table "
+            "WHERE source='hotspot_supermodule' AND module_name != 'unassigned' ORDER BY module_name"
+        ).fetchall()]
+        urls.extend(f"/tf-perturbseq/module/{m}" for m in supermodules)
+        submodules = [r[0] for r in conn.execute(
+            "SELECT module_name FROM module_table "
+            "WHERE source='hotspot_submodule' AND module_name != 'unassigned' ORDER BY module_name"
+        ).fetchall()]
+        urls.extend(f"/tf-perturbseq/module/{m}" for m in submodules)
+        gene_clusters = [r[0] for r in conn.execute(
+            "SELECT module_name FROM module_table "
+            "WHERE source='mfuzz_k7' AND module_name != 'cluster_7' ORDER BY module_name"
+        ).fetchall()]
+        urls.extend(f"/tf-perturbseq/module/GC{m.split('_')[1]}" for m in gene_clusters)
+        conn.close()
+    except Exception:
+        pass
     xml = render_template("sitemap.xml", urls=urls)
     return xml, 200, {"Content-Type": "application/xml"}
 

@@ -15,7 +15,7 @@
     {% for member in team if not member.alumni %}
     <div class="member-card">
       {% if member.image %}
-      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}">
+      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}" loading="lazy">
       {% else %}
       <div class="member-photo member-photo-placeholder"></div>
       {% endif %}
@@ -30,7 +30,7 @@
     {% for member in team if member.alumni %}
     <div class="member-card member-card-alumni">
       {% if member.image %}
-      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}">
+      <img class="member-photo" src="{{ url_for('static', filename='img/team/' ~ member.image) }}" alt="{{ member.name }}" loading="lazy">
       {% else %}
       <div class="member-photo member-photo-placeholder"></div>
       {% endif %}
