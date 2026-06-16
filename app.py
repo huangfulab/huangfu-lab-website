@@ -13,9 +13,19 @@ DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
 _CITATIONS_PATH = Path(__file__).resolve().parent / "citations.yaml"
+_PREPRINT_PUBLISHERS = {
+    "10.1101/": "bioRxiv",
+    "10.64898/": "openRxiv",
+}
+
 def _clean_citation(c):
     if c.get("publisher"):
         c["publisher"] = html.unescape(c["publisher"])
+    doi = c.get("id", "").removeprefix("doi:")
+    for prefix, name in _PREPRINT_PUBLISHERS.items():
+        if doi.startswith(prefix):
+            c["publisher"] = name
+            break
     return c
 
 with open(_CITATIONS_PATH) as _f:
@@ -24,6 +34,14 @@ with open(_CITATIONS_PATH) as _f:
         key=lambda c: c["date"],
         reverse=True,
     )
+
+_PREPRINT_NAMES = set(_PREPRINT_PUBLISHERS.values())
+
+_LAST_AUTHOR_CITATIONS = [
+    c for c in _ALL_CITATIONS
+    if c.get("authors") and c["authors"][-1] == "Danwei Huangfu"
+    and c.get("publisher") not in _PREPRINT_NAMES
+]
 
 
 def load_network(level):
@@ -62,7 +80,7 @@ def load_network(level):
 @app.route("/")
 @app.route("/lab")
 def lab():
-    return render_template("lab/index.html", citations=_ALL_CITATIONS[:3])
+    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:3])
 
 
 @app.route("/research")

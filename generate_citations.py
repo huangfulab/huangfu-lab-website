@@ -79,6 +79,12 @@ def crossref_citation(doi, orcid):
     container = (msg.get("container-title") or [""])[0].strip()
     publisher = container or msg.get("publisher", "").strip()
 
+    _preprint_publishers = {"10.1101/": "bioRxiv", "10.64898/": "openRxiv"}
+    for prefix, name in _preprint_publishers.items():
+        if doi.startswith(prefix):
+            publisher = name
+            break
+
     date_str = ""
     for date_field in ("published", "published-print", "published-online", "issued"):
         parts = (msg.get(date_field) or {}).get("date-parts", [[]])

@@ -1,6 +1,7 @@
 {% extends "lab/base.html" %}
 
-{% block meta_description %}Huangfu Lab uses human pluripotent stem cells and large-scale CRISPR screening to study transcriptional and epigenetic mechanisms of cell-fate decisions in development and disease.{% endblock %}
+{% block meta_description %}Huangfu Lab uses human pluripotent stem cells and large-scale CRISPR screening to study
+transcriptional and epigenetic mechanisms of cell-fate decisions in development and disease.{% endblock %}
 
 {% block content %}
 
@@ -8,11 +9,12 @@
 <section id="home">
   <h1 class="hero-title">hPSCs as a model to probe<br><span>the logic of human cell fate</span></h1>
   <p class="hero-sub">
-    We use human pluripotent stem cells as a genetic model to interrogate transcriptional
-    and epigenetic mechanisms underlying cell-fate decisions in development and disease.
-    Large-scale CRISPR screening, functional epigenomics, and computational approaches
-    converge on a central question: how do gene regulatory programs specify — and
-    maintain — cell identity during human development?
+    We apply both precision gene editing and large-scale CRISPR screening in human pluripotent stem cells (hPSCs) to
+    explore mechanisms underlying human development. Specifically, we are interrogating the protein-coding regulators of
+    pancreatic development and β cell function. The pathways that regulate these processes can be exploited for
+    therapeutics to prevent and reverse diseases such as type 1 and type 2 diabetes. In a second, closely related area,
+    we are developing approaches to discover developmental enhancers, and to understand the epigenetic regulation of
+    noncoding regulatory elements with a focus on DNA methylation.
   </p>
 </section>
 
@@ -30,15 +32,15 @@
       <div class="card-icon">◈</div>
       <h3>Pancreatic Development &amp; &beta; Cell Biology</h3>
       <p>We study the transcriptional and epigenetic programs that drive pancreatic
-         lineage commitment and &beta; cell maturation, using hPSC differentiation as a
-         tractable human model.</p>
+        lineage commitment and &beta; cell maturation, using hPSC differentiation as a
+        tractable human model.</p>
     </div>
     <div class="card">
       <div class="card-icon">⬡</div>
       <h3>Genome-Scale CRISPR Screening</h3>
       <p>We develop and apply large-scale CRISPRi and knockout screens to systematically
-         identify genes and regulatory elements controlling cell identity across
-         developmental transitions.</p>
+        identify genes and regulatory elements controlling cell identity across
+        developmental transitions.</p>
     </div>
   </div>
   <a class="view-all" href="/research">View all research areas</a>
@@ -54,10 +56,12 @@
     <div class="pub-item">
       <div>
         <p class="pub-title">
-          {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title }}</a>{% else %}{{ pub.title }}{% endif %}
+          {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title }}</a>{% else %}{{
+          pub.title }}{% endif %}
         </p>
         <p class="pub-authors">
-          {% for author in pub.authors %}{% if 'Danwei Huangfu' in author %}<b>{{ author }}</b>{% else %}{{ author }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+          {% for author in pub.authors %}{% if 'Danwei Huangfu' in author %}<b>{{ author }}</b>{% else %}{{ author }}{%
+          endif %}{% if not loop.last %}, {% endif %}{% endfor %}
         </p>
         <p class="pub-journal">{{ pub.publisher or '' }}</p>
       </div>
@@ -91,7 +95,8 @@
     <div class="announce-item">
       <span class="announce-date">2025</span>
       <p class="announce-text">
-        <strong>Pallavi Mohapatra</strong> receives the <strong>Kaufman Family Postdoctoral Fellowship in Pediatric Cancer</strong>.
+        <strong>Pallavi Mohapatra</strong> receives the <strong>Kaufman Family Postdoctoral Fellowship in Pediatric
+          Cancer</strong>.
         <span class="announce-badge">Fellowship</span>
       </p>
     </div>
