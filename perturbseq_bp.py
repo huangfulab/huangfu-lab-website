@@ -2932,6 +2932,43 @@ def tf_module_link_page(tf, module_name):
     )
 
 
+def _has_perturbation_evidence(db, tf: str, gene: str) -> bool:
+    """Return True if any gRNA for tf puts gene in the top/bottom 5% of its coef distribution."""
+    rows = db.execute("""
+        SELECT gt.grna_id, d.coef
+        FROM de_results d
+        JOIN grna_table gt ON d.grna_id = gt.grna_id
+        WHERE gt.gene_name = ?
+        ORDER BY gt.grna_id
+    """, (tf,)).fetchall()
+    if not rows:
+        return False
+
+    grna_coefs: dict = {}
+    for grna_id, coef in rows:
+        grna_coefs.setdefault(grna_id, []).append(coef)
+
+    target_rows = db.execute("""
+        SELECT d.grna_id, d.coef
+        FROM de_results d
+        JOIN grna_table gt ON d.grna_id = gt.grna_id
+        JOIN gene_table g ON d.gene_id = g.gene_id
+        WHERE gt.gene_name = ? AND g.gene_name = ?
+    """, (tf, gene)).fetchall()
+    if not target_rows:
+        return False
+
+    target_map = {r[0]: r[1] for r in target_rows}
+    for grna_id, coefs in grna_coefs.items():
+        target_coef = target_map.get(grna_id)
+        if target_coef is None:
+            continue
+        arr = np.array(coefs, dtype=float)
+        if target_coef <= float(np.percentile(arr, 5)) or target_coef >= float(np.percentile(arr, 95)):
+            return True
+    return False
+
+
 def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
     """Return KDE density curves for all gRNAs targeting tf, using DE coefficients from DB.
 
@@ -3271,6 +3308,9 @@ def tf_gene_link_page(tf, gene):
         if _tss:
             gene_tss = {'tss': _tss['tss'], 'chr': _norm_chr(str(_tss['chr']))}
 
+    has_binding_evidence     = bool(elements)
+    has_perturbation_evidence = _has_perturbation_evidence(db, tf, gene)
+
     return render_template(
         "perturbseq/tf_gene_link.html",
         tf=tf,
@@ -3282,6 +3322,8 @@ def tf_gene_link_page(tf, gene):
         tf_expr=tf_expr,
         gene_expr=gene_expr,
         gene_tss=gene_tss,
+        has_binding_evidence=has_binding_evidence,
+        has_perturbation_evidence=has_perturbation_evidence,
     )
 
 
