@@ -29,7 +29,7 @@
       "@type": "Dataset",
       "name": "DE TF-PerturbSeq Browser",
       "description": "Transcription factor perturbation effects during human definitive endoderm differentiation",
-      "url": "{{ request.host_url }}tf-perturbseq",
+      "url": "{{ request.host_url.rstrip('/') }}{{ perturbseq_prefix }}",
       "creator": {
         "@type": "Organization",
         "name": "Huangfu Lab",
@@ -39,6 +39,7 @@
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/perturbseq.css') }}">
     <script>window.MODULE_COLORS = {{ module_colors | tojson }};</script>
+    <script>const PERTURBSEQ_PREFIX = {{ perturbseq_prefix|tojson }};</script>
     <script src="{{ url_for('static', filename='cytoscape.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/tf-network.js') }}"></script>
     {% block extra_head %}{% endblock %}
@@ -46,7 +47,7 @@
 </head>
 <body>
 <nav>
-    <a href="/tf-perturbseq">← Home</a>
+    <a href="{{ perturbseq_prefix }}">← Home</a>
     <a class="brand" href="{{ url_for('perturbseq.index') }}">DE TF-PerturbSeq Browser</a>
     <span class="nav-search-wrap">
         <input type="text" id="nav-search" placeholder="Search gene, TF, module or GO term…" autocomplete="off" spellcheck="false">
@@ -70,7 +71,7 @@
             const q = input.value.trim();
             if (!q) { hide(); return; }
             try {
-                const r = await fetch('/tf-perturbseq/api/search?q=' + encodeURIComponent(q));
+                const r = await fetch('{{ perturbseq_prefix }}/api/search?q=' + encodeURIComponent(q));
                 items = await r.json();
                 render();
             } catch { hide(); }
@@ -121,8 +122,8 @@
         hide();
         if (typeof item === 'object' && item.url) window.location.href = item.url;
         else if (type === 'module' || type === 'submodule')
-                                 window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(name);
-        else                     window.location.href = '/tf-perturbseq/gene/'   + encodeURIComponent(name);
+                                 window.location.href = '{{ perturbseq_prefix }}/module/' + encodeURIComponent(name);
+        else                     window.location.href = '{{ perturbseq_prefix }}/gene/'   + encodeURIComponent(name);
     }
 
     function hide() { dropdown.classList.remove('open'); items = []; activeIdx = -1; }

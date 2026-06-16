@@ -11,7 +11,9 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from flask import Blueprint, render_template, jsonify, request, g, redirect, url_for, abort, send_from_directory
 
-perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix='/tf-perturbseq')
+PERTURBSEQ_PREFIX = '/tf-perturbseq'
+
+perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix=PERTURBSEQ_PREFIX)
 
 DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v5.db")
 
@@ -2405,7 +2407,7 @@ def api_search():
         for r in go_rows:
             term_url_name = f"{r['go_name']} ({r['go_accession']})"
             results.append({"name": term_url_name, "type": "go_term",
-                            "url": "/tf-perturbseq/go/" + term_url_name})
+                            "url": PERTURBSEQ_PREFIX + "/go/" + term_url_name})
 
         # 2c. TC gene clusters from consolidated DB
         q_up = q.upper()
@@ -2417,7 +2419,7 @@ def api_search():
             dn = _tc_display(internal_id)
             if dn.upper().startswith(q_up):
                 results.append({"name": dn, "type": "gc_cluster",
-                                "url": "/tf-perturbseq/module/" + dn})
+                                "url": PERTURBSEQ_PREFIX + "/module/" + dn})
         # peak cluster data not available in consolidated DB — omitted
 
         # 3. Lambert TFs not in the perturbation library

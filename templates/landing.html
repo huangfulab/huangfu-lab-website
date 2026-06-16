@@ -413,31 +413,31 @@
     <div class="examples-header">Examples:</div>
     <div class="example-genes">
       <span class="example-label">Genes:</span>
-      <a class="example-chip" href="/tf-perturbseq/gene/SOX17">SOX17</a>
-      <a class="example-chip" href="/tf-perturbseq/gene/GATA4">GATA4</a>
-      <a class="example-chip" href="/tf-perturbseq/gene/SMARCC1">SMARCC1</a>
-      <a class="example-chip" href="/tf-perturbseq/gene/FOXH1">FOXH1</a>
+      <a class="example-chip" href="{{ perturbseq_prefix }}/gene/SOX17">SOX17</a>
+      <a class="example-chip" href="{{ perturbseq_prefix }}/gene/GATA4">GATA4</a>
+      <a class="example-chip" href="{{ perturbseq_prefix }}/gene/SMARCC1">SMARCC1</a>
+      <a class="example-chip" href="{{ perturbseq_prefix }}/gene/FOXH1">FOXH1</a>
     </div>
     <div class="example-genes">
       <span class="example-label">Pathways:</span>
-      <a class="example-chip go" href="/tf-perturbseq/go/Translation (GO:0006412)">Translation</a>
-      <a class="example-chip go" href="/tf-perturbseq/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a>
-      <a class="example-chip go" href="/tf-perturbseq/go/RNA Processing (GO:0006396)">RNA Processing</a>
+      <a class="example-chip go" href="{{ perturbseq_prefix }}/go/Translation (GO:0006412)">Translation</a>
+      <a class="example-chip go" href="{{ perturbseq_prefix }}/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a>
+      <a class="example-chip go" href="{{ perturbseq_prefix }}/go/RNA Processing (GO:0006396)">RNA Processing</a>
     </div>
     <div class="example-genes">
       <span class="example-label">Modules:</span>
-      <a class="example-chip mod" href="/tf-perturbseq/module/DE-3">DE-3</a>
-      <a class="example-chip mod" href="/tf-perturbseq/module/DE-1.1">DE-1.1</a>
-      <a class="example-chip gc" href="/tf-perturbseq/module/GC6">GC6</a>
+      <a class="example-chip mod" href="{{ perturbseq_prefix }}/module/DE-3">DE-3</a>
+      <a class="example-chip mod" href="{{ perturbseq_prefix }}/module/DE-1.1">DE-1.1</a>
+      <a class="example-chip gc" href="{{ perturbseq_prefix }}/module/GC6">GC6</a>
     </div>
     <div class="example-genes">
       <span class="example-label">TF&rarr;Gene:</span>
-      <a class="example-chip lk" href="/tf-perturbseq/link/FOXA2/SOX17">FOXA2&nbsp;&rarr;&nbsp;SOX17</a>
-      <a class="example-chip lk" href="/tf-perturbseq/link/SOX17/CXCR4">SOX17&nbsp;&rarr;&nbsp;CXCR4</a>
+      <a class="example-chip lk" href="{{ perturbseq_prefix }}/link/FOXA2/SOX17">FOXA2&nbsp;&rarr;&nbsp;SOX17</a>
+      <a class="example-chip lk" href="{{ perturbseq_prefix }}/link/SOX17/CXCR4">SOX17&nbsp;&rarr;&nbsp;CXCR4</a>
     </div>
     <div class="example-genes">
       <span class="example-label">Elements:</span>
-      <a class="example-chip el" href="/tf-perturbseq/element/58938">chr8 &middot; SOX17 locus</a>
+      <a class="example-chip el" href="{{ perturbseq_prefix }}/element/58938">chr8 &middot; SOX17 locus</a>
     </div>
     <div class="or-divider">or</div>
     <a class="explore-btn" href="/modules">
@@ -460,7 +460,7 @@
   <!-- Nav links -->
   <div class="nav-row">
     <a class="nav-pill" href="/network">Co-expression Network</a>
-    <a class="nav-pill" href="/tf-perturbseq/">TF&ndash;Module Network</a>
+    <a class="nav-pill" href="{{ perturbseq_prefix }}/">TF&ndash;Module Network</a>
 
   </div>
 
@@ -624,7 +624,7 @@
       const q = input.value.trim();
       if (!q) { hide(); return; }
       try {
-        const r = await fetch(`/tf-perturbseq/api/search?q=${encodeURIComponent(q)}`);
+        const r = await fetch(`{{ perturbseq_prefix }}/api/search?q=${encodeURIComponent(q)}`);
         items = await r.json();
         render();
       } catch { hide(); }
@@ -675,8 +675,8 @@
     hide();
     if (item && item.url)          window.location.href = item.url;
     else if (type === 'module' || type === 'submodule')
-                                   window.location.href = '/tf-perturbseq/module/'  + encodeURIComponent(name);
-    else                           window.location.href = '/tf-perturbseq/gene/'    + encodeURIComponent(name);
+                                   window.location.href = '{{ perturbseq_prefix }}/module/'  + encodeURIComponent(name);
+    else                           window.location.href = '{{ perturbseq_prefix }}/gene/'    + encodeURIComponent(name);
   }
 
   function hide() {

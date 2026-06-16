@@ -88,7 +88,7 @@
 <div class="submod-header">
   <div class="submod-swatch" style="background:{{ node.color }}"></div>
   <span class="submod-title">{{ node.id }}</span>
-  <a class="parent-pill" href="/tf-perturbseq/module/{{ node.supermodule }}" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
+  <a class="parent-pill" href="{{ perturbseq_prefix }}/module/{{ node.supermodule }}" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
     ↑ Supermodule {{ node.supermodule }}
   </a>
 </div>
@@ -102,7 +102,7 @@
     </div>
     <div class="no-pert-note" style="margin-bottom:0">
       TF perturbation and binding analysis is at the supermodule level.
-      <a href="/tf-perturbseq/module/{{ node.supermodule }}" style="color:var(--accent)" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
+      <a href="{{ perturbseq_prefix }}/module/{{ node.supermodule }}" style="color:var(--accent)" data-mod-tip="{{ node.supermodule }}" data-mod-color="{{ node.color }}">
         View {{ node.supermodule }} →
       </a>
     </div>
@@ -141,7 +141,7 @@
         {% for e in neighbors %}
         <tr>
           <td>
-            <a class="node-link" href="/tf-perturbseq/submodule/{{ e.other }}">{{ e.other }}</a>
+            <a class="node-link" href="{{ perturbseq_prefix }}/submodule/{{ e.other }}">{{ e.other }}</a>
           </td>
           <td>
             <span class="mz-bar" style="
@@ -164,7 +164,7 @@
     <p class="section-desc">All genes assigned to this submodule.</p>
     <div class="gene-list" id="gene-list">
       {% for g in genes %}
-      <a class="gene-chip" href="/tf-perturbseq/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a>
+      <a class="gene-chip" href="{{ perturbseq_prefix }}/gene/{{ g }}" style="text-decoration:none;color:inherit">{{ g }}</a>
       {% endfor %}
     </div>
   </div>
@@ -237,7 +237,7 @@ const NODE_COLOR = {{ node.color | tojson }};
 // Jump-to-submodule search
 document.getElementById('sub-jump-input').addEventListener('change', e => {
   const v = e.target.value.trim();
-  if (v) window.location.href = '/tf-perturbseq/submodule/' + encodeURIComponent(v);
+  if (v) window.location.href = '{{ perturbseq_prefix }}/submodule/' + encodeURIComponent(v);
 });
 
 // Sortable neighbor table

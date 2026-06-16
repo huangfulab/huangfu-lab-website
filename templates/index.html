@@ -459,9 +459,9 @@ function renderNetwork(level, threshold) {
     if (params.nodes.length !== 1) return;
     const nodeId = params.nodes[0];
     if (currentLevel === 'submodule') {
-      window.location.href = '/tf-perturbseq/submodule/' + encodeURIComponent(nodeId);
+      window.location.href = '{{ perturbseq_prefix }}/submodule/' + encodeURIComponent(nodeId);
     } else {
-      window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(nodeId);
+      window.location.href = '{{ perturbseq_prefix }}/module/' + encodeURIComponent(nodeId);
     }
   });
 

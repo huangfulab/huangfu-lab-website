@@ -27,7 +27,7 @@
   function resolveTarget(target) {
     const a = target.closest('a[href]');
     if (!a) return null;
-    const m = a.getAttribute('href').match(/\/perturbseq\/gene\/([^/?#]+)/);
+    const m = a.getAttribute('href').match(new RegExp(PERTURBSEQ_PREFIX.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '/gene/([^/?#]+)'));
     if (!m) return null;
     return { el: a, gene: decodeURIComponent(m[1]) };
   }
@@ -87,7 +87,7 @@
     if (!gene) return;
     if (cache[gene] !== undefined) { render(gene, cache[gene], el); return; }
     render(gene, {full_name: null, summary: null, submodule: null, supermodule: null, is_tf: false}, el);
-    fetch('/tf-perturbseq/api/gene/' + encodeURIComponent(gene) + '/tooltip')
+    fetch(PERTURBSEQ_PREFIX + '/api/gene/' + encodeURIComponent(gene) + '/tooltip')
       .then(r => r.json())
       .then(data => { cache[gene] = data; if (currentEl === el) render(gene, data, el); })
       .catch(() => { cache[gene] = {full_name: null, summary: null, submodule: null, supermodule: null, is_tf: false}; });
@@ -108,7 +108,7 @@
   // Public API — lets other components fetch gene info using this cache
   window._getGeneTip = function(gene, cb) {
     if (cache[gene] !== undefined) { cb(cache[gene]); return; }
-    fetch('/tf-perturbseq/api/gene/' + encodeURIComponent(gene) + '/tooltip')
+    fetch(PERTURBSEQ_PREFIX + '/api/gene/' + encodeURIComponent(gene) + '/tooltip')
       .then(r => r.json())
       .then(data => { cache[gene] = data; cb(data); })
       .catch(() => { const empty = {full_name:null,summary:null,submodule:null,supermodule:null,is_tf:false}; cache[gene]=empty; cb(empty); });
@@ -148,7 +148,7 @@
     if (explicit) return { el: explicit, mod: explicit.dataset.modTip };
     const a = target.closest('a[href]');
     if (!a) return null;
-    const m = a.getAttribute('href').match(/\/perturbseq\/(?:module|submodule)\/([^/?#]+)/);
+    const m = a.getAttribute('href').match(new RegExp(PERTURBSEQ_PREFIX.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '/(?:module|submodule)/([^/?#]+)'));
     if (!m) return null;
     return { el: a, mod: decodeURIComponent(m[1]) };
   }
@@ -224,7 +224,7 @@
     if (!mod) return;
     if (cache[mod] !== undefined) { render(mod, cache[mod], el); return; }
     render(mod, {title: null, desc: null}, el);
-    fetch('/tf-perturbseq/api/module/' + encodeURIComponent(mod) + '/tooltip')
+    fetch(PERTURBSEQ_PREFIX + '/api/module/' + encodeURIComponent(mod) + '/tooltip')
       .then(r => r.json())
       .then(data => { cache[mod] = data; if (currentEl === el) render(mod, data, el); })
       .catch(() => { cache[mod] = {title: null, desc: null}; });
@@ -273,7 +273,7 @@
   function resolveTarget(target) {
     const a = target.closest('a[href]');
     if (!a) return null;
-    const m = a.getAttribute('href').match(/\/tf-perturbseq\/link\/([^/?#]+)\/([^/?#]+)/);
+    const m = a.getAttribute('href').match(new RegExp(PERTURBSEQ_PREFIX.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '/link/([^/?#]+)/([^/?#]+)'));
     if (!m) return null;
     return { el: a, tf: decodeURIComponent(m[1]), gene: decodeURIComponent(m[2]) };
   }
@@ -352,7 +352,7 @@
     const key=tf+'\x00'+gene;
     if (cache[key]!==undefined) { render(tf,gene,cache[key],el); return; }
     render(tf,gene,{tf_expr:[],gene_expr:[]},el);
-    fetch('/tf-perturbseq/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
+    fetch(PERTURBSEQ_PREFIX + '/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
       .then(r=>r.json())
       .then(data=>{ cache[key]=data; if(currentEl===el) render(tf,gene,data,el); })
       .catch(()=>{ cache[key]={tf_expr:[],gene_expr:[]}; });
@@ -387,7 +387,7 @@
     if (cache[key]!==undefined) { doRender(cache[key]); return; }
     el.innerHTML = '<span style="font-size:11px;color:var(--text-muted,#aaa)">Loading…</span>';
     if (cb) cb();
-    fetch('/tf-perturbseq/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
+    fetch(PERTURBSEQ_PREFIX + '/api/link/'+encodeURIComponent(tf)+'/'+encodeURIComponent(gene)+'/tooltip')
       .then(r=>r.json())
       .then(data=>{ cache[key]=data; doRender(data); })
       .catch(()=>{ cache[key]={tf_expr:[],gene_expr:[]}; doRender(cache[key]); });

@@ -6,10 +6,14 @@ import yaml
 import html
 import pandas as pd
 from pathlib import Path
-from perturbseq_bp import perturbseq_bp
+from perturbseq_bp import perturbseq_bp, PERTURBSEQ_PREFIX
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
+
+@app.context_processor
+def inject_perturbseq_prefix():
+    return {"perturbseq_prefix": PERTURBSEQ_PREFIX}
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
@@ -116,7 +120,7 @@ def lab_team():
     return render_template("lab/team.html", current_page="team", team=_load_team())
 
 
-@app.route("/tf-perturbseq")
+@app.route(PERTURBSEQ_PREFIX)
 def tf_perturbseq():
     return render_template("landing.html")
 
@@ -163,29 +167,29 @@ def sitemap_xml():
     urls = [
         "/", "/research", "/publications", "/announcements",
         "/team", "/resources", "/contact",
-        "/tf-perturbseq", "/tf-perturbseq/all-modules", "/modules", "/network",
+        PERTURBSEQ_PREFIX, f"{PERTURBSEQ_PREFIX}/all-modules", "/modules", "/network",
     ]
     try:
         conn = sqlite3.connect(str(_SITEMAP_DB_PATH))
         genes = [r[0] for r in conn.execute(
             "SELECT gene_name FROM gene_table ORDER BY gene_name"
         ).fetchall()]
-        urls.extend(f"/tf-perturbseq/gene/{g}" for g in genes)
+        urls.extend(f"{PERTURBSEQ_PREFIX}/gene/{g}" for g in genes)
         supermodules = [r[0] for r in conn.execute(
             "SELECT module_name FROM module_table "
             "WHERE source='hotspot_supermodule' AND module_name != 'unassigned' ORDER BY module_name"
         ).fetchall()]
-        urls.extend(f"/tf-perturbseq/module/{m}" for m in supermodules)
+        urls.extend(f"{PERTURBSEQ_PREFIX}/module/{m}" for m in supermodules)
         submodules = [r[0] for r in conn.execute(
             "SELECT module_name FROM module_table "
             "WHERE source='hotspot_submodule' AND module_name != 'unassigned' ORDER BY module_name"
         ).fetchall()]
-        urls.extend(f"/tf-perturbseq/module/{m}" for m in submodules)
+        urls.extend(f"{PERTURBSEQ_PREFIX}/module/{m}" for m in submodules)
         gene_clusters = [r[0] for r in conn.execute(
             "SELECT module_name FROM module_table "
             "WHERE source='mfuzz_k7' AND module_name != 'cluster_7' ORDER BY module_name"
         ).fetchall()]
-        urls.extend(f"/tf-perturbseq/module/GC{m.split('_')[1]}" for m in gene_clusters)
+        urls.extend(f"{PERTURBSEQ_PREFIX}/module/GC{m.split('_')[1]}" for m in gene_clusters)
         conn.close()
     except Exception:
         pass

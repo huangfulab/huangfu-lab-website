@@ -153,7 +153,7 @@ makeFilterSortTable(
   r => {
     const badge = TFNetwork.tfStatusBadge(r.tf_status, 'inline');
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.pub_count}</td>`;
+    tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.gene)}">${r.gene}</a>${badge}</td><td>${r.pub_count}</td>`;
     return tr;
   },
   { searchId: 'gene-search', searchKey: 'gene' }
@@ -222,7 +222,7 @@ makeFilterSortTable(
   });
 
   cy.on('tap', 'node[type="tf"]', evt => {
-    window.location.href = '/tf-perturbseq/gene/' + encodeURIComponent(evt.target.id());
+    window.location.href = '{{ perturbseq_prefix }}/gene/' + encodeURIComponent(evt.target.id());
   });
 
   function applyCyFilter() {
@@ -315,7 +315,7 @@ makeFilterSortTable(
                 : r.direction === 'Down' ? '<span class="direction-down">↓ Down</span>' : '—';
       const or_s = r.odds_ratio == null ? '—' : r.odds_ratio >= 1e300 ? '∞' : r.odds_ratio.toFixed(1);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><a class="node-link" href="/tf-perturbseq/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
       return tr;
     },
     { barId: 'go-tf-filter-bar', searchId: 'go-tf-search', countId: 'go-tf-count', onChange: applyCyFilter }

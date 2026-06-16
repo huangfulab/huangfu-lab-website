@@ -20,7 +20,7 @@ python app.py
 
 | Mount | File | Description |
 |---|---|---|
-| `/perturbseq/` | `perturbseq_bp.py` | Main biology browser: TF, module/submodule, gene, GO term, regulatory-element, and TF–gene link pages |
+| `/tf-perturbseq/` | `perturbseq_bp.py` | Main biology browser: TF, module/submodule, gene, GO term, regulatory-element, and TF–gene link pages |
 | `/timecourse/` | `timecourse_bp.py` | ESC→DE time-course network (gene clusters × peak clusters) |
 | `/network` | `app.py` | Cytoscape interactive network of supermodule/submodule co-expression |
 
@@ -33,7 +33,7 @@ Both blueprints need SQLite databases built before first run:
 | `perturbseq.db` | `../../data/perturbseq.db` | external pipeline |
 | `timecourse.db` | `timecourse.db` (this dir) | `python ../../pipeline/preprocess_timecourse.py` |
 
-`perturbseq_bp.py` opens both databases — gene-cluster (GC) and peak-cluster (PC) pages live under the `/perturbseq/` URL scheme but pull timecourse data.
+`perturbseq_bp.py` opens both databases — gene-cluster (GC) and peak-cluster (PC) pages live under the `/tf-perturbseq/` URL scheme (controlled by `PERTURBSEQ_PREFIX` in `perturbseq_bp.py`) but pull timecourse data.
 
 ---
 
@@ -63,7 +63,7 @@ templates/
   landing.html          # / landing page
   index.html            # /network Cytoscape view
   modules.html          # /modules overview
-  perturbseq/           # /perturbseq/* pages (tf, module, submodule, gene, go_term, element, ...)
+  perturbseq/           # /tf-perturbseq/* pages (tf, module, submodule, gene, go_term, element, ...)
   timecourse/           # /timecourse/* pages (index, cluster, dual, sankey, ...)
 
 static/

@@ -485,7 +485,7 @@
           <div class="ev-node-type">ChIP-Seq</div>
           <div class="ev-node-name" style="font-family:inherit">{{ ds.cell_type }}</div>
           <div class="ev-node-detail">
-            <a href="/tf-perturbseq/dataset/{{ ds.dataset_id }}" style="color:inherit"
+            <a href="{{ perturbseq_prefix }}/dataset/{{ ds.dataset_id }}" style="color:inherit"
                onclick="event.stopPropagation()">{{ ds.accession }}</a>
           </div>
         </div>
@@ -505,7 +505,7 @@
         <div class="el-pill-text">
           <div class="ev-node-type">Element {{ loop.index }}</div>
           <div class="ev-node-name">
-            <a href="/tf-perturbseq/element/{{ el.atac_peak_id }}"
+            <a href="{{ perturbseq_prefix }}/element/{{ el.atac_peak_id }}"
                style="color:inherit;text-decoration:none"
                title="Open element page">{{ el.element_id }}</a>
           </div>
@@ -805,7 +805,7 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     });
   }
 
-  fetch(`/tf-perturbseq/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
+  fetch(`{{ perturbseq_prefix }}/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(d => renderDESection('coef-grid-de', 'coef-loading-de', d.de, GENE_NAME))
     .catch(() => {
@@ -1129,20 +1129,20 @@ let _igvBrowser = null;
   });
   _ATAC_TRACKS.forEach(bw => tracks.push({
     name: `${bw.label} (ATAC)`, type: 'wig', format: 'bigwig',
-    url:  `/tf-perturbseq/bw/${bw.tp}-atacseq.bw`,
+    url:  `{{ perturbseq_prefix }}/bw/${bw.tp}-atacseq.bw`,
     color: bw.color, height: 40, autoscaleGroup: 'atac',
   }));
   _RNA_TRACKS.forEach(t => tracks.push({
     name: `${t.label} (RNA)`, type: 'wig', format: 'bigwig',
-    url:  `/tf-perturbseq/bw-rna/${t.file}`,
+    url:  `{{ perturbseq_prefix }}/bw-rna/${t.file}`,
     color: t.color, height: 40, autoscaleGroup: 'rna', visibilityWindow: -1,
   }));
   tracks.push({
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
     format:           'gtf',
-    url:              '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
-    indexURL:         '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    url:              '{{ perturbseq_prefix }}/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '{{ perturbseq_prefix }}/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
     displayMode:      'EXPANDED',
     height:            140,
     color:             '#6b7280',
@@ -1170,8 +1170,8 @@ let _igvBrowser = null;
 
   let allTFs = [], allGenes = [];
   Promise.all([
-    fetch('/tf-perturbseq/api/link-tfs').then(r => r.json()),
-    fetch('/tf-perturbseq/api/link-genes').then(r => r.json()),
+    fetch('{{ perturbseq_prefix }}/api/link-tfs').then(r => r.json()),
+    fetch('{{ perturbseq_prefix }}/api/link-genes').then(r => r.json()),
   ]).then(([tfs, genes]) => { allTFs = tfs; allGenes = genes; });
 
   function makeSelector({ inputId, dropdownId, current, getOptions, onSelect }) {
@@ -1249,14 +1249,14 @@ let _igvBrowser = null;
     inputId: 'tf-sel-input', dropdownId: 'tf-sel-dropdown',
     current: currentTF,
     getOptions: () => allTFs,
-    onSelect: tf => { window.location.href = `/tf-perturbseq/link/${encodeURIComponent(tf)}/${encodeURIComponent(currentGene)}`; },
+    onSelect: tf => { window.location.href = `{{ perturbseq_prefix }}/link/${encodeURIComponent(tf)}/${encodeURIComponent(currentGene)}`; },
   });
 
   makeSelector({
     inputId: 'gene-sel-input', dropdownId: 'gene-sel-dropdown',
     current: currentGene,
     getOptions: () => allGenes,
-    onSelect: gene => { window.location.href = `/tf-perturbseq/link/${encodeURIComponent(currentTF)}/${encodeURIComponent(gene)}`; },
+    onSelect: gene => { window.location.href = `{{ perturbseq_prefix }}/link/${encodeURIComponent(currentTF)}/${encodeURIComponent(gene)}`; },
   });
 })();
 

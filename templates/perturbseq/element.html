@@ -470,7 +470,7 @@
         <tbody id="gene-table-body">
           {% for g in genes %}
           <tr data-gene="{{ g.gene | lower }}" data-dist="{{ g.tss_dist if g.tss_dist is not none else 999999999 }}" data-distance="{{ g.distance_label }}" data-evidence="{{ g.evidence_type }}">
-            <td><a class="gene-link-name" href="/tf-perturbseq/gene/{{ g.gene }}">{{ g.gene }}</a></td>
+            <td><a class="gene-link-name" href="{{ perturbseq_prefix }}/gene/{{ g.gene }}">{{ g.gene }}</a></td>
             <td style="padding:4px 12px"><svg class="linked-gene-spark" data-gene="{{ g.gene }}" width="90" height="40"></svg></td>
             <td class="gene-dist">{{ g.tss_dist_label }}</td>
             <td><span class="dist-pill {{ g.distance_label }}">{{ _dist_labels.get(g.distance_label, g.distance_label) }}</span></td>
@@ -582,7 +582,7 @@
   <div class="tf-group-list" id="tf-group-list">
     {% for tf_group in tfs %}
     <div class="tf-group-item" data-tf="{{ tf_group.tf | lower }}">
-      <a class="tf-group-name" href="/tf-perturbseq/gene/{{ tf_group.tf }}">
+      <a class="tf-group-name" href="{{ perturbseq_prefix }}/gene/{{ tf_group.tf }}">
         {{ tf_group.tf }}
         <span class="tf-ds-count">{{ tf_group.datasets | length }} dataset{{ 's' if tf_group.datasets | length != 1 else '' }}</span>
       </a>
@@ -592,7 +592,7 @@
           {% if ds.source == 'tobias' %}Motif{% else %}ChIP{% endif %}
         </span>
         <span class="tf-ds-cell">{{ ds.cell_type }}</span>
-        <a class="tf-ds-dataset" href="/tf-perturbseq/dataset/{{ ds.dataset_id }}">{{ ds.dataset }}</a>
+        <a class="tf-ds-dataset" href="{{ perturbseq_prefix }}/dataset/{{ ds.dataset_id }}">{{ ds.dataset }}</a>
         {% if ds.overlap_bp %}<span class="tf-ds-overlap">{{ ds.overlap_bp }} bp overlap</span>{% endif %}
       </div>
       {% endfor %}
@@ -695,7 +695,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     name:          `${bw.label} (ATAC)`,
     type:          'wig',
     format:        'bigwig',
-    url:           `/tf-perturbseq/bw/${bw.tp}-atacseq.bw`,
+    url:           `{{ perturbseq_prefix }}/bw/${bw.tp}-atacseq.bw`,
     color:         bw.color,
     height:         40,
     autoscaleGroup: 'atac',
@@ -714,7 +714,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     name:             `${t.label} (RNA)`,
     type:             'wig',
     format:           'bigwig',
-    url:              `/tf-perturbseq/bw-rna/${t.file}`,
+    url:              `{{ perturbseq_prefix }}/bw-rna/${t.file}`,
     color:            t.color,
     height:           40,
     autoscaleGroup:   'rna',
@@ -724,8 +724,8 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
     name:             'Ensembl genes (GRCh38.112)',
     type:             'annotation',
     format:           'gtf',
-    url:              '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
-    indexURL:         '/tf-perturbseq/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
+    url:              '{{ perturbseq_prefix }}/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz',
+    indexURL:         '{{ perturbseq_prefix }}/gtf/Homo_sapiens.GRCh38.112.sorted.gtf.gz.tbi',
     displayMode:      'EXPANDED',
     height:            140,
     color:             '#6b7280',
@@ -1004,7 +1004,7 @@ const NEARBY_PEAKS  = {{ nearby_peaks | tojson }};
 
   function fetchExpr(geneName) {
     if (exprCache[geneName]) return Promise.resolve(exprCache[geneName]);
-    return fetch(`/tf-perturbseq/api/gene/${encodeURIComponent(geneName)}`)
+    return fetch(`{{ perturbseq_prefix }}/api/gene/${encodeURIComponent(geneName)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && d.expr) { exprCache[geneName] = d.expr; return d.expr; } return null; });
   }

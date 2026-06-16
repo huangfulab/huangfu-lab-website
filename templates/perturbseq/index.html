@@ -5,10 +5,10 @@
 {% block search_hints %}
 <div class="nav-search-hints">
   e.g.
-  <a href="/tf-perturbseq/go/Translation (GO:0006412)">Translation</a> ·
-  <a href="/tf-perturbseq/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a> ·
-  <a href="/tf-perturbseq/go/Cell Cycle (GO:0007049)">Cell Cycle</a> ·
-  <a href="/tf-perturbseq/gene/NANOG">NANOG</a>
+  <a href="{{ perturbseq_prefix }}/go/Translation (GO:0006412)">Translation</a> ·
+  <a href="{{ perturbseq_prefix }}/go/Mitotic Nuclear Division (GO:0140014)">Mitosis</a> ·
+  <a href="{{ perturbseq_prefix }}/go/Cell Cycle (GO:0007049)">Cell Cycle</a> ·
+  <a href="{{ perturbseq_prefix }}/gene/NANOG">NANOG</a>
 </div>
 {% endblock %}
 
@@ -143,7 +143,7 @@ function getPercentileValue(pct) {
 }
 
 async function loadEdges() {
-    const resp = await fetch('/tf-perturbseq/api/edges');
+    const resp = await fetch('{{ perturbseq_prefix }}/api/edges');
     cachedEdges = await resp.json();
     strengths = cachedEdges.map(e => e.strength).sort((a, b) => a - b);
     buildGraph();
@@ -194,8 +194,8 @@ function buildGraph() {
 
     cy.on('tap', 'node', evt => {
         const node = evt.target;
-        if (node.data('type') === 'tf') window.location.href = '/tf-perturbseq/tf/' + encodeURIComponent(node.id());
-        else window.location.href = '/tf-perturbseq/module/' + encodeURIComponent(node.id());
+        if (node.data('type') === 'tf') window.location.href = '{{ perturbseq_prefix }}/tf/' + encodeURIComponent(node.id());
+        else window.location.href = '{{ perturbseq_prefix }}/module/' + encodeURIComponent(node.id());
     });
 
     document.getElementById('strength-val').textContent = `${filtered.length} edges · ${tfs.size} TFs · ${mods.size} modules`;
