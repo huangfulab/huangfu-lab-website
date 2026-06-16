@@ -306,20 +306,24 @@
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 600; padding: 5px 13px;
   border-radius: 20px; border: 1.5px solid; letter-spacing: 0.2px;
-  white-space: nowrap; cursor: default;
+  white-space: nowrap; cursor: pointer; transition: filter 0.12s;
 }
+.ev-summary-pill:hover { filter: brightness(0.92); }
 .ev-summary-pill.yes { background: rgba(16,185,129,0.12); color: #059669; border-color: #6ee7b7; }
 .ev-summary-pill.no  { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
 .ev-summary-pill svg { flex-shrink: 0; }
+.ev-summary-caret { opacity: 0.6; flex-shrink: 0; }
 
 /* ── Evidence pill tooltip ─────────────────────────────────────────── */
 #ev-pill-tip {
   display: none; position: fixed; z-index: 9999;
-  width: 280px; border-radius: var(--radius); background: var(--bg-card);
+  width: 300px; border-radius: var(--radius); background: var(--bg-card);
   border: 1px solid var(--border); border-left: 4px solid #059669;
   box-shadow: 0 4px 18px rgba(0,0,0,.13); overflow: hidden;
-  font-family: inherit; pointer-events: none;
+  font-family: inherit;
 }
+#ev-pill-tip a { color: var(--accent); text-decoration: none; }
+#ev-pill-tip a:hover { text-decoration: underline; }
 #ev-pill-tip-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em; color: var(--text-muted);
@@ -430,6 +434,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
       Binding evidence
+      <svg class="ev-summary-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </span>
     <span id="ev-pill-perturbation" class="ev-summary-pill {{ 'yes' if has_perturbation_evidence else 'no' }}">
       {% if has_perturbation_evidence %}
@@ -438,6 +443,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       {% endif %}
       Perturbation evidence
+      <svg class="ev-summary-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </span>
   </div>
 
@@ -446,7 +452,7 @@
   const EV_TIP_BINDING = {
     {% if has_binding_evidence %}
     motifs: {{ ns_tip.motifs | tojson }},
-    chipseq: {{ ns_tip.chips | map(attribute='cell_type') | list | tojson }},
+    chipseq: {{ ns_tip.chips | tojson }},
     {% else %}
     motifs: [], chipseq: [],
     {% endif %}
@@ -1491,9 +1497,9 @@ let _igvBrowser = null;
 
 /* ── Evidence pill tooltips ──────────────────────────────────────── */
 (function() {
-  const tip   = document.getElementById('ev-pill-tip');
+  const tip    = document.getElementById('ev-pill-tip');
   const tipTtl = document.getElementById('ev-pill-tip-title');
-  const tipB  = document.getElementById('ev-pill-tip-body');
+  const tipB   = document.getElementById('ev-pill-tip-body');
 
   function positionNear(el) {
     const pad = 8, W = window.innerWidth, H = window.innerHeight;
@@ -1519,8 +1525,12 @@ let _igvBrowser = null;
     } else {
       if (EV_TIP_BINDING.motifs.length)
         html += row('Motif', EV_TIP_BINDING.motifs.join(', '));
-      if (EV_TIP_BINDING.chipseq.length)
-        html += row('ChIP-seq', EV_TIP_BINDING.chipseq.join(', '));
+      if (EV_TIP_BINDING.chipseq.length) {
+        const links = EV_TIP_BINDING.chipseq.map(ds =>
+          `<a href="${PERTURBSEQ_PREFIX}/dataset/${ds.dataset_id}">${ds.cell_type} <span style="font-weight:400;color:var(--text-muted)">(${ds.accession})</span></a>`
+        ).join('<br>');
+        html += row('ChIP-seq', links);
+      }
     }
     tipB.innerHTML = html;
     tip.style.display = 'block';
@@ -1550,8 +1560,12 @@ let _igvBrowser = null;
   const perturbationPill = document.getElementById('ev-pill-perturbation');
 
   let hideTimer = null;
-  function scheduleHide() { hideTimer = setTimeout(() => tip.style.display = 'none', 150); }
+  function scheduleHide() { hideTimer = setTimeout(() => { tip.style.display = 'none'; }, 150); }
   function cancelHide()   { clearTimeout(hideTimer); }
+
+  /* keep tooltip open while cursor is inside it */
+  tip.addEventListener('mouseenter', cancelHide);
+  tip.addEventListener('mouseleave', scheduleHide);
 
   if (bindingPill) {
     bindingPill.addEventListener('mouseenter', () => { cancelHide(); showBinding(bindingPill); });
