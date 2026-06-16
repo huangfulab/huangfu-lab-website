@@ -518,6 +518,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
           <th class="sortable" data-key="padj" data-type="number">padj</th>
           <th class="sortable" data-key="binding" data-type="string" title="TF binding confirmed near cluster genes">Bind</th>
           <th class="sortable" data-key="odds_ratio" data-type="number" title="Binding odds ratio">OR</th>
+          <th class="sortable" data-key="binding_padj" data-type="number" title="Fisher's exact test adjusted p-value for TF binding enrichment in this cluster">padj (bind)</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -535,8 +536,9 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   {'key':'mean_NES',   'type':'number', 'label':'NES',    'title':'Normalized Enrichment Score (positive = KD upregulates; negative = KD downregulates)'},
   {'key':'n_sig_gRNA', 'type':'number', 'label':'#gRNA',  'title':''},
   {'key':'padj',       'type':'number', 'label':'padj',   'title':''},
-  {'key':'binding',    'type':'string', 'label':'Bind',   'title':''},
-  {'key':'odds_ratio', 'type':'number', 'label':'OR',     'title':''},
+  {'key':'binding',      'type':'string', 'label':'Bind',        'title':''},
+  {'key':'odds_ratio',   'type':'number', 'label':'OR',          'title':''},
+  {'key':'binding_padj', 'type':'number', 'label':'padj (bind)', 'title':'Fisher\'s exact test adjusted p-value for TF binding enrichment in this module'},
 ] %}
 <div id="view-tf-super" class="mod-view tf-view">
   {{ filter_bar('tf-reg-filter-bar', dir_label_id='tf-reg-dir-label', count_id='tf-reg-count') }}
@@ -585,6 +587,7 @@ details[open] .go-summary::before { transform: rotate(90deg); }
           <th class="sortable" data-key="n_sig_gRNA"   data-type="number">#gRNA</th>
           <th class="sortable" data-key="binding"      data-type="string">Bind</th>
           <th class="sortable" data-key="odds_ratio"   data-type="number">OR</th>
+          <th class="sortable" data-key="binding_padj" data-type="number" title="Fisher's exact test adjusted p-value for TF binding enrichment in this submodule">padj (bind)</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -958,7 +961,7 @@ const cyInstances = {};
               : r.direction==='Down' ? '<span class="direction-down">↓ Down</span>' : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td><td>${r.binding_padj!=null?r.binding_padj.toExponential(2):'—'}</td>`;
     return tr;
   }, { barId:'tf-reg-filter-bar', countId:'tf-reg-count', searchKey:'module', onChange: applyCyFilter });
 
@@ -1057,7 +1060,7 @@ const cyInstances = {};
       ? (r.direction === 'Up' ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
       : '<span style="color:var(--text-muted)">—</span>';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.color};margin-right:6px;vertical-align:middle"></span><a class="node-link" href="${r.url}">${r.label}</a></td><td>${dir}</td><td>${hasNES ? r.nes.toFixed(3) : '—'}</td><td>${r.padj != null ? r.padj.toExponential(2) : '—'}</td><td>${r.binding || ''}</td><td>${r.odds_ratio != null ? r.odds_ratio.toFixed(2) : '—'}</td>`;
+    tr.innerHTML = `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.color};margin-right:6px;vertical-align:middle"></span><a class="node-link" href="${r.url}">${r.label}</a></td><td>${dir}</td><td>${hasNES ? r.nes.toFixed(3) : '—'}</td><td>${r.padj != null ? r.padj.toExponential(2) : '—'}</td><td>${r.binding || ''}</td><td>${r.odds_ratio != null ? r.odds_ratio.toFixed(2) : '—'}</td><td>${r.binding_padj != null ? r.binding_padj.toExponential(2) : '—'}</td>`;
     return tr;
   }, { barId:'tf-dev-filter-bar', countId:'tf-dev-count', searchKey:'label', onChange: applyDevFilter });
 })();
@@ -1091,7 +1094,7 @@ const cyInstances = {};
               : '—';
     const tr = document.createElement('tr');
     const or_s = r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
-    tr.innerHTML = `<td>${dot}<a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.id)}" data-mod-tip="${r.id}" data-mod-color="${window.MODULE_COLORS?.[r.id]||''}">${r.id}</a></td><td><a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
+    tr.innerHTML = `<td>${dot}<a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.id)}" data-mod-tip="${r.id}" data-mod-color="${window.MODULE_COLORS?.[r.id]||''}">${r.id}</a></td><td><a class="node-link" href="{{ perturbseq_prefix }}/module/${encodeURIComponent(r.module)}" data-mod-tip="${r.module}" data-mod-color="${window.MODULE_COLORS?.[r.module]||''}">${r.module}</a></td><td>${dir}</td><td>${r.mean_NES!=null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!=null?r.n_sig_gRNA:'—'}</td><td>${r.binding}</td><td>${or_s}</td><td>${r.binding_padj!=null?r.binding_padj.toExponential(2):'—'}</td>`;
     return tr;
   }
 

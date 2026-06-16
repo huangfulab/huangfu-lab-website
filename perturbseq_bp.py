@@ -678,6 +678,7 @@ def _merge_pert_bind_edges(pert_rows, bind_map, id_key='tf'):
             'mean_NES': r['mean_NES'], 'n_sig_gRNA': r['n_sig_gRNA'], 'padj': r['padj'],
             'binding': '✓' if has_bind else '',
             'odds_ratio': bind_map[k]['odds_ratio'] if has_bind else None,
+            'binding_padj': bind_map[k].get('padj') if has_bind else None,
             'evidence': 'both' if has_bind else 'perturbation',
         })
     for k, b in bind_map.items():
@@ -685,7 +686,7 @@ def _merge_pert_bind_edges(pert_rows, bind_map, id_key='tf'):
             rows.append({
                 id_key: k, 'direction': '—', 'mean_NES': None,
                 'n_sig_gRNA': None, 'padj': None, 'binding': '✓',
-                'odds_ratio': b['odds_ratio'], 'evidence': 'binding',
+                'odds_ratio': b['odds_ratio'], 'binding_padj': b.get('padj'), 'evidence': 'binding',
             })
     return rows
 
@@ -711,12 +712,13 @@ def _tf_dataset_ids(db, tf_gene_name: str) -> list:
 
 
 def _bind_edges_for_tf(db, tf_gene_name: str, source_filter: str) -> dict:
-    """Return {module_name: {odds_ratio}} for a TF's binding enrichment.
+    """Return {module_name: {odds_ratio, padj}} for a TF's binding enrichment.
 
     source_filter: 'hotspot_supermodule' or 'hotspot_submodule'
     """
     return {r['module']: r for r in rows_to_dicts(db.execute("""
-        SELECT m.module_name AS module, MAX(e.odds_ratio) AS odds_ratio
+        SELECT m.module_name AS module, MAX(e.odds_ratio) AS odds_ratio,
+               MIN(e.padj_fisher) AS padj
         FROM tf_module_enrichment e
         JOIN module_table m ON e.module_id = m.module_id
         WHERE e.tf_gene_name = ? AND e.gene_set_collection = ?
@@ -1288,7 +1290,7 @@ def gene_page(gene_name):
         }
         # Binding enrichment from tf_module_enrichment (gene_set_collection='mfuzz')
         bind_gc = {
-            _mfuzz_to_internal(mod): round(data['odds_ratio'], 3)
+            _mfuzz_to_internal(mod): data
             for mod, data in _bind_edges_for_tf(db, gene_name, 'mfuzz').items()
             if _mfuzz_to_internal(mod) not in HIDDEN
         }
@@ -1305,7 +1307,8 @@ def gene_page(gene_name):
                 "url": url_for('perturbseq.module_page', name=_tc_display(gc)),
                 "direction": ("Up" if p['nes'] > 0 else "Down") if p else "—",
                 "binding": "✓" if b is not None else "",
-                "odds_ratio": b,
+                "odds_ratio": round(b['odds_ratio'], 3) if b else None,
+                "binding_padj": b.get('padj') if b else None,
                 "evidence": evidence,
             })
         tc_reg_clusters.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
@@ -1353,6 +1356,7 @@ def gene_page(gene_name):
                 'padj': p['padj'] if p else None,
                 'binding': '✓' if b else '',
                 'odds_ratio': b['odds_ratio'] if b else None,
+                'binding_padj': b.get('padj') if b else None,
                 'evidence': evidence,
             })
         submodules_flat.sort(key=lambda x: abs(x['mean_NES'] or 0), reverse=True)
