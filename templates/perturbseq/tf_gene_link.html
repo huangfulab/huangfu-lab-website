@@ -440,10 +440,11 @@
     {% endfor %}
   {% endfor %}
 
-  {# ── Count elements with ChIP-seq support ── #}
-  {% set ns_chip = namespace(chip_elements=0) %}
+  {# ── Count elements with ChIP-seq or motif support ── #}
+  {% set ns_chip = namespace(chip_elements=0, motif_elements=0) %}
   {% for el in elements %}
     {% if el.chipseq | length > 0 %}{% set ns_chip.chip_elements = ns_chip.chip_elements + 1 %}{% endif %}
+    {% if el.motif %}{% set ns_chip.motif_elements = ns_chip.motif_elements + 1 %}{% endif %}
   {% endfor %}
 
   <div class="ev-summary-row" style="margin-left:auto">
@@ -458,6 +459,7 @@
         <span class="ev-summary-pill-sub">
           {%- if not has_binding_evidence -%}No binding evidence found
           {%- elif ns_tip.chip_ids | length > 0 -%}{{ ns_tip.chip_ids | length }} ChIP-seq dataset{{ 's' if ns_tip.chip_ids | length != 1 else '' }} · {{ ns_chip.chip_elements }} bound element{{ 's' if ns_chip.chip_elements != 1 else '' }}
+          {%- else -%}Motif footprint · {{ ns_chip.motif_elements }} element{{ 's' if ns_chip.motif_elements != 1 else '' }}
           {%- endif -%}
         </span>
       </span>
