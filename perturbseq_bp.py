@@ -2309,24 +2309,30 @@ def api_gene_grna_coefs(gene_name):
     if not gene_row:
         return jsonify({'coefs': []})
 
+    # Precompute TFs that have binding evidence for this gene by starting from
+    # the gene's linked ATAC peaks (small set) rather than scanning per-row.
     rows = db.execute("""
+        WITH gene_peaks AS (
+            SELECT atac_peak_id FROM atac_tss_links WHERE gene_id = ?
+            UNION
+            SELECT atac_peak_id FROM multiome_atac_overlaps WHERE gene_id = ?
+        ),
+        binding AS (
+            SELECT DISTINCT tdt.tf_gene_name
+            FROM gene_peaks gp
+            JOIN atac_tf_overlaps ato ON ato.atac_peak_id = gp.atac_peak_id
+            JOIN tf_peaks tp ON tp.peak_id = ato.peak_id
+            JOIN tf_dataset_table tdt ON tdt.dataset_id = tp.dataset_id
+        )
         SELECT gr.gene_name AS tf_name, gr.grna_name, gr.active, dr.coef,
                PERCENT_RANK() OVER (ORDER BY dr.coef) AS signed_pct_rank,
-               CASE WHEN EXISTS (
-                   SELECT 1 FROM tf_dataset_table tdt
-                   JOIN tf_peaks tp ON tp.dataset_id = tdt.dataset_id
-                   JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
-                   WHERE tdt.tf_gene_name = gr.gene_name
-                     AND (EXISTS (SELECT 1 FROM atac_tss_links
-                                  WHERE atac_peak_id = ato.atac_peak_id AND gene_id = dr.gene_id)
-                       OR EXISTS (SELECT 1 FROM multiome_atac_overlaps
-                                  WHERE atac_peak_id = ato.atac_peak_id AND gene_id = dr.gene_id))
-               ) THEN 1 ELSE 0 END AS has_binding
+               CASE WHEN b.tf_gene_name IS NOT NULL THEN 1 ELSE 0 END AS has_binding
         FROM de_results dr
         JOIN grna_table gr ON dr.grna_id = gr.grna_id
+        LEFT JOIN binding b ON b.tf_gene_name = gr.gene_name
         WHERE dr.gene_id = ?
         ORDER BY dr.coef
-    """, (gene_row['gene_id'],)).fetchall()
+    """, (gene_row['gene_id'], gene_row['gene_id'], gene_row['gene_id'])).fetchall()
 
     return jsonify({'coefs': [
         {'tf_name': r['tf_name'], 'grna_name': r['grna_name'], 'active': r['active'],
