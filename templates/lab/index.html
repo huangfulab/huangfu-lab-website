@@ -78,28 +78,15 @@ transcriptional and epigenetic mechanisms of cell-fate decisions in development 
   <h2 class="section-title">News &amp; updates</h2>
   <p class="section-body">Recent awards, fellowships, and milestones from the lab.</p>
   <div class="announce-list">
+    {% for a in announcements %}
     <div class="announce-item">
-      <span class="announce-date">2025</span>
+      <span class="announce-date">{{ a.year }}</span>
       <p class="announce-text">
-        <strong>Denis Torre</strong> awarded the <strong>Damon Runyon Cancer Research Foundation Fellowship</strong>.
-        <span class="announce-badge">Fellowship</span>
+        {{ a.text | safe }}
+        <span class="announce-badge">{{ a.badge }}</span>
       </p>
     </div>
-    <div class="announce-item">
-      <span class="announce-date">2025</span>
-      <p class="announce-text">
-        <strong>Tamara Casteels</strong> receives the <strong>Emerald Foundation Postdoctoral Fellowship</strong>.
-        <span class="announce-badge">Fellowship</span>
-      </p>
-    </div>
-    <div class="announce-item">
-      <span class="announce-date">2025</span>
-      <p class="announce-text">
-        <strong>Pallavi Mohapatra</strong> receives the <strong>Kaufman Family Postdoctoral Fellowship in Pediatric
-          Cancer</strong>.
-        <span class="announce-badge">Fellowship</span>
-      </p>
-    </div>
+    {% endfor %}
   </div>
   <a class="view-all" href="/announcements">View all announcements</a>
 </section>

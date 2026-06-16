@@ -80,7 +80,7 @@ def load_network(level):
 @app.route("/")
 @app.route("/lab")
 def lab():
-    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:3])
+    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:3], announcements=_ANNOUNCEMENTS[:3])
 
 
 @app.route("/research")
@@ -95,12 +95,16 @@ def lab_publications():
 
 @app.route("/announcements")
 def lab_announcements():
-    return render_template("lab/announcements.html", current_page="announcements")
+    return render_template("lab/announcements.html", current_page="announcements", announcements=_ANNOUNCEMENTS)
 
 
 _TEAM_PATH = Path(__file__).resolve().parent / "static" / "team.json"
 with open(_TEAM_PATH) as _tf:
     _TEAM = json.load(_tf)  # flat list; each entry has alumni: true/false
+
+_ANNOUNCEMENTS_PATH = Path(__file__).resolve().parent / "static" / "announcements.json"
+with open(_ANNOUNCEMENTS_PATH) as _af:
+    _ANNOUNCEMENTS = json.load(_af)
 
 
 @app.route("/team")

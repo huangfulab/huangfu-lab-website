@@ -8,48 +8,15 @@
   <h2 class="section-title">News &amp; updates</h2>
   <p class="section-body">Recent awards, fellowships, and milestones from the lab.</p>
   <div class="announce-list">
+    {% for a in announcements %}
     <div class="announce-item">
-      <span class="announce-date">2025</span>
+      <span class="announce-date">{{ a.year }}</span>
       <p class="announce-text">
-        <strong>Denis Torre</strong> awarded the <strong>Damon Runyon Cancer Research Foundation Fellowship</strong>.
-        <span class="announce-badge">Fellowship</span>
+        {{ a.text | safe }}
+        <span class="announce-badge">{{ a.badge }}</span>
       </p>
     </div>
-    <div class="announce-item">
-      <span class="announce-date">2025</span>
-      <p class="announce-text">
-        <strong>Tamara Casteels</strong> receives the <strong>Emerald Foundation Postdoctoral Fellowship</strong>.
-        <span class="announce-badge">Fellowship</span>
-      </p>
-    </div>
-    <div class="announce-item">
-      <span class="announce-date">2025</span>
-      <p class="announce-text">
-        <strong>Pallavi Mohapatra</strong> receives the <strong>Kaufman Family Postdoctoral Fellowship in Pediatric Cancer</strong>.
-        <span class="announce-badge">Fellowship</span>
-      </p>
-    </div>
-    <div class="announce-item">
-      <span class="announce-date">2024</span>
-      <p class="announce-text">
-        <strong>Renhe Luo</strong> receives the <strong>GSK Chairman's Prize</strong>.
-        <span class="announce-badge">Award</span>
-      </p>
-    </div>
-    <div class="announce-item">
-      <span class="announce-date">2023</span>
-      <p class="announce-text">
-        New paper: <em>Dynamic network-guided CRISPRi screen identifies CTCF-loop-constrained nonlinear enhancer gene regulatory activity during cell state transitions.</em> <strong>Nature Genetics.</strong>
-        <span class="announce-badge">Publication</span>
-      </p>
-    </div>
-    <div class="announce-item">
-      <span class="announce-date">2023</span>
-      <p class="announce-text">
-        The lab launches the <strong>MSK MorPhiC Project</strong>, a systematic effort to functionally characterize noncoding elements in the human genome.
-        <span class="announce-badge">Project</span>
-      </p>
-    </div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}
