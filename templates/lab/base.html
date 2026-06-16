@@ -104,6 +104,67 @@ nav {
 .nav-links a:hover,
 .nav-links a.active { color:var(--accent); background:var(--accent-subtle); }
 
+/* ── Hamburger button ─────────────────────────────────────────────────── */
+.nav-hamburger {
+  display:none;
+  flex-direction:column; justify-content:center; align-items:center; gap:4px;
+  width:36px; height:36px;
+  background:none; border:none;
+  cursor:pointer; padding:4px;
+  margin-left:auto;
+  border-radius:var(--radius-sm);
+  transition:background .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.nav-hamburger:hover { background:var(--accent-subtle); }
+.nav-hamburger span {
+  display:block;
+  width:18px; height:2px;
+  background:var(--text);
+  border-radius:2px;
+  transition:transform .22s cubic-bezier(.4,0,.2,1),
+             opacity .22s cubic-bezier(.4,0,.2,1),
+             width .22s cubic-bezier(.4,0,.2,1);
+  transform-origin:center;
+}
+.nav-hamburger[aria-expanded="true"] span:nth-child(1) { transform:translateY(6px) rotate(45deg); }
+.nav-hamburger[aria-expanded="true"] span:nth-child(2) { opacity:0; width:0; }
+.nav-hamburger[aria-expanded="true"] span:nth-child(3) { transform:translateY(-6px) rotate(-45deg); }
+
+/* ── Mobile dropdown card ─────────────────────────────────────────────── */
+.nav-dropdown {
+  display:none;
+  position:fixed;
+  top:calc(14px + var(--nav-height) + 8px);
+  left:50%; transform:translateX(-50%) translateY(-8px);
+  min-width:200px;
+  background:var(--nav-bg);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.16);
+  z-index:99;
+  overflow:hidden;
+  opacity:0;
+  transition:opacity .2s cubic-bezier(.4,0,.2,1), transform .2s cubic-bezier(.4,0,.2,1);
+  pointer-events:none;
+}
+.nav-dropdown.open {
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+  pointer-events:auto;
+}
+.nav-dropdown ul { list-style:none; padding:8px; display:flex; flex-direction:column; gap:2px; }
+.nav-dropdown ul a {
+  display:block;
+  font-size:14px; font-weight:500; color:var(--text-secondary);
+  text-decoration:none; padding:10px 16px;
+  border-radius:var(--radius-sm);
+  transition:color .15s, background .15s;
+}
+.nav-dropdown ul a:hover,
+.nav-dropdown ul a.active { color:var(--accent); background:var(--accent-subtle); }
+
 /* ── Main & sections ──────────────────────────────────────────────────── */
 main { padding-top:calc(var(--nav-height) + 28px); }
 
@@ -287,6 +348,8 @@ footer {
 /* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width:960px) {
   .nav-links { display:none; }
+  .nav-hamburger { display:flex; }
+  .nav-dropdown { display:block; }
 }
 @media (max-width:720px) {
   section { padding:60px 20px; }
@@ -307,7 +370,21 @@ footer {
     <li><a href="/resources"{% if current_page == 'resources' %} class="active"{% endif %}>Resources</a></li>
     <li><a href="/contact"{% if current_page == 'contact' %} class="active"{% endif %}>Contact</a></li>
   </ul>
+  <button class="nav-hamburger" id="nav-hamburger" aria-label="Open navigation menu" aria-expanded="false" aria-controls="nav-dropdown">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
+
+<div class="nav-dropdown" id="nav-dropdown" aria-hidden="true">
+  <ul>
+    <li><a href="/research"{% if current_page == 'research' %} class="active"{% endif %}>Research</a></li>
+    <li><a href="/publications"{% if current_page == 'publications' %} class="active"{% endif %}>Publications</a></li>
+    <li><a href="/announcements"{% if current_page == 'announcements' %} class="active"{% endif %}>Announcements</a></li>
+    <li><a href="/team"{% if current_page == 'team' %} class="active"{% endif %}>Team</a></li>
+    <li><a href="/resources"{% if current_page == 'resources' %} class="active"{% endif %}>Resources</a></li>
+    <li><a href="/contact"{% if current_page == 'contact' %} class="active"{% endif %}>Contact</a></li>
+  </ul>
+</div>
 
 <main>
 {% block content %}{% endblock %}
@@ -318,5 +395,44 @@ footer {
   &copy; 2025 Huangfu Lab &nbsp;·&nbsp; <a href="https://www.mskcc.org/research/ski/research" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">Developmental Biology Program</a> &nbsp;·&nbsp; <a href="https://www.mskcc.org/research/ski" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">Sloan Kettering Institute, MSKCC</a>
 </footer>
 
+<script>
+(function () {
+  var btn  = document.getElementById('nav-hamburger');
+  var menu = document.getElementById('nav-dropdown');
+  if (!btn || !menu) return;
+
+  function openMenu() {
+    btn.setAttribute('aria-expanded', 'true');
+    menu.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(function () { menu.classList.add('open'); });
+  }
+
+  function closeMenu() {
+    btn.setAttribute('aria-expanded', 'false');
+    menu.setAttribute('aria-hidden', 'true');
+    menu.classList.remove('open');
+  }
+
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    menu.classList.contains('open') ? closeMenu() : openMenu();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+  });
+
+  menu.querySelectorAll('a').forEach(function (link) {
+    link.addEventListener('click', closeMenu);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && menu.classList.contains('open')) {
+      closeMenu();
+      btn.focus();
+    }
+  });
+})();
+</script>
 </body>
 </html>
