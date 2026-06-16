@@ -410,8 +410,8 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <div class="intro-highlights" style="margin-top:0.6rem">
       {% if membership %}
       <span><strong>Member of:</strong>
-        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
-        <a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>
+        <a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.supermodule }}</a>
+        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:color-mix(in srgb, {{ card_color }} 80%, white);color:#fff;">{{ membership.submodule }}</a>{% endif %}
       </span>
       {% endif %}
     </div>
@@ -447,8 +447,8 @@ details[open] .go-summary::before { transform: rotate(90deg); }
     <div class="intro-highlights" style="margin-top:0.6rem">
       {% if membership %}
       <span><strong>Member of:</strong>
-        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
-        {% if membership.supermodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;opacity:0.7;">{{ membership.supermodule }}</a>{% endif %}
+        {% if membership.supermodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.supermodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.supermodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.supermodule }}</a> {% endif %}
+        {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:color-mix(in srgb, {{ card_color }} 80%, white);color:#fff;">{{ membership.submodule }}</a>{% endif %}
       </span>
       {% endif %}
       {% if tc_clusters %}
@@ -2306,10 +2306,10 @@ function initTfCoefScatter() {
     if (r.supermodule || r.submodule) {
       const mc = (window.MODULE_COLORS && window.MODULE_COLORS[r.supermodule]) || '#9098b8';
       const superPill = r.supermodule
-        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;opacity:0.75;margin-right:2px">${r.supermodule}</a>`
+        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.supermodule)}" style="background:${mc};color:#fff;margin-right:2px">${r.supermodule}</a>`
         : '';
       const subPill = r.submodule
-        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:${mc};color:#fff">${r.submodule}</a>`
+        ? `<a class="intro-tag submodule-tag" href="/tf-perturbseq/module/${encodeURIComponent(r.submodule)}" style="background:color-mix(in srgb, ${mc} 80%, white);color:#fff">${r.submodule}</a>`
         : '';
       modLink = superPill + subPill;
     }
