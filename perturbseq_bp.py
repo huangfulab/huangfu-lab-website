@@ -2932,11 +2932,13 @@ def tf_module_link_page(tf, module_name):
     )
 
 
-def _get_perturbation_evidence(db, tf: str, gene: str) -> list:
-    """Return list of {grna, direction, coef} for gRNAs that put gene in top/bottom 5%.
+def _get_perturbation_evidence(db, tf: str, gene: str) -> dict:
+    """Return perturbation evidence for a (TF, gene) pair.
 
-    direction is 'down' (bottom 5%) or 'up' (top 5%).
-    Returns an empty list when there is no perturbation evidence.
+    Returns a dict:
+      gene_in_de: bool — whether the gene appears in the DE regression data at all
+      hits:       list — {grna, direction, coef} for gRNAs that place gene in top/bottom 5%
+                  direction is 'down' (bottom 5%) or 'up' (top 5%)
     """
     rows = db.execute("""
         SELECT gt.grna_id, gt.grna_name, d.coef
@@ -2946,7 +2948,7 @@ def _get_perturbation_evidence(db, tf: str, gene: str) -> list:
         ORDER BY gt.grna_id
     """, (tf,)).fetchall()
     if not rows:
-        return []
+        return {'gene_in_de': False, 'hits': []}
 
     grna_coefs: dict = {}
     grna_names: dict = {}
@@ -2962,7 +2964,7 @@ def _get_perturbation_evidence(db, tf: str, gene: str) -> list:
         WHERE gt.gene_name = ? AND g.gene_name = ?
     """, (tf, gene)).fetchall()
     if not target_rows:
-        return []
+        return {'gene_in_de': False, 'hits': []}
 
     target_map = {r[0]: r[1] for r in target_rows}
     hits = []
@@ -2977,7 +2979,7 @@ def _get_perturbation_evidence(db, tf: str, gene: str) -> list:
             hits.append({'grna': grna_names[grna_id], 'direction': 'down', 'coef': round(target_coef, 4)})
         elif target_coef >= hi5:
             hits.append({'grna': grna_names[grna_id], 'direction': 'up',   'coef': round(target_coef, 4)})
-    return hits
+    return {'gene_in_de': True, 'hits': hits}
 
 
 def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
@@ -3320,7 +3322,9 @@ def tf_gene_link_page(tf, gene):
             gene_tss = {'tss': _tss['tss'], 'chr': _norm_chr(str(_tss['chr']))}
 
     has_binding_evidence      = bool(elements)
-    perturbation_evidence     = _get_perturbation_evidence(db, tf, gene)
+    _pert                     = _get_perturbation_evidence(db, tf, gene)
+    perturbation_evidence     = _pert['hits']
+    gene_in_de                = _pert['gene_in_de']
     has_perturbation_evidence = bool(perturbation_evidence)
 
     return render_template(
@@ -3337,6 +3341,7 @@ def tf_gene_link_page(tf, gene):
         has_binding_evidence=has_binding_evidence,
         has_perturbation_evidence=has_perturbation_evidence,
         perturbation_evidence=perturbation_evidence,
+        gene_in_de=gene_in_de,
     )
 
 
