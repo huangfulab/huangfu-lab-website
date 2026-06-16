@@ -408,17 +408,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   <div class="module-intro" style="margin:0;--accent:{{ card_color }}">
     {% if tf_desc and tf_desc.summary %}<p>{{ tf_desc.summary }}</p>{% endif %}
     <div class="intro-highlights" style="margin-top:0.6rem">
-      {% set pert_mods = tf_reg_modules | rejectattr('evidence', 'equalto', 'binding') | list %}
-      {% if pert_mods %}
-      <span><strong>Regulated modules:</strong>
-        {% for m in pert_mods[:5] %}<a class="intro-tag submodule-tag" data-mod-tip="{{ m.module }}" data-mod-color="{{ m.color }}" href="{{ url_for('perturbseq.module_page', name=m.module) }}" style="background:{{ m.color }};color:#fff;">{{ m.module }}</a> {% endfor %}
-      </span>
-      {% endif %}
-      {% if tc_reg_clusters %}
-      <span><strong>Developmental clusters:</strong>
-        {% for c in tc_reg_clusters[:4] %}<a class="intro-tag submodule-tag" href="{{ c.url }}" style="background:{{ c.color }};color:#fff;">{{ c.label }}</a> {% endfor %}
-      </span>
-      {% endif %}
       {% if membership %}
       <span><strong>Member of:</strong>
         {% if membership.submodule %}<a class="intro-tag submodule-tag" data-mod-tip="{{ membership.submodule }}" data-mod-color="{{ card_color }}" href="{{ url_for('perturbseq.module_page', name=membership.submodule) }}" style="background:{{ card_color }};color:#fff;">{{ membership.submodule }}</a> {% endif %}
