@@ -80,7 +80,7 @@ def load_network(level):
 @app.route("/")
 @app.route("/lab")
 def lab():
-    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:3], announcements=_ANNOUNCEMENTS[:3])
+    return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:5], announcements=_ANNOUNCEMENTS[:5])
 
 
 @app.route("/research")
