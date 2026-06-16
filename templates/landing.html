@@ -23,8 +23,8 @@
     font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
     overflow: hidden;
   }
 
@@ -50,6 +50,10 @@
     text-align: center;
     padding: 48px 24px 56px;
     max-width: 680px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     width: 100%;
   }
 
@@ -318,6 +322,39 @@
   .example-sep { color: #d0d6e8; font-size: 14px; line-height: 1; align-self: center; }
 
   .nav-row { display: none; }
+
+  /* --- Footer bar --- */
+  .footer-bar {
+    width: 100%;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 14px 24px;
+    background: rgba(244,247,255,0.9);
+    border-top: 1px solid rgba(180,190,220,0.45);
+  }
+  .footer-bar a {
+    font-size: 12px;
+    color: #8090b0;
+    text-decoration: none;
+    letter-spacing: 0.01em;
+    transition: color 0.15s;
+    padding: 2px 4px;
+  }
+  .footer-bar a:hover { color: #2c5fe8; }
+  .footer-bar .f-sep {
+    color: #c8d0e4;
+    margin: 0 10px;
+    font-size: 13px;
+    user-select: none;
+  }
+  .footer-bar .f-home {
+    font-weight: 600;
+    color: #5a6580;
+  }
+  .footer-bar .f-home:hover { color: #2c5fe8; }
 
   @media (max-width: 520px) {
     h1 { letter-spacing: -0.02em; }
@@ -637,6 +674,16 @@
   }
 })();
 </script>
+
+<div class="footer-bar">
+  <a class="f-home" href="/">Huangfu Lab</a>
+  <span class="f-sep">&middot;</span>
+  <a href="/publications">Publications</a>
+  <span class="f-sep">&middot;</span>
+  <a href="/resources">Resources</a>
+  <span class="f-sep">&middot;</span>
+  <a href="/contact">Contact</a>
+</div>
 
 </body>
 </html>
