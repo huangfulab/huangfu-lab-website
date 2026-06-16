@@ -2932,21 +2932,27 @@ def tf_module_link_page(tf, module_name):
     )
 
 
-def _has_perturbation_evidence(db, tf: str, gene: str) -> bool:
-    """Return True if any gRNA for tf puts gene in the top/bottom 5% of its coef distribution."""
+def _get_perturbation_evidence(db, tf: str, gene: str) -> list:
+    """Return list of {grna, direction, coef} for gRNAs that put gene in top/bottom 5%.
+
+    direction is 'down' (bottom 5%) or 'up' (top 5%).
+    Returns an empty list when there is no perturbation evidence.
+    """
     rows = db.execute("""
-        SELECT gt.grna_id, d.coef
+        SELECT gt.grna_id, gt.grna_name, d.coef
         FROM de_results d
         JOIN grna_table gt ON d.grna_id = gt.grna_id
         WHERE gt.gene_name = ?
         ORDER BY gt.grna_id
     """, (tf,)).fetchall()
     if not rows:
-        return False
+        return []
 
     grna_coefs: dict = {}
-    for grna_id, coef in rows:
+    grna_names: dict = {}
+    for grna_id, grna_name, coef in rows:
         grna_coefs.setdefault(grna_id, []).append(coef)
+        grna_names[grna_id] = grna_name
 
     target_rows = db.execute("""
         SELECT d.grna_id, d.coef
@@ -2956,17 +2962,22 @@ def _has_perturbation_evidence(db, tf: str, gene: str) -> bool:
         WHERE gt.gene_name = ? AND g.gene_name = ?
     """, (tf, gene)).fetchall()
     if not target_rows:
-        return False
+        return []
 
     target_map = {r[0]: r[1] for r in target_rows}
+    hits = []
     for grna_id, coefs in grna_coefs.items():
         target_coef = target_map.get(grna_id)
         if target_coef is None:
             continue
         arr = np.array(coefs, dtype=float)
-        if target_coef <= float(np.percentile(arr, 5)) or target_coef >= float(np.percentile(arr, 95)):
-            return True
-    return False
+        lo5 = float(np.percentile(arr, 5))
+        hi5 = float(np.percentile(arr, 95))
+        if target_coef <= lo5:
+            hits.append({'grna': grna_names[grna_id], 'direction': 'down', 'coef': round(target_coef, 4)})
+        elif target_coef >= hi5:
+            hits.append({'grna': grna_names[grna_id], 'direction': 'up',   'coef': round(target_coef, 4)})
+    return hits
 
 
 def _coef_kde_data_db(db, tf: str, gene: str, n_pts: int = 100):
@@ -3308,8 +3319,9 @@ def tf_gene_link_page(tf, gene):
         if _tss:
             gene_tss = {'tss': _tss['tss'], 'chr': _norm_chr(str(_tss['chr']))}
 
-    has_binding_evidence     = bool(elements)
-    has_perturbation_evidence = _has_perturbation_evidence(db, tf, gene)
+    has_binding_evidence      = bool(elements)
+    perturbation_evidence     = _get_perturbation_evidence(db, tf, gene)
+    has_perturbation_evidence = bool(perturbation_evidence)
 
     return render_template(
         "perturbseq/tf_gene_link.html",
@@ -3324,6 +3336,7 @@ def tf_gene_link_page(tf, gene):
         gene_tss=gene_tss,
         has_binding_evidence=has_binding_evidence,
         has_perturbation_evidence=has_perturbation_evidence,
+        perturbation_evidence=perturbation_evidence,
     )
 
 

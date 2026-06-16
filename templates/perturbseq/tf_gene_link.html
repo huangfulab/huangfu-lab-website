@@ -306,11 +306,33 @@
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 600; padding: 5px 13px;
   border-radius: 20px; border: 1.5px solid; letter-spacing: 0.2px;
-  white-space: nowrap;
+  white-space: nowrap; cursor: default;
 }
 .ev-summary-pill.yes { background: rgba(16,185,129,0.12); color: #059669; border-color: #6ee7b7; }
 .ev-summary-pill.no  { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
 .ev-summary-pill svg { flex-shrink: 0; }
+
+/* ── Evidence pill tooltip ─────────────────────────────────────────── */
+#ev-pill-tip {
+  display: none; position: fixed; z-index: 9999;
+  width: 280px; border-radius: var(--radius); background: var(--bg-card);
+  border: 1px solid var(--border); border-left: 4px solid #059669;
+  box-shadow: 0 4px 18px rgba(0,0,0,.13); overflow: hidden;
+  font-family: inherit; pointer-events: none;
+}
+#ev-pill-tip-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+  padding: 7px 11px 6px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+#ev-pill-tip-body { padding: 8px 11px 9px; font-size: 12px; line-height: 1.55; color: var(--text-muted); }
+.ev-tip-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
+.ev-tip-row:last-child { margin-bottom: 0; }
+.ev-tip-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); flex-shrink: 0; min-width: 64px; }
+.ev-tip-val { color: var(--text); font-size: 11.5px; }
+.ev-tip-dir-up   { color: #ec4899; font-weight: 700; }
+.ev-tip-dir-down { color: #3b82f6; font-weight: 700; }
 
 /* ── Coefficient density plots ─────────────────────────────────────── */
 #coef-grid-de { display:grid; gap:12px; margin-bottom:28px; }
@@ -386,8 +408,22 @@
     <svg class="hero-sel-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     <div class="hero-sel-dropdown" id="gene-sel-dropdown"></div>
   </div>
+  {# ── Collect unique binding sources for tooltip ── #}
+  {% set ns_tip = namespace(motifs=[], chip_ids=[], chips=[]) %}
+  {% for el in elements %}
+    {% if el.motif and el.motif.name not in ns_tip.motifs %}
+      {% set ns_tip.motifs = ns_tip.motifs + [el.motif.name] %}
+    {% endif %}
+    {% for ds in el.chipseq %}
+      {% if ds.dataset_id not in ns_tip.chip_ids %}
+        {% set ns_tip.chip_ids  = ns_tip.chip_ids  + [ds.dataset_id] %}
+        {% set ns_tip.chips     = ns_tip.chips     + [ds] %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+
   <div class="ev-summary-row" style="margin-left:auto">
-    <span class="ev-summary-pill {{ 'yes' if has_binding_evidence else 'no' }}">
+    <span id="ev-pill-binding" class="ev-summary-pill {{ 'yes' if has_binding_evidence else 'no' }}">
       {% if has_binding_evidence %}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       {% else %}
@@ -395,7 +431,7 @@
       {% endif %}
       Binding evidence
     </span>
-    <span class="ev-summary-pill {{ 'yes' if has_perturbation_evidence else 'no' }}">
+    <span id="ev-pill-perturbation" class="ev-summary-pill {{ 'yes' if has_perturbation_evidence else 'no' }}">
       {% if has_perturbation_evidence %}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       {% else %}
@@ -404,6 +440,23 @@
       Perturbation evidence
     </span>
   </div>
+
+  {# ── Tooltip data injected for JS ── #}
+  <script>
+  const EV_TIP_BINDING = {
+    {% if has_binding_evidence %}
+    motifs: {{ ns_tip.motifs | tojson }},
+    chipseq: {{ ns_tip.chips | map(attribute='cell_type') | list | tojson }},
+    {% else %}
+    motifs: [], chipseq: [],
+    {% endif %}
+    present: {{ has_binding_evidence | tojson }}
+  };
+  const EV_TIP_PERTURBATION = {
+    hits: {{ perturbation_evidence | tojson }},
+    present: {{ has_perturbation_evidence | tojson }}
+  };
+  </script>
 </div>
 
 <!-- ── Expression charts ──────────────────────────────────────────────── -->
@@ -615,6 +668,12 @@
 
 </div><!-- end page-main -->
 </div><!-- end page-with-sidebar -->
+
+<!-- ── Evidence pill tooltip ─────────────────────────────────────────── -->
+<div id="ev-pill-tip" role="tooltip" aria-hidden="true">
+  <div id="ev-pill-tip-title"></div>
+  <div id="ev-pill-tip-body"></div>
+</div>
 
 {% endblock %}
 
@@ -1430,6 +1489,79 @@ let _igvBrowser = null;
   });
 })();
 
+/* ── Evidence pill tooltips ──────────────────────────────────────── */
+(function() {
+  const tip   = document.getElementById('ev-pill-tip');
+  const tipTtl = document.getElementById('ev-pill-tip-title');
+  const tipB  = document.getElementById('ev-pill-tip-body');
+
+  function positionNear(el) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const r  = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (y + th > H - pad) y = r.top - th - 6;
+    if (x + tw > W - pad) x = r.right - tw;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function row(label, valHtml) {
+    return `<div class="ev-tip-row"><span class="ev-tip-label">${label}</span><span class="ev-tip-val">${valHtml}</span></div>`;
+  }
+
+  function showBinding(el) {
+    tip.style.borderLeftColor = '#059669';
+    tipTtl.textContent = 'Binding evidence';
+    let html = '';
+    if (!EV_TIP_BINDING.present) {
+      html = '<span style="color:var(--text-muted);font-style:italic">No binding evidence found</span>';
+    } else {
+      if (EV_TIP_BINDING.motifs.length)
+        html += row('Motif', EV_TIP_BINDING.motifs.join(', '));
+      if (EV_TIP_BINDING.chipseq.length)
+        html += row('ChIP-seq', EV_TIP_BINDING.chipseq.join(', '));
+    }
+    tipB.innerHTML = html;
+    tip.style.display = 'block';
+    positionNear(el);
+  }
+
+  function showPerturbation(el) {
+    tip.style.borderLeftColor = '#059669';
+    tipTtl.textContent = 'Perturbation evidence';
+    let html = '';
+    if (!EV_TIP_PERTURBATION.present || !EV_TIP_PERTURBATION.hits.length) {
+      html = '<span style="color:var(--text-muted);font-style:italic">No perturbation evidence found</span>';
+    } else {
+      EV_TIP_PERTURBATION.hits.forEach(h => {
+        const arrow = h.direction === 'up'
+          ? '<span class="ev-tip-dir-up">↑ upregulated</span>'
+          : '<span class="ev-tip-dir-down">↓ downregulated</span>';
+        html += row(h.grna, `${arrow} <span style="color:var(--text-muted);font-size:10.5px">(coef ${h.coef > 0 ? '+' : ''}${h.coef})</span>`);
+      });
+    }
+    tipB.innerHTML = html;
+    tip.style.display = 'block';
+    positionNear(el);
+  }
+
+  const bindingPill      = document.getElementById('ev-pill-binding');
+  const perturbationPill = document.getElementById('ev-pill-perturbation');
+
+  let hideTimer = null;
+  function scheduleHide() { hideTimer = setTimeout(() => tip.style.display = 'none', 150); }
+  function cancelHide()   { clearTimeout(hideTimer); }
+
+  if (bindingPill) {
+    bindingPill.addEventListener('mouseenter', () => { cancelHide(); showBinding(bindingPill); });
+    bindingPill.addEventListener('mouseleave', scheduleHide);
+  }
+  if (perturbationPill) {
+    perturbationPill.addEventListener('mouseenter', () => { cancelHide(); showPerturbation(perturbationPill); });
+    perturbationPill.addEventListener('mouseleave', scheduleHide);
+  }
+})();
 
 </script>
 {% endblock %}
