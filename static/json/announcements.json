@@ -1,5 +1,15 @@
 [
   {
+    "year": "2026",
+    "text": "New paper: <a href=\"https://doi.org/10.1016/j.devcel.2026.04.012\" target=\"_blank\" rel=\"noopener\"><em>Human pancreatic progenitor organoids define genetic and epigenetic barriers to early PDAC transformation.</em></a> <strong>Developmental Cell.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2026",
+    "text": "New paper: <a href=\"https://doi.org/10.1016/j.xgen.2026.101189\" target=\"_blank\" rel=\"noopener\"><em>Functional chromatin signatures premark future lineage-specific enhancers.</em></a> <strong>Cell Genomics.</strong>",
+    "badge": "Publication"
+  },
+  {
     "year": "2025",
     "text": "<strong>Denis Torre</strong> awarded the <strong>Damon Runyon Cancer Research Foundation Fellowship</strong>.",
     "badge": "Fellowship"
@@ -15,18 +25,53 @@
     "badge": "Fellowship"
   },
   {
+    "year": "2025",
+    "text": "New paper: <a href=\"https://doi.org/10.1016/j.stemcr.2025.102511\" target=\"_blank\" rel=\"noopener\"><em>Discovery of NANOG enhancers and their essential roles in self-renewal and differentiation in human embryonic stem cells.</em></a> <strong>Stem Cell Reports.</strong>",
+    "badge": "Publication"
+  },
+  {
     "year": "2024",
     "text": "<strong>Renhe Luo</strong> receives the <strong>GSK Chairman's Prize</strong>.",
     "badge": "Award"
   },
   {
-    "year": "2023",
-    "text": "New paper: <em>Dynamic network-guided CRISPRi screen identifies CTCF-loop-constrained nonlinear enhancer gene regulatory activity during cell state transitions.</em> <strong>Nature Genetics.</strong>",
+    "year": "2024",
+    "text": "New paper: <a href=\"https://doi.org/10.1038/s41467-024-53284-4\" target=\"_blank\" rel=\"noopener\"><em>Parallel genome-scale CRISPR-Cas9 screens uncouple human pluripotent stem cell identity versus fitness.</em></a> <strong>Nature Communications.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2024",
+    "text": "New paper: <a href=\"https://doi.org/10.1016/j.celrep.2024.114640\" target=\"_blank\" rel=\"noopener\"><em>CRISPR screening uncovers a long-range enhancer for ONECUT1 in pancreatic differentiation and links a diabetes risk variant.</em></a> <strong>Cell Reports.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2024",
+    "text": "New paper: <a href=\"https://doi.org/10.2337/db23-0508\" target=\"_blank\" rel=\"noopener\"><em>Glucose Transporters Are Key Components of the Human Glucostat.</em></a> <strong>Diabetes.</strong>",
     "badge": "Publication"
   },
   {
     "year": "2023",
     "text": "The lab launches the <strong>MSK MorPhiC Project</strong>, a systematic effort to functionally characterize noncoding elements in the human genome.",
     "badge": "Project"
+  },
+  {
+    "year": "2022",
+    "text": "New paper: <a href=\"https://doi.org/10.1038/s41556-022-00946-4\" target=\"_blank\" rel=\"noopener\"><em>CRISPR screening uncovers a central requirement for HHEX in pancreatic lineage commitment and plasticity restriction.</em></a> <strong>Nature Cell Biology.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2022",
+    "text": "New paper: <a href=\"https://doi.org/10.1016/j.tcb.2021.12.001\" target=\"_blank\" rel=\"noopener\"><em>Epigenome rewiring in human pluripotent stem cells.</em></a> <strong>Trends in Cell Biology.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2021",
+    "text": "New paper: <a href=\"https://doi.org/10.1126/science.abd0875\" target=\"_blank\" rel=\"noopener\"><em>QSER1 protects DNA methylation valleys from de novo methylation.</em></a> <strong>Science.</strong>",
+    "badge": "Publication"
+  },
+  {
+    "year": "2020",
+    "text": "New paper: <a href=\"https://doi.org/10.1146/annurev-genom-121719-010946\" target=\"_blank\" rel=\"noopener\"><em>Enhancer Predictions and Genome-Wide Regulatory Circuits.</em></a> <strong>Annual Review of Genomics and Human Genetics.</strong>",
+    "badge": "Publication"
   }
 ]

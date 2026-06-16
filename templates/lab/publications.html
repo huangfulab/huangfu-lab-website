@@ -15,7 +15,7 @@
     <div class="pub-item">
       <div>
         <p class="pub-title">
-          {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title }}</a>{% else %}{{ pub.title }}{% endif %}
+          {% if pub.link %}<a href="{{ pub.link }}" target="_blank" rel="noopener">{{ pub.title | safe }}</a>{% else %}{{ pub.title | safe }}{% endif %}
         </p>
         <p class="pub-authors">
           {% for author in pub.authors %}{% if 'Danwei Huangfu' in author %}<b>{{ author }}</b>{% else %}{{ author }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
