@@ -482,11 +482,9 @@
         {% elif not has_perturbation_evidence %}
         <span class="ev-summary-pill-sub">Not differentially expressed on KD</span>
         {% elif _n_up < 2 and _n_down < 2 %}
-        <span class="ev-summary-pill-sub">No consensus</span>
-        <span class="ev-summary-pill-desc">Only {{ perturbation_evidence | length }} gRNA{{ 's' if perturbation_evidence | length != 1 else '' }} significant</span>
+        <span class="ev-summary-pill-sub">No consensus · {{ perturbation_evidence | length }} gRNA{{ 's' if perturbation_evidence | length != 1 else '' }} significant</span>
         {% elif _n_up >= 2 and _n_down >= 2 %}
-        <span class="ev-summary-pill-sub">Inconclusive evidence</span>
-        <span class="ev-summary-pill-desc">{{ _n_up }} gRNA{{ 's' if _n_up != 1 else '' }} up, {{ _n_down }} gRNA{{ 's' if _n_down != 1 else '' }} down on {{ tf }} KD</span>
+        <span class="ev-summary-pill-sub">Inconclusive · {{ _n_up }}↑ {{ _n_down }}↓ on {{ tf }} KD</span>
         {% elif _n_up >= 2 %}
         <span class="ev-summary-pill-sub">↑ upregulated on {{ tf }} KD · {{ _n_up }} gRNA{{ 's' if _n_up != 1 else '' }}</span>
         {% else %}
