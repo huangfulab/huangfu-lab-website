@@ -549,7 +549,7 @@
 <!-- ── TF Binding Evidence ─────────────────────────────────────────────── -->
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-binding">TF Binding Evidence</h2>
-<p class="section-desc">Regulatory elements (ATAC-seq peaks) linking {{ tf }} to {{ gene }}, supported by TOBIAS motif footprints and/or ChIP-seq peak overlap. The diagram connects each binding source through intermediate elements to the target gene — click any pill to filter the view.</p>
+{% if elements %}<p class="section-desc">Regulatory elements (ATAC-seq peaks) linking {{ tf }} to {{ gene }}, supported by TOBIAS motif footprints and/or ChIP-seq peak overlap. The diagram connects each binding source through intermediate elements to the target gene — click any pill to filter the view.</p>{% endif %}
 
 {% if not elements %}
 <p style="font-size:13px;text-align:justify;color:var(--text-muted);margin:0 0 28px;font-style:italic">No regulatory elements with TF binding evidence were found linking <strong style="font-style:normal">{{ tf }}</strong> to <strong style="font-style:normal">{{ gene }}</strong> in this dataset.</p>
@@ -689,7 +689,7 @@
 <!-- ── Genome browser ─────────────────────────────────────────────────── -->
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-browser">Genome Browser</h2>
-<p class="section-desc">Genomic view centered on regulatory elements linking {{ tf }} to {{ gene }}. Tracks include TF binding peaks (motif footprints and ChIP-seq), ATAC-seq accessibility, RNA-seq expression, and arc-loop connections from each element to the {{ gene }} TSS — all across the ESC → DE time course.</p>
+{% if elements %}<p class="section-desc">Genomic view centered on regulatory elements linking {{ tf }} to {{ gene }}. Tracks include TF binding peaks (motif footprints and ChIP-seq), ATAC-seq accessibility, RNA-seq expression, and arc-loop connections from each element to the {{ gene }} TSS — all across the ESC → DE time course.</p>{% endif %}
 {% if elements %}
 <div class="igv-card">
   <div class="igv-toolbar">
