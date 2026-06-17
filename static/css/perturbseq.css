@@ -391,10 +391,15 @@ a.node-link:hover { color: var(--accent-hover); }
     border-radius: 0;
     box-shadow: none;
 }
+.landing-split .side-table-wrap table.data-table th,
+.landing-split .side-table-wrap table.data-table td {
+    padding: 0.5rem 0.55rem;
+}
 .landing-split .side-table-wrap table.data-table th {
     position: sticky;
     top: 0;
     z-index: 1;
+    white-space: nowrap;
 }
 @media (max-width: 900px) {
     .landing-split { grid-template-columns: 1fr; }

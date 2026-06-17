@@ -1255,6 +1255,9 @@ def gene_page(gene_name):
             "AND gene_set_collection='DE-hotspot_modules'", (gene_name,)))
         # Supermodule-level binding
         bind_by_mod = _bind_edges_for_tf(db, gene_name, 'hotspot_supermodule')
+        # Keep only modules with significant perturbation (|NES|>1, padj<0.05) or binding (OR>1, padj<0.05)
+        pert_rows = [r for r in pert_rows if abs(r['mean_NES']) > 1 and r['padj'] < 0.05]
+        bind_by_mod = {m: b for m, b in bind_by_mod.items() if b['odds_ratio'] > 1 and b['padj'] < 0.05}
         pert_mods = {r['module'] for r in pert_rows}
         pert_by_mod = {r['module']: r['mean_NES'] for r in pert_rows}
 
@@ -1287,12 +1290,14 @@ def gene_page(gene_name):
                 AND gene_set_collection='ESC_DE-gene_clustering_data_var0.3_k7_top1000_DE'
             """, (gene_name,)).fetchall()
             if _mfuzz_to_internal(r[0]) not in HIDDEN
+            and abs(r[1]) > 1 and r[2] < 0.05
         }
         # Binding enrichment from tf_module_enrichment (gene_set_collection='mfuzz')
         bind_gc = {
             _mfuzz_to_internal(mod): data
             for mod, data in _bind_edges_for_tf(db, gene_name, 'mfuzz').items()
             if _mfuzz_to_internal(mod) not in HIDDEN
+            and data['odds_ratio'] > 1 and data['padj'] < 0.05
         }
         for gc in set(pert_gc.keys()) | set(bind_gc.keys()):
             p = pert_gc.get(gc)
@@ -1326,8 +1331,10 @@ def gene_page(gene_name):
         sub_pert = {r['module']: r for r in rows_to_dicts(db.execute(
             "SELECT module, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj "
             "FROM gsea_tf_table WHERE gene_name=? AND module_collection='hotspot_submodule' "
-            "AND gene_set_collection='DE-hotspot_modules'", (gene_name,)))}
-        sub_bind = _bind_edges_for_tf(db, gene_name, 'hotspot_submodule')
+            "AND gene_set_collection='DE-hotspot_modules'", (gene_name,)))
+            if abs(r['mean_NES']) > 1 and r['padj'] < 0.05}
+        sub_bind = {m: b for m, b in _bind_edges_for_tf(db, gene_name, 'hotspot_submodule').items()
+                    if b['odds_ratio'] > 1 and b['padj'] < 0.05}
         all_sub_ids = set(sub_pert.keys()) | set(sub_bind.keys())
         if all_sub_ids:
             placeholders = ','.join('?' * len(all_sub_ids))

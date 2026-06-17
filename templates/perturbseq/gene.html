@@ -221,7 +221,9 @@
     min-width: 0; max-height: 55vh; overflow-y: auto; overflow-x: auto;
   }
   .tf-net-split .side-table-wrap table.data-table { margin-top:0; border:none; border-radius:0; box-shadow:none; }
-  .tf-net-split .side-table-wrap table.data-table th { position:sticky; top:0; z-index:1; }
+  .tf-net-split .side-table-wrap table.data-table th,
+  .tf-net-split .side-table-wrap table.data-table td { padding:0.5rem 0.55rem; }
+  .tf-net-split .side-table-wrap table.data-table th { position:sticky; top:0; z-index:1; white-space:nowrap; }
   #tf-mod-cy { flex:1; height:0; min-height:52vh; }
   #tf-dev-cy { flex:1; height:0; min-height:40vh; }
   @media (max-width:900px) {
