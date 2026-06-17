@@ -6,7 +6,7 @@ import yaml
 import html
 import pandas as pd
 from pathlib import Path
-from perturbseq_bp import perturbseq_bp, PERTURBSEQ_PREFIX
+from blueprints.perturbseq_bp import perturbseq_bp, PERTURBSEQ_PREFIX
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)

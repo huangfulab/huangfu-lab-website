@@ -15,13 +15,13 @@ PERTURBSEQ_PREFIX = '/tf-perturbseq'
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix=PERTURBSEQ_PREFIX)
 
-DB_PATH      = str(Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v5.db")
+DB_PATH      = str(Path(__file__).resolve().parent.parent / "data" / "db" / "tf-perturbseq-v5.db")
 
 def _last_commit_ts() -> int | None:
     try:
         out = subprocess.check_output(
             ['git', 'log', '-1', '--format=%ct'],
-            cwd=str(Path(__file__).resolve().parent),
+            cwd=str(Path(__file__).resolve().parent.parent),
             stderr=subprocess.DEVNULL, text=True,
         ).strip()
         return int(out) if out else None
@@ -46,10 +46,10 @@ def _fmt_time_ago(ts: int | None) -> str | None:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%-d %b %Y")
 
 _LAST_COMMIT_TS: int | None = _last_commit_ts()
-BW_DIR       = str(Path(__file__).resolve().parent / "data" / "bw" / "atac")
+BW_DIR       = str(Path(__file__).resolve().parent.parent / "data" / "bw" / "atac")
 BW_EXTRA_DIR = BW_DIR
-BW_RNA_DIR   = str(Path(__file__).resolve().parent / "data" / "bw" / "rna")
-GTF_DIR      = str(Path(__file__).resolve().parent / "data" / "gtf")
+BW_RNA_DIR   = str(Path(__file__).resolve().parent.parent / "data" / "bw" / "rna")
+GTF_DIR      = str(Path(__file__).resolve().parent.parent / "data" / "gtf")
 
 TC_CLUSTER_COLORS = {
     "gene_cluster_1": "#4E79A7",
@@ -267,7 +267,7 @@ def _load_lambert_tfs() -> frozenset:
     global _lambert_tfs
     if _lambert_tfs is None:
         try:
-            path = Path(__file__).resolve().parent.parent.parent / "data" / "tables" / "lambert-TF_table.csv"
+            path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "tables" / "lambert-TF_table.csv"
             with open(path, newline='') as f:
                 _lambert_tfs = frozenset(
                     row['Name'] for row in csv.DictReader(f)
