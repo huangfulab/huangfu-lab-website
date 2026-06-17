@@ -1550,199 +1550,96 @@ function initTfCoefDensityLegacy() {
   function renderTfDensity(allCoefs, container, boundGenes) {
     if (!allCoefs || allCoefs.length < 2) { container.style.display = 'none'; return; }
 
-    const card = document.createElement('div');
-    card.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px;contain:paint layout';
-    const titleEl = document.createElement('div');
-    titleEl.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px';
-    titleEl.innerHTML = `Effect of ${GENE} knockdown on gene expression`;
-    card.appendChild(titleEl);
-    container.appendChild(card);
+    const hasBound = boundGenes && boundGenes.length > 0;
+    const plot = _buildKdePlot(allCoefs, container, {
+      title:      `Effect of ${GENE} knockdown on gene expression`,
+      cardStyle:  'contain:paint layout',
+      annotLeft:  [`← Genes downregulated by ${GENE} KD`, '(Top 5%)'],
+      annotRight: [`Genes upregulated by ${GENE} KD →`,   '(Top 5%)'],
+      xLabel:     'Perturb-seq regression coefficient',
+      nExtraRug:  hasBound ? 2 : 1,
+      marginLeft: 72,
+      rugGap:     5,
+      xAxisGap:   6,
+    });
+    if (!plot) return;
+    const { g, clipG, x0, lo5, hi5, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate } = plot;
 
-    const vals = allCoefs;
-    const n = vals.length;
-    const RUG = 10;
-    const margin = { top: 42, right: 20, bottom: 48, left: 72 };
-    const pageMain = document.querySelector('.page-main') || document.body;
-    const fullW = Math.max((pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
-    const W = fullW - margin.left - margin.right;
-    const H = 150;
-
-    const sorted = [...vals].sort((a, b) => a - b);
-    const lo5 = sorted[Math.max(0, Math.ceil(n * 0.05) - 1)];
-    const hi5 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
-    const mean = d3.mean(vals);
-    const std = Math.sqrt(d3.mean(vals.map(v => (v - mean) ** 2))) || 0.01;
-    const bw = 1.06 * std * Math.pow(n, -0.2);
-    function epanechnikov(h) { return v => Math.abs(v /= h) <= 1 ? 0.75 * (1 - v * v) / h : 0; }
-    const kernel = epanechnikov(bw);
-    const ext = d3.extent(vals);
-    const x0 = d3.scaleLinear().domain([ext[0] - bw * 2, ext[1] + bw * 2]).nice().range([0, W]);
-    const pts = d3.range(x0.domain()[0], x0.domain()[1], (x0.domain()[1] - x0.domain()[0]) / 256);
-    const density = pts.map(t => [t, d3.mean(vals, v => kernel(t - v))]);
-    const y = d3.scaleLinear().domain([0, d3.max(density, d => d[1]) * 1.15]).range([H, 0]);
-
-    const toolbar = document.createElement('div');
-    toolbar.style.cssText = 'display:flex;align-items:center;gap:3px;margin-bottom:4px;';
-    const btnStyle = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
-      'border:1px solid var(--border);border-radius:5px;background:var(--bg-card);' +
-      'color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
-    function mkBtn(title, html, fn) {
-      const btn = document.createElement('button');
-      btn.title = title;
-      btn.innerHTML = html;
-      btn.style.cssText = btnStyle;
-      btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--bg-elevated,rgba(100,116,139,0.14))'; btn.style.color = 'var(--text)'; });
-      btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--bg-card)'; btn.style.color = 'var(--text-muted)'; });
-      btn.addEventListener('click', fn);
-      return btn;
-    }
-
-    const iPlus  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/><line x1="6.5" y1="4.5" x2="6.5" y2="8.5"/></svg>`;
-    const iMinus = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/></svg>`;
-    const iLeft  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,3 4,8 10,13"/></svg>`;
-    const iRight = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,3 12,8 6,13"/></svg>`;
-    const iReset = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1-3"/><polyline points="1,2 3,5 6,3"/></svg>`;
-    const ZOOM_STEP = 1.5;
-    const PAN_PX = 60;
-    const uid = Date.now();
-    const rugY1 = H + 6;
-    const rugY2 = rugY1 + RUG + 5;
-    const xAxisY = rugY2 + RUG + 6;
-
-    const svg = d3.create('svg').attr('width', fullW).attr('height', margin.top + xAxisY + 40 + margin.bottom).style('display', 'block').style('cursor', 'grab');
-    const defs = svg.append('defs');
-    defs.append('clipPath').attr('id', `tfd-clip-${uid}`).append('rect').attr('x', 0).attr('y', -2).attr('width', W).attr('height', rugY2 + RUG + 10);
-    const loClipRect = defs.append('clipPath').attr('id', `tfd-lo-${uid}`).append('rect').attr('y', 0).attr('height', H);
-    const hiClipRect = defs.append('clipPath').attr('id', `tfd-hi-${uid}`).append('rect').attr('y', 0).attr('height', H);
-
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-    g.append('rect').attr('width', W).attr('height', rugY2 + RUG + 6).attr('fill', 'none').attr('pointer-events', 'all');
-    const clipG = g.append('g').attr('clip-path', `url(#tfd-clip-${uid})`);
-    const basePath = clipG.append('path').attr('fill', 'rgba(100,116,139,0.10)');
-    const loPath = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', `url(#tfd-lo-${uid})`);
-    const hiPath = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', `url(#tfd-hi-${uid})`);
-    const outlinePath = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
-    const zeroLine = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.4);
-    const lo5Line = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-    const hi5Line = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-
-    g.append('text').attr('x', 3).attr('y', -27).attr('text-anchor', 'start').attr('font-size', '11px').attr('fill', '#3b82f6').attr('opacity', 0.85).text(`← Genes downregulated by ${GENE} KD`);
-    g.append('text').attr('x', 3).attr('y', -13).attr('text-anchor', 'start').attr('font-size', '11px').attr('fill', '#3b82f6').attr('opacity', 0.85).text('(Top 5%)');
-    g.append('text').attr('x', W - 3).attr('y', -27).attr('text-anchor', 'end').attr('font-size', '11px').attr('fill', '#ec4899').attr('opacity', 0.85).text(`Genes upregulated by ${GENE} KD →`);
-    g.append('text').attr('x', W - 3).attr('y', -13).attr('text-anchor', 'end').attr('font-size', '11px').attr('fill', '#ec4899').attr('opacity', 0.85).text('(Top 5%)');
-
-    const valsLo = vals.filter(d => d <= lo5);
-    const valsHi = vals.filter(d => d >= hi5);
-    const valsMid = vals.filter(d => d > lo5 && d < hi5);
+    // Row 1: "All genes" — merged paths for performance, no per-element hover
+    const vals    = allCoefs;
+    const valsLo  = vals.filter(v => v <= lo5);
+    const valsHi  = vals.filter(v => v >= hi5);
+    const valsMid = vals.filter(v => v > lo5 && v < hi5);
     const fullRugMid = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.12).attr('pointer-events', 'none');
-    const fullRugLo = clipG.append('path').attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1).attr('opacity', 0.30).attr('pointer-events', 'none');
-    const fullRugHi = clipG.append('path').attr('fill', 'none').attr('stroke', '#ec4899').attr('stroke-width', 1).attr('opacity', 0.30).attr('pointer-events', 'none');
-    g.append('text').attr('x', -6).attr('y', rugY1 + RUG / 2).attr('text-anchor', 'end').attr('dominant-baseline', 'middle').attr('font-size', '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7).text('All genes');
-    function buildRow1(xsc) {
+    const fullRugLo  = clipG.append('path').attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1).attr('opacity', 0.30).attr('pointer-events', 'none');
+    const fullRugHi  = clipG.append('path').attr('fill', 'none').attr('stroke', '#ec4899').attr('stroke-width', 1).attr('opacity', 0.30).attr('pointer-events', 'none');
+    g.append('text').attr('x', -6).attr('y', rugY1 + RUG / 2)
+      .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
+      .attr('font-size', '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7).text('All genes');
+    registerUpdate(xsc => {
       function segs(arr, y0) { return arr.map(v => { const px = xsc(v).toFixed(1); return `M${px},${y0}L${px},${y0 + RUG}`; }).join(''); }
       fullRugMid.attr('d', segs(valsMid, rugY1) || null);
-      fullRugLo.attr('d', segs(valsLo, rugY1) || null);
-      fullRugHi.attr('d', segs(valsHi, rugY1) || null);
-    }
+      fullRugLo.attr('d',  segs(valsLo,  rugY1) || null);
+      fullRugHi.attr('d',  segs(valsHi,  rugY1) || null);
+    });
 
-    const rugTip2 = document.createElement('div');
-    rugTip2.style.cssText = 'position:fixed;z-index:9999;display:none;padding:5px 9px;font-size:11.5px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.14);pointer-events:none;white-space:nowrap;line-height:1.5';
-    document.body.appendChild(rugTip2);
-    function showTip2(event, d) {
-      const col = d.coef >= hi5 ? '#ec4899' : d.coef <= lo5 ? '#3b82f6' : 'var(--text-muted)';
-      rugTip2.innerHTML = `<span style="font-weight:700;color:${col}">${d.gene_name}</span><br><span style="color:var(--text-muted);font-size:10px">coef ${d.coef > 0 ? '+' : ''}${d.coef.toFixed(3)}</span>`;
-      rugTip2.style.display = 'block';
-      moveTip2(event);
-    }
-    function moveTip2(event) {
-      const tw = rugTip2.offsetWidth || 120;
-      const th = rugTip2.offsetHeight || 40;
-      let left = event.clientX + 10;
-      let top = event.clientY - th - 8;
-      if (left + tw > window.innerWidth - 8) left = event.clientX - tw - 10;
-      rugTip2.style.left = `${Math.max(8, left)}px`;
-      rugTip2.style.top = `${Math.max(8, top)}px`;
-    }
-
-    const sortedBound = [...boundGenes].sort((a, b) => a.coef - b.coef);
-    const boundPathLo  = clipG.append('path').attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('opacity', 0.75).attr('pointer-events', 'none');
-    const boundPathHi  = clipG.append('path').attr('fill', 'none').attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('opacity', 0.75).attr('pointer-events', 'none');
-    const boundPathMid = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5).attr('opacity', 0.35).attr('pointer-events', 'none');
-    function buildRow2(xsc) {
-      function segs(arr, y0) { return arr.map(d => { const px = xsc(d.coef).toFixed(1); return `M${px},${y0}L${px},${y0 + RUG}`; }).join(''); }
-      boundPathLo.attr('d', segs(sortedBound.filter(d => d.coef <= lo5), rugY2) || null);
-      boundPathHi.attr('d', segs(sortedBound.filter(d => d.coef >= hi5), rugY2) || null);
-      boundPathMid.attr('d', segs(sortedBound.filter(d => d.coef > lo5 && d.coef < hi5), rugY2) || null);
-    }
-    clipG.append('rect')
-      .attr('x', 0).attr('y', rugY2 - 4).attr('width', W).attr('height', RUG + 8)
-      .attr('fill', 'transparent').attr('cursor', 'pointer')
-      .on('mousemove', function(event) {
-        if (!sortedBound.length) return;
-        const mx = d3.pointer(event, this)[0];
-        let lo = 0, hi = sortedBound.length - 1;
-        while (lo < hi) { const mid = (lo + hi) >> 1; if (currentXsc(sortedBound[mid].coef) < mx) lo = mid + 1; else hi = mid; }
-        const cands = [sortedBound[lo - 1], sortedBound[lo]].filter(Boolean);
-        const nearest = cands.reduce((b, c) => Math.abs(currentXsc(c.coef) - mx) < Math.abs(currentXsc(b.coef) - mx) ? c : b);
-        if (Math.abs(currentXsc(nearest.coef) - mx) < 8) showTip2(event, nearest);
-        else rugTip2.style.display = 'none';
-      })
-      .on('mouseout', () => { rugTip2.style.display = 'none'; })
-      .on('click', function(event) {
-        if (!sortedBound.length) return;
-        const mx = d3.pointer(event, this)[0];
-        let lo = 0, hi = sortedBound.length - 1;
-        while (lo < hi) { const mid = (lo + hi) >> 1; if (currentXsc(sortedBound[mid].coef) < mx) lo = mid + 1; else hi = mid; }
-        const cands = [sortedBound[lo - 1], sortedBound[lo]].filter(Boolean);
-        const nearest = cands.reduce((b, c) => Math.abs(currentXsc(c.coef) - mx) < Math.abs(currentXsc(b.coef) - mx) ? c : b);
-        if (Math.abs(currentXsc(nearest.coef) - mx) < 8)
-          window.location.href = `{{ perturbseq_prefix }}/gene/${encodeURIComponent(nearest.gene_name)}`;
+    // Row 2: "TF-bound genes" — individual hit lines + rich _makeLinkCard tooltip
+    if (hasBound) {
+      const sortedBound = [...boundGenes].sort((a, b) => a.coef - b.coef);
+      sortedBound.forEach(d => {
+        d.signed_pct_rank = d.coef <= lo5 ? 0.01 : d.coef >= hi5 ? 0.99 : 0.5;
       });
-    g.append('text').attr('x', -6).attr('y', rugY2 + RUG / 2).attr('text-anchor', 'end').attr('dominant-baseline', 'middle').attr('font-size', '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7).text('TF-bound');
-    const xAxisG = g.append('g').attr('transform', `translate(0,${xAxisY})`).attr('class', 'axis');
-    g.append('text').attr('x', W / 2).attr('y', xAxisY + 30).attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', 'var(--text-muted)').attr('opacity', 0.8).text('Perturb-seq regression coefficient');
 
-    let currentXsc = x0;
-    function update(xsc) {
-      currentXsc = xsc;
-      const areaFn = d3.area().x(d => xsc(d[0])).y0(H).y1(d => y(d[1])).curve(d3.curveBasis);
-      const lineFn = d3.line().x(d => xsc(d[0])).y(d => y(d[1])).curve(d3.curveBasis);
-      basePath.datum(density).attr('d', areaFn);
-      loPath.datum(density).attr('d', areaFn);
-      hiPath.datum(density).attr('d', areaFn);
-      outlinePath.datum(density).attr('d', lineFn);
-      const domain = xsc.domain();
-      zeroLine.attr('x1', xsc(0)).attr('x2', xsc(0)).attr('display', domain[0] < 0 && domain[1] > 0 ? null : 'none');
-      lo5Line.attr('x1', xsc(lo5)).attr('x2', xsc(lo5));
-      hi5Line.attr('x1', xsc(hi5)).attr('x2', xsc(hi5));
-      loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
-      hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
-      buildRow1(xsc);
-      buildRow2(xsc);
-      xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
+      const { el: rugTip, caret: rugCaret, caretInner: rugCaretInner,
+              show: _showCard, hide: _hideCard } = _makeLinkCard(container);
+
+      function showBoundTip(event, d) {
+        const svgNode = svgSel.node();
+        const xsc = d3.zoomTransform(svgNode).rescaleX(x0);
+        const pt  = svgNode.createSVGPoint();
+        pt.x = xsc(d.coef) + margin.left;
+        pt.y = rugY2 + RUG + margin.top;
+        const sc  = pt.matrixTransform(svgNode.getScreenCTM());
+        const _ptX = sc.x, _ptY = sc.y;
+
+        function _positionBound() {
+          const tipW   = rugTip.offsetWidth;
+          const CARET_H = 7;
+          let left = _ptX - tipW / 2;
+          const top  = _ptY + CARET_H;
+          left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+          rugCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;' +
+            'border-left:7px solid transparent;border-right:7px solid transparent;' +
+            'border-bottom:7px solid var(--border)';
+          rugCaretInner.style.cssText = 'position:absolute;top:1.5px;left:-6px;width:0;height:0;' +
+            'border-left:6px solid transparent;border-right:6px solid transparent;' +
+            'border-bottom:6px solid var(--bg-card)';
+          rugCaret.style.left = Math.max(8, Math.min(tipW - 22, _ptX - left - 7)) + 'px';
+          rugTip.style.left = left + 'px';
+          rugTip.style.top  = top  + 'px';
+        }
+
+        const color   = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
+        const coefStr = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
+        _showCard({
+          displayName: d.gene_name,
+          color,
+          headerExtra: `<span style="color:${color};font-size:10.5px;font-weight:600"> ${coefStr}</span>`,
+          tfName:      GENE,
+          targetGene:  d.gene_name,
+          repositionFn: _positionBound,
+        });
+        _positionBound();
+      }
+
+      const row2 = _addDensityRug(clipG, g, sortedBound, rugY2, RUG, 'TF-bound', {
+        labelX:  -6,
+        showTip: showBoundTip,
+        hideTip: _hideCard,
+        getHref: d => `{{ perturbseq_prefix }}/gene/${encodeURIComponent(d.gene_name)}`,
+      });
+      registerUpdate(xsc => row2.update(xsc));
     }
-
-    const svgSel = svg;
-    let rafPending = false, pendingXsc = null;
-    const zoom = d3.zoom().scaleExtent([1, 30]).extent([[0, 0], [W, H]])
-      .filter(event => event.type !== 'wheel')
-      .on('zoom', event => {
-        svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
-        pendingXsc = event.transform.rescaleX(x0);
-        if (!rafPending) { rafPending = true; requestAnimationFrame(() => { update(pendingXsc); rafPending = false; }); }
-      })
-      .on('end', () => svg.style('cursor', 'grab'));
-    toolbar.append(
-      mkBtn('Zoom in', iPlus, () => zoom.scaleBy(svgSel, ZOOM_STEP)),
-      mkBtn('Zoom out', iMinus, () => zoom.scaleBy(svgSel, 1 / ZOOM_STEP)),
-      mkBtn('Pan left', iLeft, () => zoom.translateBy(svgSel, PAN_PX, 0)),
-      mkBtn('Pan right', iRight, () => zoom.translateBy(svgSel, -PAN_PX, 0)),
-      mkBtn('Reset view', iReset, () => zoom.transform(svgSel, d3.zoomIdentity))
-    );
-    card.appendChild(toolbar);
-    update(x0);
-    svg.call(zoom).on('dblclick.zoom', null);
-    card.appendChild(svg.node());
   }
 
   fetch(`{{ perturbseq_prefix }}/api/tf/${encodeURIComponent(GENE)}/coef-density`)
@@ -1935,6 +1832,172 @@ function initTfCoefLollipop() {
       renderLollipopChart(resp.data || [], wrap);
     })
     .catch(() => { wrap.style.display = 'none'; });
+}
+
+// ── Shared KDE density-plot scaffold ─────────────────────────────────────────
+// _buildKdePlot(vals, container, opts) — builds card+SVG+toolbar+KDE+zoom.
+// Returns { g, clipG, x0, y, lo5, hi5, density, W, H, uid, margin, svgSel,
+//           zoom, xAxisG, registerUpdate, rugY1, rugY2, RUG }.
+// registerUpdate(fn) — callers push fn(xsc) to hook into the zoom update loop.
+let _kdePlotIdSeq = 0;
+function _buildKdePlot(vals, container, opts) {
+  opts = opts || {};
+  const n = vals.length;
+  if (n < 2) return null;
+  const RUG = 10;
+  const margin = { top: 42, right: 20, bottom: 48, left: opts.marginLeft || 60 };
+  const pageMain = document.querySelector('.page-main') || document.body;
+  const fullW = Math.max((pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
+  const W = fullW - margin.left - margin.right;
+  const H = 150;
+  const sorted = [...vals].sort((a, b) => a - b);
+  const lo5 = sorted[Math.max(0, Math.ceil(n * 0.05) - 1)];
+  const hi5 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
+  const mean = d3.mean(vals);
+  const std  = Math.sqrt(d3.mean(vals.map(v => (v - mean) ** 2))) || 0.01;
+  const bw   = 1.06 * std * Math.pow(n, -0.2);
+  const kernel = v => Math.abs(v /= bw) <= 1 ? 0.75 * (1 - v * v) / bw : 0;
+  const ext = d3.extent(vals);
+  const x0  = d3.scaleLinear().domain([ext[0] - bw * 2, ext[1] + bw * 2]).nice().range([0, W]);
+  const pts  = d3.range(x0.domain()[0], x0.domain()[1], (x0.domain()[1] - x0.domain()[0]) / 256);
+  const density = pts.map(t => [t, d3.mean(vals, v => kernel(t - v))]);
+  const y = d3.scaleLinear().domain([0, d3.max(density, d => d[1]) * 1.15]).range([H, 0]);
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px' + (opts.cardStyle ? ';' + opts.cardStyle : '');
+  if (opts.title) {
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px';
+    titleEl.textContent = opts.title;
+    card.appendChild(titleEl);
+  }
+  container.appendChild(card);
+  const _BtnCSS = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
+  let _zoomRef = null, _svgRef = null;
+  function _mkB(title, html, fn) {
+    const b = document.createElement('button');
+    b.title = title; b.innerHTML = html; b.style.cssText = _BtnCSS;
+    b.addEventListener('mouseenter', () => { b.style.background = 'var(--bg-elevated,rgba(100,116,139,0.14))'; b.style.color = 'var(--text)'; });
+    b.addEventListener('mouseleave', () => { b.style.background = 'var(--bg-card)'; b.style.color = 'var(--text-muted)'; });
+    b.addEventListener('click', fn);
+    return b;
+  }
+  const iZI = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/><line x1="6.5" y1="4.5" x2="6.5" y2="8.5"/></svg>`;
+  const iZO = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/></svg>`;
+  const iL  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,3 4,8 10,13"/></svg>`;
+  const iR  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,3 12,8 6,13"/></svg>`;
+  const iRe = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1-3"/><polyline points="1,2 3,5 6,3"/></svg>`;
+  const ZOOM_STEP = 1.5, PAN_PX = 60;
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display:flex;align-items:center;gap:3px;margin-bottom:4px;';
+  toolbar.append(
+    _mkB('Zoom in',    iZI, () => _zoomRef && _zoomRef.scaleBy(_svgRef, ZOOM_STEP)),
+    _mkB('Zoom out',   iZO, () => _zoomRef && _zoomRef.scaleBy(_svgRef, 1 / ZOOM_STEP)),
+    _mkB('Pan left',   iL,  () => _zoomRef && _zoomRef.translateBy(_svgRef, PAN_PX, 0)),
+    _mkB('Pan right',  iR,  () => _zoomRef && _zoomRef.translateBy(_svgRef, -PAN_PX, 0)),
+    _mkB('Reset view', iRe, () => _zoomRef && _zoomRef.transform(_svgRef, d3.zoomIdentity))
+  );
+  (opts.extraButtons || []).forEach(el => toolbar.appendChild(el));
+  card.appendChild(toolbar);
+  const rugGap   = opts.rugGap   !== undefined ? opts.rugGap   : 5;
+  const xAxisGap = opts.xAxisGap !== undefined ? opts.xAxisGap : 6;
+  const nRug  = opts.nExtraRug || 0;
+  const rugY1 = H + 6;
+  const rugY2 = nRug >= 2 ? rugY1 + RUG + rugGap : null;
+  const lastRug = (rugY2 !== null ? rugY2 : rugY1) + (nRug > 0 ? RUG : 0);
+  const xAxisY  = lastRug + xAxisGap;
+  const uid = _kdePlotIdSeq++;
+  const svg = d3.create('svg')
+    .attr('width', fullW).attr('height', margin.top + xAxisY + 40 + margin.bottom)
+    .style('display', 'block').style('cursor', 'grab');
+  const defs = svg.append('defs');
+  defs.append('clipPath').attr('id', `kp-clip-${uid}`).append('rect').attr('x', 0).attr('y', -2).attr('width', W).attr('height', lastRug + 10);
+  const loClipRect = defs.append('clipPath').attr('id', `kp-lo-${uid}`).append('rect').attr('y', 0).attr('height', H);
+  const hiClipRect = defs.append('clipPath').attr('id', `kp-hi-${uid}`).append('rect').attr('y', 0).attr('height', H);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+  g.append('rect').attr('width', W).attr('height', lastRug).attr('fill', 'none').attr('pointer-events', 'all');
+  const clipG = g.append('g').attr('clip-path', `url(#kp-clip-${uid})`);
+  const basePath    = clipG.append('path').attr('fill', 'rgba(100,116,139,0.10)');
+  const loPath      = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', `url(#kp-lo-${uid})`);
+  const hiPath      = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', `url(#kp-hi-${uid})`);
+  const outlinePath = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
+  const zeroLine    = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.4);
+  const lo5Line     = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+  const hi5Line     = clipG.append('line').attr('y1', 0).attr('y2', H).attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+  const aFS = opts.annotFontSize || '11px';
+  if (opts.annotLeft) {
+    g.append('text').attr('x', 3).attr('y', -27).attr('text-anchor', 'start').attr('font-size', aFS).attr('fill', '#3b82f6').attr('opacity', 0.85).text(opts.annotLeft[0] || '');
+    g.append('text').attr('x', 3).attr('y', -13).attr('text-anchor', 'start').attr('font-size', aFS).attr('fill', '#3b82f6').attr('opacity', 0.85).text(opts.annotLeft[1] || '');
+  }
+  if (opts.annotRight) {
+    g.append('text').attr('x', W - 3).attr('y', -27).attr('text-anchor', 'end').attr('font-size', aFS).attr('fill', '#ec4899').attr('opacity', 0.85).text(opts.annotRight[0] || '');
+    g.append('text').attr('x', W - 3).attr('y', -13).attr('text-anchor', 'end').attr('font-size', aFS).attr('fill', '#ec4899').attr('opacity', 0.85).text(opts.annotRight[1] || '');
+  }
+  const xAxisG = g.append('g').attr('transform', `translate(0,${xAxisY})`).attr('class', 'axis');
+  if (opts.xLabel) g.append('text').attr('x', W / 2).attr('y', xAxisY + 30).attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', 'var(--text-muted)').attr('opacity', 0.8).text(opts.xLabel);
+  const _updateFns = [];
+  function registerUpdate(fn) { _updateFns.push(fn); }
+  function update(xsc) {
+    const areaFn = d3.area().x(d => xsc(d[0])).y0(H).y1(d => y(d[1])).curve(d3.curveBasis);
+    const lineFn = d3.line().x(d => xsc(d[0])).y(d => y(d[1])).curve(d3.curveBasis);
+    basePath.datum(density).attr('d', areaFn);
+    loPath.datum(density).attr('d', areaFn);
+    hiPath.datum(density).attr('d', areaFn);
+    outlinePath.datum(density).attr('d', lineFn);
+    const [xlo, xhi] = xsc.domain();
+    zeroLine.attr('x1', xsc(0)).attr('x2', xsc(0)).attr('display', xlo < 0 && xhi > 0 ? null : 'none');
+    lo5Line.attr('x1', xsc(lo5)).attr('x2', xsc(lo5));
+    hi5Line.attr('x1', xsc(hi5)).attr('x2', xsc(hi5));
+    loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
+    hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
+    _updateFns.forEach(fn => fn(xsc));
+    xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
+  }
+  let rafPending = false, pendingXsc = null;
+  const zoom = d3.zoom().scaleExtent([1, 30]).extent([[0, 0], [W, H]])
+    .filter(event => event.type !== 'wheel')
+    .on('zoom', event => {
+      svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
+      pendingXsc = event.transform.rescaleX(x0);
+      if (!rafPending) { rafPending = true; requestAnimationFrame(() => { update(pendingXsc); rafPending = false; }); }
+    })
+    .on('end', () => svg.style('cursor', 'grab'));
+  const svgSel = svg;
+  _zoomRef = zoom; _svgRef = svgSel;
+  update(x0);
+  svg.call(zoom).on('dblclick.zoom', null);
+  card.appendChild(svg.node());
+  return { g, clipG, x0, y, lo5, hi5, density, W, H, uid, margin, svgSel, zoom, xAxisG, registerUpdate, rugY1, rugY2, RUG };
+}
+
+// _addDensityRug — one rug strip: visible ticks (pointer-events:none) + 7px transparent hit targets.
+// data must have .coef and (for default coloring) .signed_pct_rank.
+// opts: { labelX, labelFontSize, getColor, getOpacity, showTip, hideTip, getHref }
+// Returns { update(xsc) } to call on zoom.
+function _addDensityRug(clipG, g, data, y0, rugH, label, opts) {
+  opts = opts || {};
+  g.append('text').attr('x', opts.labelX !== undefined ? opts.labelX : -4).attr('y', y0 + rugH / 2)
+    .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
+    .attr('font-size', opts.labelFontSize || '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
+    .text(label);
+  const getColor   = opts.getColor   || (d => d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text-muted)');
+  const getOpacity = opts.getOpacity || (d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35);
+  const ticks = clipG.selectAll(null).data(data).join('line')
+    .attr('y1', y0).attr('y2', y0 + rugH)
+    .attr('stroke', d => getColor(d)).attr('stroke-width', 1.8)
+    .attr('opacity', d => getOpacity(d)).attr('stroke-linecap', 'round')
+    .attr('pointer-events', 'none');
+  const hits = clipG.selectAll(null).data(data).join('line')
+    .attr('y1', y0).attr('y2', y0 + rugH)
+    .attr('stroke', 'transparent').attr('stroke-width', 7)
+    .style('cursor', 'pointer');
+  if (opts.showTip) hits.on('mouseover', (e, d) => opts.showTip(e, d)).on('mouseout', () => opts.hideTip && opts.hideTip());
+  if (opts.getHref) hits.on('click', (e, d) => { window.location.href = opts.getHref(d); });
+  return {
+    update(xsc) {
+      ticks.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+      hits.attr('x1',  d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+    }
+  };
 }
 
 // Shared factory for the hoverable tooltip card used by both the scatter plot and rug plot.
@@ -3072,325 +3135,49 @@ function initTfCoefScatter() {
     doRender();
   }
 
-  let _densityIdSeq = 0;
-
   // Density plot using Epanechnikov KDE + Silverman bandwidth, with hoverable rug
   function renderDensity(coefs, container, opts) {
     opts = opts || {};
     const isGeneLevel = !!opts.isGeneLevel;
-    const _uid = ++_densityIdSeq;
-    const vals = coefs.map(d => d.coef);
-    const n    = vals.length;
-    const RUG  = 10;
-    const GAP  = 4;
+    const vals      = coefs.map(d => d.coef);
     const bindCoefs = coefs.filter(d => d.has_binding);
     const hasBind   = bindCoefs.length > 0;
     const rugLabelW = hasBind ? (14 + GENE.length) * 5 + 8 : 0;
-    const margin = { top: 42, right: 20, bottom: 48, left: Math.max(38, rugLabelW) };
-    const _pageMain = document.querySelector('.page-main') || document.body;
-    const fullW  = Math.max((_pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 300);
-    const W = fullW - margin.left - margin.right;
-    const H = 150;
-    const totalH = H + RUG + 6 + (hasBind ? GAP + RUG : 0);
 
-    const sorted = [...vals].sort((a, b) => a - b);
-    const lo5 = sorted[Math.max(0, Math.ceil(n * 0.05) - 1)];
-    const hi5 = sorted[Math.min(n - 1, Math.floor(n * 0.95))];
-
-    // Silverman bandwidth
-    const mean = d3.mean(vals);
-    const std  = Math.sqrt(d3.mean(vals.map(v => (v - mean) ** 2))) || 0.01;
-    const bw   = 1.06 * std * Math.pow(n, -0.2);
-
-    function epanechnikov(h) {
-      return v => Math.abs(v /= h) <= 1 ? 0.75 * (1 - v * v) / h : 0;
-    }
-    const kernel = epanechnikov(bw);
-
-    const ext  = d3.extent(vals);
-    const x0   = d3.scaleLinear().domain([ext[0] - bw * 2, ext[1] + bw * 2]).nice().range([0, W]);
-    const pts  = d3.range(x0.domain()[0], x0.domain()[1], (x0.domain()[1] - x0.domain()[0]) / 256);
-    const density = pts.map(t => [t, d3.mean(vals, v => kernel(t - v))]);
-
-    const y = d3.scaleLinear().domain([0, d3.max(density, d => d[1]) * 1.15]).range([H, 0]);
-
-    // ── Toolbar ─────────────────────────────────────────────────────────────
-    const toolbar = document.createElement('div');
-    toolbar.style.cssText = 'display:flex;align-items:center;gap:3px;margin-bottom:4px;';
-
-    function mkBtn(title, svgContent, fn) {
-      const btn = document.createElement('button');
-      btn.title = title;
-      btn.innerHTML = svgContent;
-      btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
-        'border:1px solid var(--border);border-radius:5px;background:var(--bg-card);' +
-        'color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
-      btn.addEventListener('mouseenter', () => { btn.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btn.style.color='var(--text)'; });
-      btn.addEventListener('mouseleave', () => { btn.style.background='var(--bg-card)'; btn.style.color='var(--text-muted)'; });
-      btn.addEventListener('click', fn);
-      return btn;
-    }
-
-    // SVG icon snippets (16px viewBox)
-    const iconSearch = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>`;
-    const iconPlus   = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>`;
-    const iconMinus  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="8" x2="13" y2="8"/></svg>`;
-    const iconLeft   = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,3 4,8 10,13"/></svg>`;
-    const iconRight  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,3 12,8 6,13"/></svg>`;
-    const iconReset  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1-3"/><polyline points="1,2 3,5 6,3"/></svg>`;
-
-    const ZOOM_STEP = 1.5;
-    const PAN_PX   = 60;
-
-    // Zoom-in: magnifying glass + plus
-    const btnZoomIn = document.createElement('button');
-    btnZoomIn.title = 'Zoom in';
-    btnZoomIn.innerHTML = `<span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px">${iconSearch}<span style="position:absolute;bottom:-1px;right:-3px;font-size:9px;font-weight:700;line-height:1;color:currentColor">+</span></span>`;
-    btnZoomIn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;padding:0;transition:background 0.12s,color 0.12s;flex-shrink:0';
-    btnZoomIn.addEventListener('mouseenter', () => { btnZoomIn.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnZoomIn.style.color='var(--text)'; });
-    btnZoomIn.addEventListener('mouseleave', () => { btnZoomIn.style.background='var(--bg-card)'; btnZoomIn.style.color='var(--text-muted)'; });
-
-    const btnZoomOut = document.createElement('button');
-    btnZoomOut.title = 'Zoom out';
-    btnZoomOut.innerHTML = `<span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px">${iconSearch}<span style="position:absolute;bottom:-1px;right:-3px;font-size:9px;font-weight:700;line-height:1;color:currentColor">−</span></span>`;
-    btnZoomOut.style.cssText = btnZoomIn.style.cssText;
-    btnZoomOut.addEventListener('mouseenter', () => { btnZoomOut.style.background='var(--bg-elevated,rgba(100,116,139,0.14))'; btnZoomOut.style.color='var(--text)'; });
-    btnZoomOut.addEventListener('mouseleave', () => { btnZoomOut.style.background='var(--bg-card)'; btnZoomOut.style.color='var(--text-muted)'; });
-
-    const btnPanL  = mkBtn('Pan left',  iconLeft,  () => zoom.translateBy(svgSel, PAN_PX,  0));
-    const btnPanR  = mkBtn('Pan right', iconRight, () => zoom.translateBy(svgSel, -PAN_PX, 0));
-    const btnReset = mkBtn('Reset view', iconReset, () => zoom.transform(svgSel, d3.zoomIdentity));
-
-    // ── Label count slider ───────────────────────────────────────────────────
+    // Label count slider (passed as toolbar extra button via _buildKdePlot)
     let labelCount = 5;
-
     const sliderWrap = document.createElement('div');
     sliderWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex-shrink:0';
-
     const sliderLbl = document.createElement('span');
     sliderLbl.textContent = 'Top hits to label:';
     sliderLbl.style.cssText = 'font-size:10px;color:var(--text-muted);white-space:nowrap';
-
     const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min  = '1';
-    slider.max  = '30';
-    slider.value = '5';
+    slider.type = 'range'; slider.min = '1'; slider.max = '30'; slider.value = '5';
     slider.style.cssText = 'width:72px;accent-color:var(--accent,#6366f1);cursor:pointer;margin:0';
-
     const sliderVal = document.createElement('span');
     sliderVal.textContent = '5';
     sliderVal.style.cssText = 'font-size:10px;color:var(--text-muted);min-width:12px;font-variant-numeric:tabular-nums';
-
     sliderWrap.append(sliderLbl, slider, sliderVal);
 
-    toolbar.append(btnZoomIn, btnZoomOut, btnPanL, btnPanR, btnReset, sliderWrap);
-    container.appendChild(toolbar);
+    const plot = _buildKdePlot(vals, container, {
+      annotLeft:     [`← TF perturbations that downregulate ${GENE}`, '(Top 5%)'],
+      annotRight:    [`TF perturbations that upregulate ${GENE} →`,   '(Top 5%)'],
+      annotFontSize: '12px',
+      xLabel:        'Perturb-seq regression coefficients',
+      nExtraRug:     hasBind ? 2 : 1,
+      marginLeft:    Math.max(38, rugLabelW),
+      rugGap:        4,
+      xAxisGap:      2,
+      extraButtons:  [sliderWrap],
+    });
+    if (!plot) return;
+    const { g, clipG, x0, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate } = plot;
 
-    // ── SVG scaffold ─────────────────────────────────────────────────────────
-    const svg = d3.create('svg')
-      .attr('width', fullW)
-      .attr('height', totalH + margin.top + margin.bottom)
-      .style('display', 'block')
-      .style('cursor', 'grab');
-
-    const defs = svg.append('defs');
-
-    // Clip path that keeps chart content inside the plot area
-    defs.append('clipPath').attr('id', `grna-chart-clip-${_uid}`).append('rect')
-      .attr('x', 0).attr('y', -2).attr('width', W).attr('height', totalH + 10);
-
-    // Updateable tail-shade clip rects
-    const loClipRect = defs.append('clipPath').attr('id', `grna-clip-lo-${_uid}`).append('rect').attr('y', 0).attr('height', H);
-    const hiClipRect = defs.append('clipPath').attr('id', `grna-clip-hi-${_uid}`).append('rect').attr('y', 0).attr('height', H);
-
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-    // Transparent rect to capture drag/wheel events over the whole chart area
-    g.append('rect').attr('width', W).attr('height', totalH)
-      .attr('fill', 'none').attr('pointer-events', 'all');
-
-    // Inner group — clipped; all zoom-affected elements go here
-    const clipG = g.append('g').attr('clip-path', `url(#grna-chart-clip-${_uid})`);
-
-    const basePath    = clipG.append('path').attr('fill', 'rgba(100,116,139,0.10)');
-    const loPath      = clipG.append('path').attr('fill', 'rgba(59,130,246,0.28)').attr('clip-path', `url(#grna-clip-lo-${_uid})`);
-    const hiPath      = clipG.append('path').attr('fill', 'rgba(236,72,153,0.28)').attr('clip-path', `url(#grna-clip-hi-${_uid})`);
-    const outlinePath = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--accent)').attr('stroke-width', 1.5);
-    const zeroLine    = clipG.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1).attr('opacity', 0.4);
-    const lo5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-    const hi5Line = clipG.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-
-    // Rug strip — row 1 (all active gRNAs)
-    const rugY1   = H + 6;
-    const rugY2   = rugY1 + RUG + GAP;
-
-    g.append('text').attr('x', -4).attr('y', rugY1 + RUG / 2)
-      .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
-      .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
-      .text('All TFs');
-
-    const rugTicks = clipG.selectAll('line.rug-tick').data(coefs).join('line')
-      .attr('class', 'rug-tick')
-      .attr('y1', rugY1).attr('y2', rugY1 + RUG)
-      .attr('stroke', d => d.signed_pct_rank >= 0.95 ? '#ec4899'
-                          : d.signed_pct_rank <= 0.05 ? '#3b82f6'
-                          : 'var(--text-muted)')
-      .attr('stroke-width', 1.8)
-      .attr('opacity', d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35)
-      .attr('stroke-linecap', 'round')
-      .attr('pointer-events', 'none');
-
-    // Wide transparent hit targets for easier hovering
-    const rugHits = clipG.selectAll('line.rug-hit').data(coefs).join('line')
-      .attr('class', 'rug-hit')
-      .attr('y1', rugY1).attr('y2', rugY1 + RUG)
-      .attr('stroke', 'transparent')
-      .attr('stroke-width', 7)
-      .style('cursor', 'pointer');
-
-    // Rug strip — row 2 (TFs with binding evidence only)
-    let rugTicks2 = null, rugHits2 = null;
-    if (hasBind) {
-      g.append('text').attr('x', -4).attr('y', rugY2 + RUG / 2)
-        .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
-        .attr('font-size', '8px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7)
-        .text(`TFs that bind ${GENE}`);
-
-      rugTicks2 = clipG.selectAll('line.rug-tick2').data(bindCoefs).join('line')
-        .attr('class', 'rug-tick2')
-        .attr('y1', rugY2).attr('y2', rugY2 + RUG)
-        .attr('stroke', d => d.signed_pct_rank >= 0.95 ? '#ec4899'
-                            : d.signed_pct_rank <= 0.05 ? '#3b82f6'
-                            : 'var(--text-muted)')
-        .attr('stroke-width', 1.8)
-        .attr('opacity', d => (d.signed_pct_rank >= 0.95 || d.signed_pct_rank <= 0.05) ? 0.9 : 0.35)
-        .attr('stroke-linecap', 'round')
-        .attr('pointer-events', 'none');
-
-      rugHits2 = clipG.selectAll('line.rug-hit2').data(bindCoefs).join('line')
-        .attr('class', 'rug-hit2')
-        .attr('y1', rugY2).attr('y2', rugY2 + RUG)
-        .attr('stroke', 'transparent')
-        .attr('stroke-width', 7)
-        .style('cursor', 'pointer');
-    }
-
-    // ── geom_label_repel for top/bottom 3 ────────────────────────────────────
-    const sortedCoefs = [...coefs].sort((a, b) => a.coef - b.coef);
-    const labelG      = clipG.append('g').attr('class', 'repel-labels');
-
-    const RL_FONT   = 9;
-    const RL_PAD_X  = 4;
-    const RL_PAD_Y  = 2;
-    const RL_BOX_H  = RL_FONT + RL_PAD_Y * 2;
-    const RL_CHAR_W = RL_FONT * 0.54;
-
-    function drawRepelLabels(xsc) {
-      labelG.selectAll('*').remove();
-      const n = Math.min(labelCount, Math.floor(sortedCoefs.length / 2));
-      const repelData = [...sortedCoefs.slice(0, n), ...sortedCoefs.slice(-n)];
-
-      const items = repelData.map(d => ({
-        d,
-        tickX : xsc(d.coef),
-        cx    : xsc(d.coef),
-        cy    : H - RL_BOX_H / 2 - 5,   // start near bottom of density area
-        w     : Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
-        color : d.signed_pct_rank <= 0.05 ? '#3b82f6' : d.signed_pct_rank >= 0.95 ? '#ec4899' : 'var(--text-muted)'
-      }));
-
-      // 2-D force repulsion: push overlapping labels apart in whichever axis has less overlap
-      for (let iter = 0; iter < 600; iter++) {
-        let moved = false;
-        for (let i = 0; i < items.length; i++) {
-          for (let j = i + 1; j < items.length; j++) {
-            const dx = items[j].cx - items[i].cx;
-            const dy = items[j].cy - items[i].cy;
-            const overlapX = (items[i].w + items[j].w) / 2 + 2 - Math.abs(dx);
-            const overlapY = RL_BOX_H + 3 - Math.abs(dy);
-            if (overlapX > 0 && overlapY > 0) {
-              moved = true;
-              if (overlapX <= overlapY) {
-                const push = overlapX / 2 + 0.5;
-                const sx = dx === 0 ? 1 : Math.sign(dx);
-                items[i].cx -= sx * push;
-                items[j].cx += sx * push;
-              } else {
-                const push = overlapY / 2 + 0.5;
-                const sy = dy === 0 ? -1 : Math.sign(dy);
-                items[i].cy -= sy * push;
-                items[j].cy += sy * push;
-              }
-            }
-          }
-          // Clamp to chart bounds
-          const hw = items[i].w / 2, hh = RL_BOX_H / 2;
-          items[i].cx = Math.max(hw + 1,     Math.min(W - hw - 1,     items[i].cx));
-          items[i].cy = Math.max(hh + 4,     Math.min(H - hh - 4,     items[i].cy));
-        }
-        if (!moved) break;
-      }
-
-      items.forEach(({ d, cx, cy, w, tickX, color }) => {
-        const lg = labelG.append('g');
-        // connector from box bottom-centre to rug tick top
-        lg.append('line')
-          .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
-          .attr('x2', tickX).attr('y2', rugY1)
-          .attr('stroke', color).attr('stroke-width', 0.9)
-          .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
-        // background box
-        lg.append('rect')
-          .attr('x', cx - w / 2).attr('y', cy - RL_BOX_H / 2)
-          .attr('width', w).attr('height', RL_BOX_H)
-          .attr('rx', 3)
-          .attr('fill', 'var(--bg-card)').attr('stroke', color)
-          .attr('stroke-width', 0.9).attr('opacity', 0.93);
-        // label text, vertically centred in box
-        lg.append('text')
-          .attr('x', cx).attr('y', cy)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'central')
-          .attr('font-size', `${RL_FONT}px`)
-          .attr('font-family', "'SF Mono','Fira Code',monospace")
-          .attr('fill', color).attr('font-weight', '600')
-          .text(d.grna_name);
-      });
-    }
-
-    // X-axis sits below the last rug strip so tick labels don't overlap it
-    const xAxisG = g.append('g').attr('transform', `translate(0,${totalH + 2})`).attr('class', 'axis');
-
-    // ── Annotation labels at top (in margin above chart area) ───────────────
-    g.append('text').attr('x', 3).attr('y', -27)
-      .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
-      .text(`← TF perturbations that downregulate ${GENE}`);
-    g.append('text').attr('x', 3).attr('y', -13)
-      .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
-      .text('(Top 5%)');
-    g.append('text').attr('x', W - 3).attr('y', -27)
-      .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
-      .text(`TF perturbations that upregulate ${GENE} →`);
-    g.append('text').attr('x', W - 3).attr('y', -13)
-      .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
-      .text('(Top 5%)');
-
-    // ── X-axis label ─────────────────────────────────────────────────────────
-    g.append('text').attr('x', W / 2).attr('y', totalH + 38)
-      .attr('text-anchor', 'middle').attr('font-size', '11px')
-      .attr('fill', 'var(--text-muted)').attr('opacity', 0.8)
-      .text('Perturb-seq regression coefficients');
-
-    // ── Rug tooltip: uses shared _makeLinkCard factory ──
+    // Shared rug tooltip using _makeLinkCard
     const { el: rugTip, caret: rugCaret, caretInner: rugCaretInner,
             show: _rugShowCard, hide: _hideRugTip } = _makeLinkCard(container);
 
     function _showRugTip(d, yBase) {
-      // Convert SVG rug-tick position to screen coords at the moment of hover
       const svgNode = svgSel.node();
       const xsc = d3.zoomTransform(svgNode).rescaleX(x0);
       const pt  = svgNode.createSVGPoint();
@@ -3416,8 +3203,8 @@ function initTfCoefScatter() {
         rugTip.style.top  = top  + 'px';
       }
 
-      const color      = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
-      const coefStr    = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
+      const color = d.signed_pct_rank >= 0.95 ? '#ec4899' : d.signed_pct_rank <= 0.05 ? '#3b82f6' : 'var(--text)';
+      const coefStr = (d.coef > 0 ? '+' : '') + d.coef.toFixed(3);
       const headerExtra = isGeneLevel
         ? `<span style="color:var(--text-muted);font-size:10.5px"> ${coefStr}` +
           (d.n_grnas ? ` (${d.n_grnas} gRNA${d.n_grnas !== 1 ? 's' : ''})` : '') + `</span>`
@@ -3437,75 +3224,98 @@ function initTfCoefScatter() {
       _positionRug();
     }
 
-    rugHits
-      .on('mouseover', function(event, d) { _showRugTip(d, rugY1); })
-      .on('mousemove', function()         {})
-      .on('mouseout',  function()         { _hideRugTip(); });
+    // geom_label_repel: force-repulsion labels for top/bottom N hits
+    const sortedCoefs = [...coefs].sort((a, b) => a.coef - b.coef);
+    const labelG      = clipG.append('g').attr('class', 'repel-labels');
+    const RL_FONT = 9, RL_PAD_X = 4, RL_PAD_Y = 2;
+    const RL_BOX_H  = RL_FONT + RL_PAD_Y * 2;
+    const RL_CHAR_W = RL_FONT * 0.54;
 
-    if (rugHits2) {
-      rugHits2
-        .on('mouseover', function(event, d) { _showRugTip(d, rugY2); })
-        .on('mousemove', function()         {})
-        .on('mouseout',  function()         { _hideRugTip(); });
+    function drawRepelLabels(xsc) {
+      labelG.selectAll('*').remove();
+      const n = Math.min(labelCount, Math.floor(sortedCoefs.length / 2));
+      const repelData = [...sortedCoefs.slice(0, n), ...sortedCoefs.slice(-n)];
+      const items = repelData.map(d => ({
+        d,
+        tickX : xsc(d.coef),
+        cx    : xsc(d.coef),
+        cy    : H - RL_BOX_H / 2 - 5,
+        w     : Math.ceil(d.grna_name.length * RL_CHAR_W) + RL_PAD_X * 2,
+        color : d.signed_pct_rank <= 0.05 ? '#3b82f6' : d.signed_pct_rank >= 0.95 ? '#ec4899' : 'var(--text-muted)'
+      }));
+      for (let iter = 0; iter < 600; iter++) {
+        let moved = false;
+        for (let i = 0; i < items.length; i++) {
+          for (let j = i + 1; j < items.length; j++) {
+            const dx = items[j].cx - items[i].cx;
+            const dy = items[j].cy - items[i].cy;
+            const overlapX = (items[i].w + items[j].w) / 2 + 2 - Math.abs(dx);
+            const overlapY = RL_BOX_H + 3 - Math.abs(dy);
+            if (overlapX > 0 && overlapY > 0) {
+              moved = true;
+              if (overlapX <= overlapY) {
+                const push = overlapX / 2 + 0.5;
+                const sx = dx === 0 ? 1 : Math.sign(dx);
+                items[i].cx -= sx * push;
+                items[j].cx += sx * push;
+              } else {
+                const push = overlapY / 2 + 0.5;
+                const sy = dy === 0 ? -1 : Math.sign(dy);
+                items[i].cy -= sy * push;
+                items[j].cy += sy * push;
+              }
+            }
+          }
+          const hw = items[i].w / 2, hh = RL_BOX_H / 2;
+          items[i].cx = Math.max(hw + 1, Math.min(W - hw - 1, items[i].cx));
+          items[i].cy = Math.max(hh + 4, Math.min(H - hh - 4, items[i].cy));
+        }
+        if (!moved) break;
+      }
+      items.forEach(({ d, cx, cy, w, tickX, color }) => {
+        const lg = labelG.append('g');
+        lg.append('line')
+          .attr('x1', cx).attr('y1', cy + RL_BOX_H / 2 + 1)
+          .attr('x2', tickX).attr('y2', rugY1)
+          .attr('stroke', color).attr('stroke-width', 0.9)
+          .attr('opacity', 0.55).attr('stroke-dasharray', '2,2');
+        lg.append('rect')
+          .attr('x', cx - w / 2).attr('y', cy - RL_BOX_H / 2)
+          .attr('width', w).attr('height', RL_BOX_H).attr('rx', 3)
+          .attr('fill', 'var(--bg-card)').attr('stroke', color)
+          .attr('stroke-width', 0.9).attr('opacity', 0.93);
+        lg.append('text')
+          .attr('x', cx).attr('y', cy)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+          .attr('font-size', `${RL_FONT}px`)
+          .attr('font-family', "'SF Mono','Fira Code',monospace")
+          .attr('fill', color).attr('font-weight', '600')
+          .text(d.grna_name);
+      });
     }
 
-    // ── Update function (called on every zoom event) ──────────────────────────
-    function update(xsc) {
-      const areaFn = d3.area().x(d => xsc(d[0])).y0(H).y1(d => y(d[1])).curve(d3.curveBasis);
-      const lineFn = d3.line().x(d => xsc(d[0])).y(d => y(d[1])).curve(d3.curveBasis);
+    const row1 = _addDensityRug(clipG, g, coefs, rugY1, RUG, 'All TFs', {
+      labelX: -4, labelFontSize: '8px',
+      showTip: (e, d) => _showRugTip(d, rugY1),
+      hideTip: _hideRugTip,
+    });
+    registerUpdate(xsc => row1.update(xsc));
+    registerUpdate(xsc => drawRepelLabels(xsc));
 
-      basePath.datum(density).attr('d', areaFn);
-      loPath.datum(density).attr('d', areaFn);
-      hiPath.datum(density).attr('d', areaFn);
-      outlinePath.datum(density).attr('d', lineFn);
-
-      const [xlo, xhi] = xsc.domain();
-      zeroLine.attr('x1', xsc(0)).attr('x2', xsc(0))
-        .attr('display', xlo < 0 && xhi > 0 ? null : 'none');
-
-      lo5Line.attr('x1', xsc(lo5)).attr('x2', xsc(lo5));
-      hi5Line.attr('x1', xsc(hi5)).attr('x2', xsc(hi5));
-      loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
-      hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
-
-      rugTicks.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
-      rugHits.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
-      if (rugTicks2) rugTicks2.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
-      if (rugHits2)  rugHits2.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
-
-      drawRepelLabels(xsc);
-
-      xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
+    if (hasBind) {
+      const row2 = _addDensityRug(clipG, g, bindCoefs, rugY2, RUG, `TFs that bind ${GENE}`, {
+        labelX: -4, labelFontSize: '8px',
+        showTip: (e, d) => _showRugTip(d, rugY2),
+        hideTip: _hideRugTip,
+      });
+      registerUpdate(xsc => row2.update(xsc));
     }
 
-    update(x0);
-
-    // ── D3 zoom behaviour ────────────────────────────────────────────────────
-    const zoom = d3.zoom()
-      .scaleExtent([1, 30])
-      .extent([[0, 0], [W, H]])
-      .filter(event => event.type !== 'wheel')
-      .on('zoom', (event) => {
-        svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
-        update(event.transform.rescaleX(x0));
-      })
-      .on('end', () => svg.style('cursor', 'grab'));
-
-    const svgSel = svg;
-    svg.call(zoom).on('dblclick.zoom', null);
-
-    btnZoomIn.addEventListener('click',  () => zoom.scaleBy(svgSel, ZOOM_STEP));
-    btnZoomOut.addEventListener('click', () => zoom.scaleBy(svgSel, 1 / ZOOM_STEP));
-
-    // Label count slider
     slider.addEventListener('input', () => {
       labelCount = +slider.value;
       sliderVal.textContent = labelCount;
-      const xsc = d3.zoomTransform(svgSel.node()).rescaleX(x0);
-      drawRepelLabels(xsc);
+      drawRepelLabels(d3.zoomTransform(svgSel.node()).rescaleX(x0));
     });
-
-    container.appendChild(svg.node());
   }
 
   // Recompute signed_pct_rank on a sorted array (needed after client-side filtering)
@@ -3606,7 +3416,7 @@ function initTfCoefScatter() {
 
         // ── Content elements ─────────────────────────────────────────────────
         const histWrap = document.createElement('div');
-        histWrap.style.cssText = `${CARD};padding:16px 16px 8px`;
+        // No card styling here — _buildKdePlot (called by renderDensity) provides it
 
         const tblLabel = document.createElement('h3');
         tblLabel.style.cssText = 'font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--text)';
