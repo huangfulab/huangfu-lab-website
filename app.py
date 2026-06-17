@@ -6,14 +6,15 @@ import yaml
 import html
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 from blueprints.perturbseq_bp import perturbseq_bp, PERTURBSEQ_PREFIX
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
 
 @app.context_processor
-def inject_perturbseq_prefix():
-    return {"perturbseq_prefix": PERTURBSEQ_PREFIX}
+def inject_globals():
+    return {"perturbseq_prefix": PERTURBSEQ_PREFIX, "now": datetime.now()}
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
