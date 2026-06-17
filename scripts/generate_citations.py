@@ -5,7 +5,7 @@ Fetch publications from ORCID + CrossRef and write citations.yaml.
 Outputs:
   - static/lab_webpage/citations.yaml
 
-Run:  python3 generate_citations.py
+Run:  python3 scripts/generate_citations.py
 """
 
 import json
@@ -17,7 +17,7 @@ from urllib.error import URLError
 
 ORCID = "0000-0002-1145-6199"
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 OUT_PATHS = [
     HERE / "static" / "lab_webpage" / "citations.yaml",
 ]

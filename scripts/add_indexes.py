@@ -1,7 +1,7 @@
 """One-time script to add missing indexes to tf-perturbseq-v5.db.
 
 Run once before starting the web server:
-    python add_indexes.py
+    python scripts/add_indexes.py
 
 Safe to re-run — all statements use CREATE INDEX IF NOT EXISTS.
 Index creation on large tables (100M+ rows) takes several minutes.
@@ -10,7 +10,7 @@ import sqlite3
 import pathlib
 import time
 
-DB = str(pathlib.Path(__file__).parent / "data" / "db" / "tf-perturbseq-v5.db")
+DB = str(pathlib.Path(__file__).parent.parent / "data" / "db" / "tf-perturbseq-v5.db")
 
 INDEXES = [
     # Enables WHERE tf_gene_name=? filter in _query_tf_gene_link and _query_tf_binding_peaks
