@@ -399,7 +399,7 @@
   <nav class="sidebar-nav">
     <span class="sidebar-role" style="font-size:12px;font-weight:700;text-align:justify;color:var(--text);letter-spacing:0">{{ tf }} → {{ gene }}</span>
     <a href="#sec-expression" class="sidebar-link">Expression</a>
-    <a href="#sec-perturbation" class="sidebar-link">Perturbation</a>
+    {% if gene_in_de %}<a href="#sec-perturbation" class="sidebar-link">Perturbation</a>{% endif %}
     <a href="#sec-binding" class="sidebar-link">TF Binding</a>
     <a href="#sec-browser" class="sidebar-link">Genome Browser</a>
   </nav>
@@ -537,12 +537,14 @@
   </div>
 </div>
 
+{% if gene_in_de %}
 <!-- ── Regression coefficient density plots (DE only) ────────────────── -->
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-perturbation">Perturbation Regression Coefficients</h2>
 <p class="section-desc">Distribution of per-gene regression coefficients for each {{ tf }} guide RNA in the Perturb-seq DE screen. The marker shows where {{ gene }} falls in each distribution, indicating the direction and magnitude of its response to {{ tf }} knockdown.</p>
 <div class="coef-loading" id="coef-loading-de">Loading…</div>
 <div id="coef-grid-de"></div>
+{% endif %}
 
 <!-- ── TF Binding Evidence ─────────────────────────────────────────────── -->
 <hr class="section-divider">
@@ -946,6 +948,7 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
     });
   }
 
+  {% if gene_in_de %}
   fetch(`{{ perturbseq_prefix }}/api/link/${encodeURIComponent(TF_NAME)}/${encodeURIComponent(GENE_NAME)}/coefs`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(d => renderDESection('coef-grid-de', 'coef-loading-de', d.de, GENE_NAME))
@@ -953,6 +956,7 @@ drawExprChart('gene-expr-chart', GENE_EXPR, '#10b981');
       const el = document.getElementById('coef-loading-de');
       if (el) el.textContent = 'Coefficient data unavailable.';
     });
+  {% endif %}
 })();
 
 /* ── Evidence flow: arrows + interactive filter ────────────────────── */
