@@ -1551,7 +1551,7 @@ function initTfCoefDensityLegacy() {
     if (!allCoefs || allCoefs.length < 2) { container.style.display = 'none'; return; }
 
     const card = document.createElement('div');
-    card.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px';
+    card.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 8px;contain:paint layout';
     const titleEl = document.createElement('div');
     titleEl.style.cssText = 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px';
     titleEl.innerHTML = `Effect of ${GENE} knockdown on gene expression`;
@@ -1664,23 +1664,47 @@ function initTfCoefDensityLegacy() {
       rugTip2.style.top = `${Math.max(8, top)}px`;
     }
 
-    const boundLines = clipG.selectAll('line.tfd-bound').data(boundGenes).join('line')
-      .attr('class', 'tfd-bound')
-      .attr('y1', rugY2).attr('y2', rugY2 + RUG)
-      .attr('stroke', d => d.coef >= hi5 ? '#ec4899' : d.coef <= lo5 ? '#3b82f6' : 'var(--text-muted)')
-      .attr('stroke-width', 1.5)
-      .attr('opacity', d => (d.coef >= hi5 || d.coef <= lo5) ? 0.75 : 0.35)
-      .attr('stroke-linecap', 'round')
-      .style('cursor', 'pointer')
-      .on('mouseover', showTip2)
-      .on('mousemove', moveTip2)
+    const sortedBound = [...boundGenes].sort((a, b) => a.coef - b.coef);
+    const boundPathLo  = clipG.append('path').attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('opacity', 0.75).attr('pointer-events', 'none');
+    const boundPathHi  = clipG.append('path').attr('fill', 'none').attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('opacity', 0.75).attr('pointer-events', 'none');
+    const boundPathMid = clipG.append('path').attr('fill', 'none').attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5).attr('opacity', 0.35).attr('pointer-events', 'none');
+    function buildRow2(xsc) {
+      function segs(arr, y0) { return arr.map(d => { const px = xsc(d.coef).toFixed(1); return `M${px},${y0}L${px},${y0 + RUG}`; }).join(''); }
+      boundPathLo.attr('d', segs(sortedBound.filter(d => d.coef <= lo5), rugY2) || null);
+      boundPathHi.attr('d', segs(sortedBound.filter(d => d.coef >= hi5), rugY2) || null);
+      boundPathMid.attr('d', segs(sortedBound.filter(d => d.coef > lo5 && d.coef < hi5), rugY2) || null);
+    }
+    clipG.append('rect')
+      .attr('x', 0).attr('y', rugY2 - 4).attr('width', W).attr('height', RUG + 8)
+      .attr('fill', 'transparent').attr('cursor', 'pointer')
+      .on('mousemove', function(event) {
+        if (!sortedBound.length) return;
+        const mx = d3.pointer(event, this)[0];
+        let lo = 0, hi = sortedBound.length - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (currentXsc(sortedBound[mid].coef) < mx) lo = mid + 1; else hi = mid; }
+        const cands = [sortedBound[lo - 1], sortedBound[lo]].filter(Boolean);
+        const nearest = cands.reduce((b, c) => Math.abs(currentXsc(c.coef) - mx) < Math.abs(currentXsc(b.coef) - mx) ? c : b);
+        if (Math.abs(currentXsc(nearest.coef) - mx) < 8) showTip2(event, nearest);
+        else rugTip2.style.display = 'none';
+      })
       .on('mouseout', () => { rugTip2.style.display = 'none'; })
-      .on('click', (_, d) => { window.location.href = `{{ perturbseq_prefix }}/gene/${encodeURIComponent(d.gene_name)}`; });
+      .on('click', function(event) {
+        if (!sortedBound.length) return;
+        const mx = d3.pointer(event, this)[0];
+        let lo = 0, hi = sortedBound.length - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (currentXsc(sortedBound[mid].coef) < mx) lo = mid + 1; else hi = mid; }
+        const cands = [sortedBound[lo - 1], sortedBound[lo]].filter(Boolean);
+        const nearest = cands.reduce((b, c) => Math.abs(currentXsc(c.coef) - mx) < Math.abs(currentXsc(b.coef) - mx) ? c : b);
+        if (Math.abs(currentXsc(nearest.coef) - mx) < 8)
+          window.location.href = `{{ perturbseq_prefix }}/gene/${encodeURIComponent(nearest.gene_name)}`;
+      });
     g.append('text').attr('x', -6).attr('y', rugY2 + RUG / 2).attr('text-anchor', 'end').attr('dominant-baseline', 'middle').attr('font-size', '9px').attr('fill', 'var(--text-muted)').attr('opacity', 0.7).text('TF-bound');
     const xAxisG = g.append('g').attr('transform', `translate(0,${xAxisY})`).attr('class', 'axis');
     g.append('text').attr('x', W / 2).attr('y', xAxisY + 30).attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', 'var(--text-muted)').attr('opacity', 0.8).text('Perturb-seq regression coefficient');
 
+    let currentXsc = x0;
     function update(xsc) {
+      currentXsc = xsc;
       const areaFn = d3.area().x(d => xsc(d[0])).y0(H).y1(d => y(d[1])).curve(d3.curveBasis);
       const lineFn = d3.line().x(d => xsc(d[0])).y(d => y(d[1])).curve(d3.curveBasis);
       basePath.datum(density).attr('d', areaFn);
@@ -1694,16 +1718,18 @@ function initTfCoefDensityLegacy() {
       loClipRect.attr('x', 0).attr('width', Math.max(0, xsc(lo5)));
       hiClipRect.attr('x', xsc(hi5)).attr('width', Math.max(0, W - xsc(hi5)));
       buildRow1(xsc);
-      boundLines.attr('x1', d => xsc(d.coef)).attr('x2', d => xsc(d.coef));
+      buildRow2(xsc);
       xAxisG.call(d3.axisBottom(xsc).ticks(6).tickSize(3));
     }
 
     const svgSel = svg;
+    let rafPending = false, pendingXsc = null;
     const zoom = d3.zoom().scaleExtent([1, 30]).extent([[0, 0], [W, H]])
       .filter(event => event.type !== 'wheel')
       .on('zoom', event => {
         svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
-        update(event.transform.rescaleX(x0));
+        pendingXsc = event.transform.rescaleX(x0);
+        if (!rafPending) { rafPending = true; requestAnimationFrame(() => { update(pendingXsc); rafPending = false; }); }
       })
       .on('end', () => svg.style('cursor', 'grab'));
     toolbar.append(
@@ -1724,7 +1750,10 @@ function initTfCoefDensityLegacy() {
     .then(data => {
       if (data && data.all_coefs && data.all_coefs.length >= 2) {
         if (loadingEl) loadingEl.style.display = 'none';
-        renderTfDensity(data.all_coefs, wrap, data.bound_genes || []);
+        const bound = data.bound_genes || [];
+        const lgCount = document.getElementById('tf-lg-count');
+        if (lgCount && bound.length > 0) lgCount.textContent = `${bound.length.toLocaleString()} genes`;
+        renderTfDensity(data.all_coefs, wrap, bound);
       } else {
         wrap.style.display = 'none';
       }
@@ -2390,7 +2419,6 @@ function initTfCoefScatter() {
 
     const topCount = document.getElementById('lg-top-count');
     if (topCount && total > 0) topCount.textContent = `${total.toLocaleString()} genes`;
-    if (countEl   && total > 0) countEl.textContent  = `${total.toLocaleString()} genes`;
 
     const to   = Math.min(from + pageRows.length, filtered.length);
     const info = document.getElementById('lg-info');

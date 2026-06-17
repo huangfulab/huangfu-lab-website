@@ -140,6 +140,7 @@
   function getColor(el, mod) {
     return el.dataset.modColor
       || (window.MODULE_COLORS && window.MODULE_COLORS[mod])
+      || el.style.background
       || '#4a56b0';
   }
 
