@@ -1,3 +1,3 @@
 # Huangfu Lab Website
 
-Flask app serving a lab website and interactive browser for the lab's data: https://www.huangfulab.com/
+Flask app serving a Huangfu lab website: https://www.huangfulab.com/
