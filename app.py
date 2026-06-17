@@ -17,7 +17,7 @@ def inject_perturbseq_prefix():
 DATA_DIR = Path(__file__).resolve().parent / "networks"
 _cache = {}
 
-_CITATIONS_PATH = Path(__file__).resolve().parent / "citations.yaml"
+_CITATIONS_PATH = Path(__file__).resolve().parent / "static" / "lab_webpage" / "citations.yaml"
 _PREPRINT_PUBLISHERS = {
     "10.1101/": "bioRxiv",
     "10.64898/": "openRxiv",

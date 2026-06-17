@@ -3,8 +3,7 @@
 Fetch publications from ORCID + CrossRef and write citations.yaml.
 
 Outputs:
-  - citations.yaml          (webapp root, read by app.py)
-  - static/lab_webpage/citations.yaml  (static copy)
+  - static/lab_webpage/citations.yaml
 
 Run:  python3 generate_citations.py
 """
@@ -20,7 +19,6 @@ ORCID = "0000-0002-1145-6199"
 
 HERE = Path(__file__).resolve().parent
 OUT_PATHS = [
-    HERE / "citations.yaml",
     HERE / "static" / "lab_webpage" / "citations.yaml",
 ]
 
