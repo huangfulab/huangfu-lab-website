@@ -1700,6 +1700,7 @@ function initTfCoefDensityLegacy() {
 
     const svgSel = svg;
     const zoom = d3.zoom().scaleExtent([1, 30]).extent([[0, 0], [W, H]])
+      .filter(event => event.type !== 'wheel')
       .on('zoom', event => {
         svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
         update(event.transform.rescaleX(x0));
@@ -1879,6 +1880,7 @@ function initTfCoefLollipop() {
 
     const svgSel = svg;
     const zoom = d3.zoom().scaleExtent([1, 24]).extent([[0, 0], [W, H]])
+      .filter(event => event.type !== 'wheel')
       .on('zoom', event => {
         svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
         update(event.transform.rescaleX(x0));
@@ -3339,13 +3341,13 @@ function initTfCoefScatter() {
     // ── Annotation labels at top (in margin above chart area) ───────────────
     g.append('text').attr('x', 3).attr('y', -27)
       .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
-      .text(`← Perturbations that downregulate ${GENE}`);
+      .text(`← TF perturbations that downregulate ${GENE}`);
     g.append('text').attr('x', 3).attr('y', -13)
       .attr('text-anchor', 'start').attr('font-size', '12px').attr('fill', '#3b82f6').attr('opacity', 0.85)
       .text('(Top 5%)');
     g.append('text').attr('x', W - 3).attr('y', -27)
       .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
-      .text(`Perturbations that upregulate ${GENE} →`);
+      .text(`TF perturbations that upregulate ${GENE} →`);
     g.append('text').attr('x', W - 3).attr('y', -13)
       .attr('text-anchor', 'end').attr('font-size', '12px').attr('fill', '#ec4899').attr('opacity', 0.85)
       .text('(Top 5%)');
@@ -3455,6 +3457,7 @@ function initTfCoefScatter() {
     const zoom = d3.zoom()
       .scaleExtent([1, 30])
       .extent([[0, 0], [W, H]])
+      .filter(event => event.type !== 'wheel')
       .on('zoom', (event) => {
         svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
         update(event.transform.rescaleX(x0));
