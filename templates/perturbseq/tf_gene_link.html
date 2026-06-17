@@ -552,7 +552,7 @@
 {% if elements %}<p class="section-desc">Regulatory elements (ATAC-seq peaks) linking {{ tf }} to {{ gene }}, supported by TOBIAS motif footprints and/or ChIP-seq peak overlap. The diagram connects each binding source through intermediate elements to the target gene — click any pill to filter the view.</p>{% endif %}
 
 {% if not elements %}
-<p style="font-size:13px;text-align:justify;color:var(--text-muted);margin:0 0 28px;font-style:italic">No regulatory elements with TF binding evidence were found linking <strong style="font-style:normal">{{ tf }}</strong> to <strong style="font-style:normal">{{ gene }}</strong> in this dataset.</p>
+<p style="font-size:13px;color:var(--text-muted);margin:0 0 28px;white-space:nowrap;width:fit-content">No regulatory elements with TF binding evidence were found linking <strong>{{ tf }}</strong> to <strong>{{ gene }}</strong> in this dataset.</p>
 {% else %}
 
 <!-- ── Filter bar above evidence flow ────────────────────────────────── -->
