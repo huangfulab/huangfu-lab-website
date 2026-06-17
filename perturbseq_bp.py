@@ -959,18 +959,17 @@ def _gc_page(name):
     if not profile:
         return render_template("perturbseq/404.html", message=f"Cluster not found: {name}"), 404
     pert_rows = rows_to_dicts(db.execute("""
-        SELECT gene_name AS tf, mean_NES AS nes, min_padj AS padj
+        SELECT gene_name AS tf, mean_NES, n_grnas AS n_sig_gRNA, min_padj AS padj
         FROM gsea_tf_table
         WHERE module=? AND module_collection='mfuzz_k7'
         AND gene_set_collection='ESC_DE-gene_clustering_data_var0.3_k7_top1000_DE'
     """, (mfuzz_name,)).fetchall())
-    pert_tfs = {r['tf']: r for r in pert_rows}
     mod_row = db.execute(
         "SELECT module_id FROM module_table WHERE module_name=? AND source='mfuzz_k7'",
         (mfuzz_name,)).fetchone()
     if mod_row:
-        bind_tfs = {
-            r[0]: round(r[1], 3)
+        bind_map = {
+            r[0]: {'odds_ratio': round(r[1], 3)}
             for r in db.execute("""
                 SELECT e.tf_gene_name, MAX(e.odds_ratio) AS odds_ratio
                 FROM tf_module_enrichment e
@@ -979,24 +978,10 @@ def _gc_page(name):
             """, (mod_row['module_id'],)).fetchall()
         }
     else:
-        bind_tfs = {}
+        bind_map = {}
     assoc = []
-    top_tfs = []
-    for tf, p in pert_tfs.items():
-        b = bind_tfs.get(tf)
-        top_tfs.append({
-            'tf': tf, 'nes': p['nes'], 'padj': p['padj'],
-            'binding': '✓' if b is not None else '',
-            'odds_ratio': b,
-            'evidence': 'both' if b is not None else 'perturbation',
-        })
-    for tf, or_val in bind_tfs.items():
-        if tf not in pert_tfs:
-            top_tfs.append({
-                'tf': tf, 'nes': None, 'padj': None,
-                'binding': '✓', 'odds_ratio': or_val, 'evidence': 'binding',
-            })
-    top_tfs.sort(key=lambda r: abs(r['nes'] or 0), reverse=True)
+    top_tfs = _merge_pert_bind_edges(pert_rows, bind_map)
+    top_tfs.sort(key=lambda r: abs(r['mean_NES'] or 0), reverse=True)
     genes = _get_module_genes(db, mod_row['module_id']) if mod_row else []
     pub_counts = _load_gene_pub_counts()
     lambert    = _load_lambert_tfs()

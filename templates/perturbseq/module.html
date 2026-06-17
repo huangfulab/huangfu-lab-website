@@ -744,270 +744,44 @@ const PROFILE     = {{ profile    | tojson }};
 (function() {
   const gcTFs = {{ top_tfs | tojson }};
   if (!gcTFs.length) return;
-
-  // Sort binding-only TFs by odds_ratio so slider reveals most significant first
-  const orderedBindTFs = gcTFs.filter(r => r.evidence === 'binding')
-    .sort((a, b) => (b.odds_ratio || 0) - (a.odds_ratio || 0))
-    .map(r => r.tf);
-
-  // Binding slider setup
-  const bindSlider = document.getElementById('gc-bind-slider');
-  const bindRange  = document.getElementById('gc-bind-range');
-  const initVal    = Math.min(15, orderedBindTFs.length);
-  if (bindSlider) { bindSlider.max = orderedBindTFs.length; bindSlider.value = initVal; }
-  if (bindRange)  { bindRange.max  = orderedBindTFs.length; bindRange.value  = initVal; }
-
-  // Sector positions
-  const upTFs   = gcTFs.filter(r => r.evidence !== 'binding' && r.nes >  0).map(r => r.tf);
-  const downTFs = gcTFs.filter(r => r.evidence !== 'binding' && r.nes <= 0).map(r => r.tf);
-  const positions = Object.assign({ [NAME]: {x:0, y:0} },
-    TFNetwork.placeSector(upTFs,         180, 110, 160, 130, 10),
-    TFNetwork.placeSector(downTFs,         0, 110, 160, 130, 10),
-    TFNetwork.placeSector(orderedBindTFs,  90, 140, 160, 130, 14)
-  );
-
-  // Cytoscape init — non-binding TFs always added; binding TFs lazy-loaded via slider
-  const elements = [{data:{id:NAME,label:NAME,type:'module',color:COLOR}, position:{x:0,y:0}}];
-  const existingIds = new Set([NAME]);
-  gcTFs.filter(r => r.evidence !== 'binding').forEach(r => {
-    const cyDir = r.nes > 0 ? 'up' : 'down';
-    elements.push({data:{id:r.tf,label:r.tf,type:'tf'}, position:positions[r.tf]||{x:0,y:0}});
-    elements.push({data:{id:`e_${r.tf}`,source:r.tf,target:NAME,direction:cyDir,evidence:r.evidence}});
-    existingIds.add(r.tf);
+  const { applyFilter } = TFNetwork.initModuleNetwork({
+    cyId: 'gc-cy', hubId: NAME, hubColor: COLOR, allRows: gcTFs,
+    filterBarId: 'gc-filter-bar', bindSliderId: 'gc-bind-slider',
+    bindRangeId: 'gc-bind-range', bindLabelId: 'gc-bind-label',
+    searchId: 'gc-tf-search', prefix: '{{ perturbseq_prefix }}'
   });
-  let addedBindTFs = new Set(orderedBindTFs.slice(0, initVal));
-  orderedBindTFs.slice(0, initVal).forEach(tf => {
-    if (!existingIds.has(tf)) { elements.push({data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:90}}); existingIds.add(tf); }
-    elements.push({data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
-  });
-
-  const cy = cytoscape({
-    container: document.getElementById('gc-cy'),
-    elements,
-    minZoom: 0.2, wheelSensitivity: 0.25,
-    style: [
-      {selector:'node[type="module"]', style:{'background-color':'data(color)','label':'data(label)','font-size':'12px','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'}},
-      {selector:'node[type="tf"]',     style:{'background-color':'#4a56b0','label':'data(label)','font-size':'9px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':22,'height':22}},
-      ...TFNetwork.EDGE_STYLES_FULL,
-    ],
-    layout: {name:'preset', animate:false}
-  });
-  cy.on('tap', 'node[type="tf"]', evt => {
-    window.location.href = '{{ perturbseq_prefix }}/gene/' + encodeURIComponent(evt.target.id());
-  });
-
-  const tbody    = document.querySelector('#gc-tf-table tbody');
-  const countEl  = document.getElementById('gc-filter-count');
-  const evBtns   = document.querySelectorAll('#gc-filter-bar button[data-ev]');
-  const dirBtns  = document.querySelectorAll('#gc-filter-bar button[data-dir]');
-  const dirLabel = document.getElementById('gc-dir-label');
-  let sortKey = 'nes', sortDir = 'desc';
-
-  function getEvFilter()  { return (document.querySelector('#gc-filter-bar button[data-ev].active')  || {}).dataset?.ev  || 'all'; }
-  function getDirFilter() { return (document.querySelector('#gc-filter-bar button[data-dir].active') || {}).dataset?.dir || 'all'; }
-  function getSearchQ()   { return (document.getElementById('gc-tf-search')?.value || '').trim().toLowerCase(); }
-
-  function syncDirDisabled() {
-    const disabled = getEvFilter() === 'binding';
-    dirBtns.forEach(b => { b.disabled = disabled; b.classList.toggle('filter-disabled', disabled); });
-    if (dirLabel) dirLabel.classList.toggle('filter-disabled', disabled);
-    if (disabled) dirBtns.forEach(b => b.classList.toggle('active', b.dataset.dir === 'all'));
-  }
-
-  function filteredSorted(evF, dirF, q) {
-    let d = gcTFs;
-    if (evF === 'both')              d = d.filter(r => r.evidence === 'both');
-    else if (evF === 'perturbation') d = d.filter(r => r.evidence === 'perturbation' || r.evidence === 'both');
-    else if (evF === 'binding')      d = d.filter(r => r.evidence === 'binding' || r.evidence === 'both');
-    if (evF !== 'binding') {
-      if (dirF === 'up')   d = d.filter(r => r.nes != null && r.nes >  0);
-      if (dirF === 'down') d = d.filter(r => r.nes != null && r.nes <= 0);
-    }
-    if (q) d = d.filter(r => r.tf.toLowerCase().includes(q));
-    return [...d].sort((a, b) => {
-      if (sortKey === 'tf') return sortDir === 'asc' ? a.tf.localeCompare(b.tf) : b.tf.localeCompare(a.tf);
-      if (sortKey === 'dir') {
-        const da = a.nes == null ? 0 : (a.nes > 0 ? 1 : -1);
-        const db2 = b.nes == null ? 0 : (b.nes > 0 ? 1 : -1);
-        return sortDir === 'asc' ? da - db2 : db2 - da;
-      }
-      const va = sortKey === 'nes' ? Math.abs(a.nes ?? 0) : (a[sortKey] ?? -1);
-      const vb = sortKey === 'nes' ? Math.abs(b.nes ?? 0) : (b[sortKey] ?? -1);
-      return sortDir === 'asc' ? va - vb : vb - va;
-    });
-  }
-
-  function refreshTable(evF, dirF, q) {
-    const d = filteredSorted(evF, dirF, q);
-    tbody.innerHTML = '';
-    d.forEach(r => {
-      const hasNES = r.nes != null;
+  TFNetwork.makeFilterSortTable(
+    document.getElementById('gc-tf-table'), gcTFs,
+    r => {
+      const hasNES = r.mean_NES != null;
       const dir = hasNES
-        ? (r.nes > 0 ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
+        ? (r.mean_NES > 0 ? '<span class="direction-up">↑ Up</span>' : '<span class="direction-down">↓ Down</span>')
         : '<span style="color:var(--text-muted)">—</span>';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td class="${hasNES?(r.nes>0?'nes-pos':'nes-neg'):''}">${hasNES?r.nes.toFixed(3):'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding||''}</td><td>${r.odds_ratio!=null?r.odds_ratio.toFixed(2):'—'}</td>`;
-      tbody.appendChild(tr);
-    });
-    if (countEl) countEl.textContent = `${d.length} of ${gcTFs.length}`;
-  }
-
-  function applyGcFilter() {
-    const evF  = getEvFilter();
-    const dirF = getDirFilter();
-    const q    = getSearchQ();
-
-    // Disable binding slider when binding-only evidence is excluded by the filter
-    const bindingExcluded = evF === 'perturbation' || evF === 'both';
-    if (bindSlider) { bindSlider.disabled = bindingExcluded; bindSlider.classList.toggle('filter-disabled', bindingExcluded); }
-    if (bindRange)  { bindRange.disabled  = bindingExcluded; bindRange.classList.toggle('filter-disabled',  bindingExcluded); }
-    const bindRangeWrap = document.querySelector('#gc-filter-bar .bind-range-wrap');
-    if (bindRangeWrap) bindRangeWrap.classList.toggle('filter-disabled', bindingExcluded);
-    const bindLabelEl = document.getElementById('gc-bind-label');
-    if (bindLabelEl) bindLabelEl.classList.toggle('filter-disabled', bindingExcluded);
-
-    // Search: pull matching binding TFs into graph regardless of slider limit
-    if (q) {
-      const toAdd = orderedBindTFs.filter(tf => tf.toLowerCase().includes(q) && !addedBindTFs.has(tf));
-      if (toAdd.length) {
-        const newEls = [];
-        toAdd.forEach(tf => {
-          newEls.push({group:'nodes', data:{id:tf,label:tf,type:'tf'}, position:positions[tf]||{x:0,y:90}});
-          newEls.push({group:'edges', data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
-          addedBindTFs.add(tf);
-        });
-        cy.add(newEls);
-      }
-    } else {
-      // Search cleared: prune binding TFs back to slider limit
-      const sliderSet = new Set(orderedBindTFs.slice(0, parseInt(bindSlider?.value || initVal)));
-      const toRemove = [...addedBindTFs].filter(tf => !sliderSet.has(tf));
-      if (toRemove.length) {
-        toRemove.forEach(tf => {
-          cy.$(`#eb_${CSS.escape(tf)}`).remove();
-          if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
-        });
-        addedBindTFs = sliderSet;
-      }
-    }
-
-    // Edge + node visibility
-    cy.elements().show();
-    cy.edges().forEach(e => {
-      const dir = e.data('direction'), ev = e.data('evidence');
-      let hide = false;
-      if      (evF === 'perturbation') hide = ev !== 'perturbation';
-      else if (evF === 'both')         hide = ev !== 'both';
-      else if (evF === 'binding')      hide = ev !== 'binding';
-      if (!hide && dirF === 'up')   hide = dir !== 'up';
-      if (!hide && dirF === 'down') hide = dir !== 'down';
-      if (hide) e.hide();
-    });
-    cy.nodes('[type="tf"]').forEach(n => {
-      if (!n.connectedEdges(':visible').length || (q && !n.id().toLowerCase().includes(q))) n.hide();
-    });
-    cy.fit(cy.elements(':visible'), 20);
-    refreshTable(evF, dirF, q);
-  }
-
-  function updateBindCount(newCount) {
-    if (bindSlider) bindSlider.value = newCount;
-    if (bindRange)  bindRange.value  = newCount;
-    const needed   = new Set(orderedBindTFs.slice(0, newCount));
-    const toRemove = [...addedBindTFs].filter(tf => !needed.has(tf));
-    const toAdd    = [...needed].filter(tf => !addedBindTFs.has(tf));
-    toRemove.forEach(tf => {
-      cy.$(`#eb_${CSS.escape(tf)}`).remove();
-      if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
-    });
-    if (toAdd.length) {
-      const newEls = [];
-      toAdd.forEach(tf => {
-        if (!cy.$(`#${CSS.escape(tf)}`).length) newEls.push({group:'nodes',data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:90}});
-        newEls.push({group:'edges',data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
-      });
-      cy.add(newEls);
-    }
-    addedBindTFs = needed;
-    applyGcFilter();
-  }
-
-  // Event wiring
-  evBtns.forEach(btn => btn.addEventListener('click', () => {
-    evBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    syncDirDisabled();
-    applyGcFilter();
-  }));
-  dirBtns.forEach(btn => btn.addEventListener('click', () => {
-    if (getEvFilter() === 'binding') return;
-    dirBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    applyGcFilter();
-  }));
-  const searchEl = document.getElementById('gc-tf-search');
-  if (searchEl) searchEl.addEventListener('input', () => applyGcFilter());
-  if (bindSlider) bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
-  if (bindRange)  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
-  document.querySelectorAll('#gc-tf-table th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = key; sortDir = key === 'tf' ? 'asc' : 'desc'; }
-      document.querySelectorAll('#gc-tf-table th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
-      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      refreshTable(getEvFilter(), getDirFilter(), getSearchQ());
-    });
-  });
-
-  applyGcFilter();
+      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td class="${hasNES?(r.mean_NES>0?'nes-pos':'nes-neg'):''}">${hasNES?r.mean_NES.toFixed(3):'—'}</td><td>${r.padj!=null?r.padj.toExponential(2):'—'}</td><td>${r.binding||''}</td><td>${r.odds_ratio!=null?r.odds_ratio.toFixed(2):'—'}</td>`;
+      return tr;
+    },
+    { barId: 'gc-filter-bar', countId: 'gc-filter-count', searchId: 'gc-tf-search', searchKey: 'tf', onChange: applyFilter }
+  );
 })();
 
 // ── GC gene table ─────────────────────────────────────────────────────────────
 (function() {
-  const data = {{ gc_gene_data | tojson }};
-  const PAGE = 10;
-  let sKey = 'pubs', sDir = 'desc', q = '', page = 0;
+  const data = {{ gc_gene_data | tojson }}.sort((a, b) => b.pubs - a.pubs);
   const countEl = document.getElementById('gc-gene-count');
   if (countEl) countEl.textContent = `(${data.length})`;
-  function refresh() {
-    let d = data;
-    if (q) d = d.filter(r => r.name.toLowerCase().includes(q) || r.tf_status.toLowerCase().includes(q));
-    d = [...d].sort((a, b) => {
-      if (sKey === 'pubs') return sDir === 'asc' ? a.pubs - b.pubs : b.pubs - a.pubs;
-      return sDir === 'asc' ? String(a[sKey]).localeCompare(String(b[sKey])) : String(b[sKey]).localeCompare(String(a[sKey]));
-    });
-    const total = Math.max(1, Math.ceil(d.length / PAGE));
-    page = Math.min(page, total - 1);
-    const tb = document.querySelector('#gc-gene-table tbody');
-    tb.innerHTML = '';
-    d.slice(page * PAGE, (page + 1) * PAGE).forEach(r => {
-      const tr = document.createElement('tr');
-      const type = TFNetwork.tfStatusBadge(r.tf_status);
-      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${type}</td><td>${r.pubs || '—'}</td>`;
-      tb.appendChild(tr);
-    });
-    const pag = document.getElementById('gc-gene-pagination');
-    if (!pag) return;
-    pag.style.display = total <= 1 ? 'none' : 'flex';
-    pag.innerHTML = `<button id="gc-gp" ${page===0?'disabled':''}>← Prev</button><span>${page+1} / ${total}</span><button id="gc-gn" ${page>=total-1?'disabled':''}>Next →</button>`;
-    document.getElementById('gc-gp')?.addEventListener('click', () => { page--; refresh(); });
-    document.getElementById('gc-gn')?.addEventListener('click', () => { page++; refresh(); });
-  }
-  document.querySelectorAll('#gc-gene-table th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (sKey === key) sDir = sDir === 'asc' ? 'desc' : 'asc';
-      else { sKey = key; sDir = key === 'pubs' ? 'desc' : 'asc'; }
-      document.querySelectorAll('#gc-gene-table th').forEach(t => t.classList.remove('sort-asc', 'sort-desc'));
-      th.classList.add(sDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      page = 0; refresh();
-    });
-  });
-  const searchEl = document.getElementById('gc-gene-search');
-  if (searchEl) searchEl.addEventListener('input', () => { q = searchEl.value.trim().toLowerCase(); page = 0; refresh(); });
   document.querySelector('#gc-gene-table th[data-key="pubs"]')?.classList.add('sort-desc');
-  refresh();
+  TFNetwork.makeFilterSortTable(
+    document.getElementById('gc-gene-table'), data,
+    r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${TFNetwork.tfStatusBadge(r.tf_status)}</td><td>${r.pubs || '—'}</td>`;
+      return tr;
+    },
+    { searchId: 'gc-gene-search', searchKey: 'name', filterFn: (d, {searchQ}) => searchQ
+        ? d.filter(r => r.name.toLowerCase().includes(searchQ) || r.tf_status.toLowerCase().includes(searchQ))
+        : d }
+  );
 })();
 {% endif %}
 
@@ -1053,48 +827,12 @@ async function main() {
     makeEnrichTable(enrichTerms);
     return;
   }
-  // Sort binding-only rows by odds_ratio so slider reveals most significant first
-  const bindingRows = allRows.filter(r=>r.evidence==='binding').sort((a,b)=>(b.odds_ratio||0)-(a.odds_ratio||0));
-  const orderedBindingTFs = bindingRows.map(r=>r.tf);
-  const bindSlider = document.getElementById('bind-slider');
-  const bindRange = document.getElementById('bind-range');
-  const initVal = Math.min(15, orderedBindingTFs.length);
-  bindSlider.max = orderedBindingTFs.length;
-  bindSlider.value = initVal;
-  bindRange.max = orderedBindingTFs.length;
-  bindRange.value = initVal;
-  // Pre-compute sector positions: up TFs left, down TFs right, binding-only TFs bottom
-  const upTFs   = allRows.filter(r => r.evidence !== 'binding' && r.mean_NES >  0).map(r => r.tf);
-  const downTFs = allRows.filter(r => r.evidence !== 'binding' && r.mean_NES <= 0).map(r => r.tf);
-  const positions = Object.assign({ [NAME]: {x:0, y:0} },
-    placeSector(upTFs,              180, 110, 160, 130, 10),
-    placeSector(downTFs,              0, 110, 160, 130, 10),
-    placeSector(orderedBindingTFs,   90, 140, 160, 130, 14)
-  );
-  // Cytoscape — only add the initially visible binding TFs to avoid layout cost on hidden nodes
-  const initBindCount = parseInt(bindSlider.value);
-  const elements=[{data:{id:NAME,label:NAME,type:'module',color:MODULE_NODE_COLOR||MODULE_COLORS[NAME]||'#f59e0b'},position:{x:0,y:0}}];
-  const existingIds = new Set([NAME]);
-  allRows.filter(r=>r.evidence!=='binding').forEach(r=>{
-    elements.push({data:{id:r.tf,label:r.tf,type:'tf'}, position: positions[r.tf] || {x:0,y:0}});
-    elements.push({data:{id:`e_${r.tf}`,source:r.tf,target:NAME,direction:r.mean_NES>0?'up':'down',evidence:r.evidence}});
-    existingIds.add(r.tf);
+  const { applyFilter } = TFNetwork.initModuleNetwork({
+    cyId: 'cy', hubId: NAME, hubColor: MODULE_NODE_COLOR,
+    allRows, filterBarId: 'filter-bar',
+    bindSliderId: 'bind-slider', bindRangeId: 'bind-range', bindLabelId: 'bind-label',
+    searchId: 'tf-search', prefix: '{{ perturbseq_prefix }}'
   });
-  let addedBindingTFs = new Set(orderedBindingTFs.slice(0, initBindCount));
-  bindingRows.slice(0, initBindCount).forEach(r=>{
-    if(!existingIds.has(r.tf)){elements.push({data:{id:r.tf,label:r.tf,type:'tf'},position:positions[r.tf]||{x:0,y:160}});existingIds.add(r.tf);}
-    elements.push({data:{id:`eb_${r.tf}`,source:r.tf,target:NAME,direction:'bind',evidence:'binding'}});
-  });
-  const cy=cytoscape({container:document.getElementById('cy'),elements,
-    minZoom:0.2, wheelSensitivity:0.25,
-    style:[
-      {selector:'node[type="module"]',style:{'background-color':'data(color)','label':'data(label)','font-size':'12px','color':'#1e2448','text-valign':'bottom','text-margin-y':5,'width':50,'height':50,'shape':'round-rectangle','border-width':1,'border-color':'rgba(0,0,0,0.15)'}},
-      {selector:'node[type="tf"]',style:{'background-color':'#4a56b0','label':'data(label)','font-size':'9px','color':'#1e2448','text-valign':'bottom','text-margin-y':4,'width':22,'height':22}},
-      ...EDGE_STYLES_FULL,
-    ],
-    layout:{name:'preset',animate:false}
-  });
-  cy.on('tap','node[type="tf"]',evt=>{window.location.href='{{ perturbseq_prefix }}/gene/'+encodeURIComponent(evt.target.id());});
   // TF table
   makeFilterSortTable(document.getElementById('reg-table'), allRows, r=>{
     const dir=r.direction==='Up'?'<span class="direction-up">↑ Up</span>':r.direction==='Down'?'<span class="direction-down">↓ Down</span>':'—';
@@ -1102,157 +840,39 @@ async function main() {
     const or_s=r.odds_ratio==null?'—':r.odds_ratio>=1e300?'∞':r.odds_ratio.toFixed(1);
     tr.innerHTML=`<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.tf)}">${r.tf}</a></td><td>${dir}</td><td>${r.mean_NES!==null?r.mean_NES.toFixed(3):'—'}</td><td>${r.n_sig_gRNA!==null?r.n_sig_gRNA:'—'}</td><td>${r.padj!==null?r.padj.toExponential(2):'—'}</td><td>${r.binding}</td><td>${or_s}</td>`;
     return tr;
-  }, { barId:'filter-bar', countId:'filter-count', searchId:'tf-search', onChange:applyCyFilter });
-  // Sync filter bar + search to Cytoscape network
-  function applyCyFilter() {
-    const evFilter  = (document.querySelector('#filter-bar button[data-ev].active')  || {}).dataset?.ev  || 'all';
-    const dirFilter = (document.querySelector('#filter-bar button[data-dir].active') || {}).dataset?.dir || 'all';
-    const searchQ = (document.getElementById('tf-search')?.value || '').trim().toLowerCase();
-    // Disable binding-only slider when the active filter excludes binding-only evidence
-    const bindingExcluded = evFilter === 'perturbation' || evFilter === 'both';
-    const bindSliderEl = document.getElementById('bind-slider');
-    const bindRangeEl  = document.getElementById('bind-range');
-    if (bindSliderEl) { bindSliderEl.disabled = bindingExcluded; bindSliderEl.classList.toggle('filter-disabled', bindingExcluded); }
-    if (bindRangeEl)  { bindRangeEl.disabled  = bindingExcluded; bindRangeEl.classList.toggle('filter-disabled',  bindingExcluded); }
-    const bindRangeWrap = document.querySelector('.bind-range-wrap');
-    if (bindRangeWrap) bindRangeWrap.classList.toggle('filter-disabled', bindingExcluded);
-    const bindLabelEl = document.getElementById('bind-label');
-    if (bindLabelEl) bindLabelEl.classList.toggle('filter-disabled', bindingExcluded);
-    // Search: pull matching binding TFs into the graph regardless of slider limit
-    if (searchQ) {
-      const toAdd = orderedBindingTFs.filter(tf => tf.toLowerCase().includes(searchQ) && !addedBindingTFs.has(tf));
-      if (toAdd.length) {
-        const newEls = [];
-        toAdd.forEach(tf => {
-          newEls.push({group:'nodes', data:{id:tf,label:tf,type:'tf'}, position: positions[tf] || {x:0,y:160}});
-          newEls.push({group:'edges', data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
-          addedBindingTFs.add(tf);
-        });
-        cy.add(newEls);
-      }
-    } else {
-      // Search cleared: prune binding TFs that exceed the slider limit
-      const sliderSet = new Set(orderedBindingTFs.slice(0, parseInt(bindSlider.value)));
-      const toRemove = [...addedBindingTFs].filter(tf => !sliderSet.has(tf));
-      if (toRemove.length) {
-        toRemove.forEach(tf => {
-          cy.$(`#eb_${CSS.escape(tf)}`).remove();
-          if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
-        });
-        addedBindingTFs = sliderSet;
-      }
-    }
-    cy.elements().show();
-    cy.edges().forEach(e => {
-      const dir = e.data('direction'), ev = e.data('evidence');
-      let hide = false;
-      if      (evFilter === 'perturbation') hide = ev !== 'perturbation';
-      else if (evFilter === 'both')         hide = ev !== 'both';
-      else if (evFilter === 'binding')      hide = ev !== 'binding';
-      if (!hide && dirFilter === 'up')   hide = dir !== 'up';
-      if (!hide && dirFilter === 'down') hide = dir !== 'down';
-      if (hide) e.hide();
-    });
-    cy.nodes('[type = "tf"]').forEach(node => {
-      if (node.connectedEdges(':visible').length === 0 || (searchQ && !node.id().toLowerCase().includes(searchQ)))
-        node.hide();
-    });
-    cy.fit(cy.elements(':visible'), 20);
-  }
-  // Shared logic for both binding-count controls; syncs the other input then updates the graph
-  function updateBindCount(newCount) {
-    bindSlider.value = newCount;
-    bindRange.value  = newCount;
-    const needed = new Set(orderedBindingTFs.slice(0, newCount));
-    const toRemove = [...addedBindingTFs].filter(tf => !needed.has(tf));
-    const toAdd    = [...needed].filter(tf => !addedBindingTFs.has(tf));
-    toRemove.forEach(tf => {
-      cy.$(`#eb_${tf}`).remove();
-      if (!cy.$(`#${tf}`).connectedEdges().length) cy.$(`#${tf}`).remove();
-    });
-    if (toAdd.length) {
-      const newEls = [];
-      toAdd.forEach(tf => {
-        if (!cy.$(`#${CSS.escape(tf)}`).length) newEls.push({group:'nodes',data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:160}});
-        newEls.push({group:'edges',data:{id:`eb_${tf}`,source:tf,target:NAME,direction:'bind',evidence:'binding'}});
-      });
-      cy.add(newEls);
-    }
-    addedBindingTFs = needed;
-    applyCyFilter();
-  }
-  bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
-  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
-  applyCyFilter();
+  }, { barId:'filter-bar', countId:'filter-count', searchId:'tf-search', onChange:applyFilter });
   // Enrichment — isSub: aux is already the enrichment array; super: aux.enrichment
   const enrichTerms = isSub ? (aux || []) : (aux.enrichment || []);
   makeEnrichTable(enrichTerms);
   if (isSub) return;  // submodule: gene table not needed here (handled by SUB_GENE_DATA block below)
-  // Genes table with pub counts + search/sort
+  // Genes table
   const genes = detail.genes || [];
   const pubCounts = detail.pub_counts || {};
   const geneTfStatus = detail.gene_tf_status || {};
   const geneSubmodule = detail.gene_submodule || {};
   document.getElementById('gene-count').textContent = `(${genes.length} genes)`;
-  let geneAllData = genes.map(g => ({
+  const geneAllData = genes.map(g => ({
     name: g,
     pubs: pubCounts[g] || 0,
     tfStatus: geneTfStatus[g] || 'Gene',
     submodule: geneSubmodule[g]?.id || '',
     submoduleColor: geneSubmodule[g]?.color || '',
-  }));
-  const GENE_PAGE_SIZE = 10;
-  let geneSortKey = 'pubs', geneSortDir = 'desc', geneQ = '', genePage = 0;
-  function geneRefresh() {
-    let d = geneAllData;
-    if (geneQ) d = d.filter(r => r.name.toLowerCase().includes(geneQ) || r.submodule.toLowerCase().includes(geneQ) || r.tfStatus.toLowerCase().includes(geneQ));
-    d = [...d].sort((a, b) => {
-      const va = a[geneSortKey], vb = b[geneSortKey];
-      if (geneSortKey === 'pubs') return geneSortDir === 'asc' ? va - vb : vb - va;
-      return geneSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
-    });
-    const totalPages = Math.max(1, Math.ceil(d.length / GENE_PAGE_SIZE));
-    genePage = Math.min(genePage, totalPages - 1);
-    const pageData = d.slice(genePage * GENE_PAGE_SIZE, (genePage + 1) * GENE_PAGE_SIZE);
-    const tb = document.querySelector('#gene-table tbody');
-    tb.innerHTML = '';
-    pageData.forEach(r => {
-      const tr = document.createElement('tr');
-      const typeHtml = tfStatusBadge(r.tfStatus);
-      const dot = r.submodule
-        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.submoduleColor};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>`
-        : '';
-      const subCell = r.submodule
-        ? `${dot}<a class="node-link" href="{{ perturbseq_prefix }}/submodule/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
-        : '<span style="color:var(--text-muted)">—</span>';
-      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${subCell}</td><td>${r.pubs || '—'}</td>`;
-      tb.appendChild(tr);
-    });
-    const pag = document.getElementById('gene-pagination');
-    if (pag) {
-      pag.style.display = totalPages <= 1 ? 'none' : 'flex';
-      pag.innerHTML = `
-        <button id="gene-prev" ${genePage === 0 ? 'disabled' : ''}>← Prev</button>
-        <span>${genePage + 1} / ${totalPages}</span>
-        <button id="gene-next" ${genePage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>`;
-      document.getElementById('gene-prev')?.addEventListener('click', () => { genePage--; geneRefresh(); });
-      document.getElementById('gene-next')?.addEventListener('click', () => { genePage++; geneRefresh(); });
-    }
-  }
-  document.querySelectorAll('#gene-table th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (geneSortKey === key) geneSortDir = geneSortDir === 'asc' ? 'desc' : 'asc';
-      else { geneSortKey = key; geneSortDir = key === 'pubs' ? 'desc' : 'asc'; }
-      document.querySelectorAll('#gene-table th').forEach(t => t.classList.remove('sort-asc', 'sort-desc'));
-      th.classList.add(geneSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      genePage = 0; geneRefresh();
-    });
-  });
-  const geneSearchEl = document.getElementById('gene-search');
-  if (geneSearchEl) geneSearchEl.addEventListener('input', () => { geneQ = geneSearchEl.value.trim().toLowerCase(); genePage = 0; geneRefresh(); });
+  })).sort((a, b) => b.pubs - a.pubs);
   document.querySelector('#gene-table th[data-key="pubs"]')?.classList.add('sort-desc');
-  geneRefresh();
+  makeFilterSortTable(document.getElementById('gene-table'), geneAllData, r => {
+    const tr = document.createElement('tr');
+    const typeHtml = tfStatusBadge(r.tfStatus);
+    const dot = r.submodule
+      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.submoduleColor};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>`
+      : '';
+    const subCell = r.submodule
+      ? `${dot}<a class="node-link" href="{{ perturbseq_prefix }}/submodule/${encodeURIComponent(r.submodule)}">${r.submodule}</a>`
+      : '<span style="color:var(--text-muted)">—</span>';
+    tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${subCell}</td><td>${r.pubs || '—'}</td>`;
+    return tr;
+  }, { searchId: 'gene-search', searchKey: 'name', filterFn: (d, {searchQ}) => searchQ
+      ? d.filter(r => r.name.toLowerCase().includes(searchQ) || r.submodule.toLowerCase().includes(searchQ) || r.tfStatus.toLowerCase().includes(searchQ))
+      : d });
 }
 main();
 
@@ -1298,56 +918,21 @@ const SUB_GENE_DATA = {{ sub_gene_data | tojson }};
 
 // Member genes searchable table
 (function() {
-  const PAGE_SIZE = 10;
-  let sortKey = 'pubs', sortDir = 'desc', searchQ = '', page = 0;
-  function filteredSorted() {
-    let d = SUB_GENE_DATA;
-    if (searchQ) d = d.filter(r => r.name.toLowerCase().includes(searchQ) || r.tf_status.toLowerCase().includes(searchQ));
-    return [...d].sort((a, b) => {
-      if (sortKey === 'pubs') return sortDir === 'asc' ? a.pubs - b.pubs : b.pubs - a.pubs;
-      const va = String(a[sortKey]), vb = String(b[sortKey]);
-      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-    });
-  }
-  function renderGeneTable() {
-    const d = filteredSorted();
-    const totalPages = Math.max(1, Math.ceil(d.length / PAGE_SIZE));
-    page = Math.min(page, totalPages - 1);
-    const tb = document.querySelector('#sub-gene-table tbody');
-    tb.innerHTML = '';
-    d.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).forEach(r => {
+  const data = SUB_GENE_DATA.slice().sort((a, b) => b.pubs - a.pubs);
+  const countEl = document.getElementById('sub-gene-count');
+  if (countEl) countEl.textContent = `(${data.length})`;
+  document.querySelector('#sub-gene-table th[data-key="pubs"]')?.classList.add('sort-desc');
+  TFNetwork.makeFilterSortTable(
+    document.getElementById('sub-gene-table'), data,
+    r => {
       const tr = document.createElement('tr');
-      const typeHtml = tfStatusBadge(r.tf_status);
-      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${typeHtml}</td><td>${r.pubs || '—'}</td>`;
-      tb.appendChild(tr);
-    });
-    const countEl = document.getElementById('sub-gene-count');
-    if (countEl) countEl.textContent = d.length < SUB_GENE_DATA.length
-      ? `(${d.length} of ${SUB_GENE_DATA.length})`
-      : `(${SUB_GENE_DATA.length})`;
-    const pag = document.getElementById('sub-gene-pagination');
-    if (pag) {
-      pag.style.display = totalPages <= 1 ? 'none' : 'flex';
-      pag.innerHTML = `<button id="sgp-prev" ${page===0?'disabled':''}>← Prev</button><span>${page+1} / ${totalPages}</span><button id="sgp-next" ${page>=totalPages-1?'disabled':''}>Next →</button>`;
-      document.getElementById('sgp-prev')?.addEventListener('click', () => { page--; renderGeneTable(); });
-      document.getElementById('sgp-next')?.addEventListener('click', () => { page++; renderGeneTable(); });
-    }
-  }
-  const tbl = document.getElementById('sub-gene-table');
-  if (tbl) {
-    tbl.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = key; sortDir = th.dataset.type === 'number' ? 'desc' : 'asc'; }
-      tbl.querySelectorAll('th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
-      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      page = 0; renderGeneTable();
-    }));
-    tbl.querySelector('th[data-key="pubs"]')?.classList.add('sort-desc');
-  }
-  const searchEl = document.getElementById('sub-gene-search');
-  if (searchEl) searchEl.addEventListener('input', () => { searchQ = searchEl.value.trim().toLowerCase(); page = 0; renderGeneTable(); });
-  renderGeneTable();
+      tr.innerHTML = `<td><a class="node-link" href="{{ perturbseq_prefix }}/gene/${encodeURIComponent(r.name)}">${r.name}</a></td><td>${TFNetwork.tfStatusBadge(r.tf_status)}</td><td>${r.pubs || '—'}</td>`;
+      return tr;
+    },
+    { searchId: 'sub-gene-search', searchKey: 'name', filterFn: (d, {searchQ}) => searchQ
+        ? d.filter(r => r.name.toLowerCase().includes(searchQ) || r.tf_status.toLowerCase().includes(searchQ))
+        : d }
+  );
 })();
 
 // Neighbor table sort

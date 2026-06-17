@@ -446,6 +446,147 @@ window.TFNetwork = (function () {
     return '<span style="color:var(--text-muted);font-size:11px">Gene</span>';
   }
 
+  // ── Module network: Cytoscape + binding slider + filter (shared by super/sub/gc) ──
+  /**
+   * Initialize a hub→TF Cytoscape network with a binding-TF slider and filter sync.
+   * Encapsulates element build, Cytoscape init, slider setup, and applyFilter logic.
+   * @returns {{ cy: Object, applyFilter: Function }}
+   */
+  function initModuleNetwork(opts) {
+    const hubId  = opts.hubId;
+    const prefix = opts.prefix || '';
+    const bindSlider = document.getElementById(opts.bindSliderId);
+    const bindRange  = document.getElementById(opts.bindRangeId);
+
+    const orderedBindTFs = opts.allRows
+      .filter(r => r.evidence === 'binding')
+      .sort((a, b) => (b.odds_ratio || 0) - (a.odds_ratio || 0))
+      .map(r => r.tf);
+
+    const upTFs   = opts.allRows.filter(r => r.evidence !== 'binding' && (r.mean_NES || 0) >  0).map(r => r.tf);
+    const downTFs = opts.allRows.filter(r => r.evidence !== 'binding' && (r.mean_NES || 0) <= 0).map(r => r.tf);
+    const positions = Object.assign({ [hubId]: {x:0, y:0} },
+      placeSector(upTFs,           180, 110, 160, 130, 10),
+      placeSector(downTFs,           0, 110, 160, 130, 10),
+      placeSector(orderedBindTFs,   90, 140, 160, 130, 14)
+    );
+
+    const initVal = Math.min(15, orderedBindTFs.length);
+    const elements = [{data:{id:hubId,label:hubId,type:'module',color:opts.hubColor}, position:{x:0,y:0}}];
+    const existingIds = new Set([hubId]);
+    opts.allRows.filter(r => r.evidence !== 'binding').forEach(r => {
+      const dir = (r.mean_NES || 0) > 0 ? 'up' : 'down';
+      elements.push({data:{id:r.tf,label:r.tf,type:'tf'}, position:positions[r.tf]||{x:0,y:0}});
+      elements.push({data:{id:`e_${r.tf}`,source:r.tf,target:hubId,direction:dir,evidence:r.evidence}});
+      existingIds.add(r.tf);
+    });
+    let addedBindTFs = new Set(orderedBindTFs.slice(0, initVal));
+    orderedBindTFs.slice(0, initVal).forEach(tf => {
+      if (!existingIds.has(tf)) { elements.push({data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:160}}); existingIds.add(tf); }
+      elements.push({data:{id:`eb_${tf}`,source:tf,target:hubId,direction:'bind',evidence:'binding'}});
+    });
+
+    const cy = cytoscape({
+      container: document.getElementById(opts.cyId),
+      elements,
+      minZoom: 0.2, wheelSensitivity: 0.25,
+      style: [
+        {selector:'node[type="module"]', style: hubNodeStyle({colorAttr:'data(color)'})},
+        {selector:'node[type="tf"]',     style: peripheralNodeStyle({})},
+        ...EDGE_STYLES_FULL,
+      ],
+      layout: {name:'preset', animate:false},
+    });
+    cy.on('tap', 'node[type="tf"]', evt => {
+      window.location.href = prefix + '/gene/' + encodeURIComponent(evt.target.id());
+    });
+
+    if (bindSlider) { bindSlider.max = orderedBindTFs.length; bindSlider.value = initVal; }
+    if (bindRange)  { bindRange.max  = orderedBindTFs.length; bindRange.value  = initVal; }
+
+    function updateBindCount(n) {
+      if (bindSlider) bindSlider.value = n;
+      if (bindRange)  bindRange.value  = n;
+      const needed   = new Set(orderedBindTFs.slice(0, n));
+      const toRemove = [...addedBindTFs].filter(tf => !needed.has(tf));
+      const toAdd    = [...needed].filter(tf => !addedBindTFs.has(tf));
+      toRemove.forEach(tf => {
+        cy.$(`#eb_${CSS.escape(tf)}`).remove();
+        if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
+      });
+      if (toAdd.length) {
+        const newEls = [];
+        toAdd.forEach(tf => {
+          if (!cy.$(`#${CSS.escape(tf)}`).length) newEls.push({group:'nodes',data:{id:tf,label:tf,type:'tf'},position:positions[tf]||{x:0,y:160}});
+          newEls.push({group:'edges',data:{id:`eb_${tf}`,source:tf,target:hubId,direction:'bind',evidence:'binding'}});
+        });
+        cy.add(newEls);
+      }
+      addedBindTFs = needed;
+      applyFilter();
+    }
+
+    function applyFilter() {
+      const bar = opts.filterBarId ? document.getElementById(opts.filterBarId) : null;
+      const evFilter  = (bar?.querySelector('button[data-ev].active')  || {}).dataset?.ev  || 'all';
+      const dirFilter = (bar?.querySelector('button[data-dir].active') || {}).dataset?.dir || 'all';
+      const searchEl  = opts.searchId ? document.getElementById(opts.searchId) : null;
+      const searchQ   = (searchEl?.value || '').trim().toLowerCase();
+
+      const bindingExcluded = evFilter === 'perturbation' || evFilter === 'both';
+      if (bindSlider) { bindSlider.disabled = bindingExcluded; bindSlider.classList.toggle('filter-disabled', bindingExcluded); }
+      if (bindRange)  { bindRange.disabled  = bindingExcluded; bindRange.classList.toggle('filter-disabled',  bindingExcluded); }
+      const bindRangeWrap = bar?.querySelector('.bind-range-wrap');
+      if (bindRangeWrap) bindRangeWrap.classList.toggle('filter-disabled', bindingExcluded);
+      const bindLabelEl = opts.bindLabelId ? document.getElementById(opts.bindLabelId) : null;
+      if (bindLabelEl) bindLabelEl.classList.toggle('filter-disabled', bindingExcluded);
+
+      if (searchQ) {
+        const toAdd = orderedBindTFs.filter(tf => tf.toLowerCase().includes(searchQ) && !addedBindTFs.has(tf));
+        if (toAdd.length) {
+          const newEls = [];
+          toAdd.forEach(tf => {
+            newEls.push({group:'nodes', data:{id:tf,label:tf,type:'tf'}, position:positions[tf]||{x:0,y:160}});
+            newEls.push({group:'edges', data:{id:`eb_${tf}`,source:tf,target:hubId,direction:'bind',evidence:'binding'}});
+            addedBindTFs.add(tf);
+          });
+          cy.add(newEls);
+        }
+      } else {
+        const sliderSet = new Set(orderedBindTFs.slice(0, parseInt(bindSlider?.value ?? initVal)));
+        const toRemove = [...addedBindTFs].filter(tf => !sliderSet.has(tf));
+        if (toRemove.length) {
+          toRemove.forEach(tf => {
+            cy.$(`#eb_${CSS.escape(tf)}`).remove();
+            if (!cy.$(`#${CSS.escape(tf)}`).connectedEdges().length) cy.$(`#${CSS.escape(tf)}`).remove();
+          });
+          addedBindTFs = sliderSet;
+        }
+      }
+
+      cy.elements().show();
+      cy.edges().forEach(e => {
+        const dir = e.data('direction'), ev = e.data('evidence');
+        let hide = false;
+        if      (evFilter === 'perturbation') hide = ev !== 'perturbation';
+        else if (evFilter === 'both')         hide = ev !== 'both';
+        else if (evFilter === 'binding')      hide = ev !== 'binding';
+        if (!hide && dirFilter === 'up')   hide = dir !== 'up';
+        if (!hide && dirFilter === 'down') hide = dir !== 'down';
+        if (hide) e.hide();
+      });
+      cy.nodes('[type="tf"]').forEach(n => {
+        if (!n.connectedEdges(':visible').length || (searchQ && !n.id().toLowerCase().includes(searchQ))) n.hide();
+      });
+      cy.fit(cy.elements(':visible'), 20);
+    }
+
+    if (bindSlider) bindSlider.addEventListener('input', () => updateBindCount(parseInt(bindSlider.value)));
+    if (bindRange)  bindRange.addEventListener('input',  () => updateBindCount(parseInt(bindRange.value)));
+    applyFilter();
+    return { cy, applyFilter };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     MODULE_COLORS,
@@ -455,6 +596,7 @@ window.TFNetwork = (function () {
     peripheralNodeStyle,
     placeSector,
     initNetwork,
+    initModuleNetwork,
     makeFilterSortTable,
     makeSortable,
     makeEnrichTable,
