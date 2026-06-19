@@ -11,7 +11,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from flask import Blueprint, render_template, jsonify, request, g, redirect, url_for, abort, send_from_directory
 
-PERTURBSEQ_PREFIX = '/tf-perturbseq'
+PERTURBSEQ_PREFIX = '/endoderm-perturbseq'
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix=PERTURBSEQ_PREFIX)
 

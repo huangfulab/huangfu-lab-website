@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="{% block meta_description %}DE TF-PerturbSeq Browser — explore transcription factor perturbation effects on gene modules during human definitive endoderm differentiation.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}Endoderm Perturb-Seq Browser — explore transcription factor perturbation effects on gene modules during human definitive endoderm differentiation.{% endblock %}">
     <meta property="og:title" content="{{ self.title() }}">
     <meta property="og:description" content="{{ self.meta_description() }}">
     <meta property="og:type" content="website">
@@ -15,7 +15,7 @@
     <meta name="twitter:image" content="{{ request.host_url }}static/img/og-image.png">
     <link rel="canonical" href="{{ request.url }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-    <title>{% block title %}DE TF-PerturbSeq Browser{% endblock %}</title>
+    <title>{% block title %}Endoderm Perturb-Seq Browser{% endblock %}</title>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GC188JTM9K"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -27,7 +27,7 @@
     {
       "@context": "https://schema.org",
       "@type": "Dataset",
-      "name": "DE TF-PerturbSeq Browser",
+      "name": "Endoderm Perturb-Seq Browser",
       "description": "Transcription factor perturbation effects during human definitive endoderm differentiation",
       "url": "{{ request.host_url.rstrip('/') }}{{ perturbseq_prefix }}",
       "creator": {
@@ -48,7 +48,7 @@
 <body>
 <nav>
     <a href="{{ perturbseq_prefix }}">← Home</a>
-    <a class="brand" href="{{ url_for('perturbseq.index') }}">DE TF-PerturbSeq Browser</a>
+    <a class="brand" href="{{ url_for('perturbseq.index') }}">Endoderm Perturb-Seq Browser</a>
     <span class="nav-search-wrap">
         <input type="text" id="nav-search" placeholder="Search gene, TF, module or GO term…" autocomplete="off" spellcheck="false">
         <div class="nav-ac" id="nav-ac"></div>
