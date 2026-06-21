@@ -1,0 +1,98 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}Browser Unavailable — Endoderm Perturb-Seq{% endblock %}
+{% block meta_description %}The Endoderm Perturb-Seq browser is temporarily unavailable.{% endblock %}
+
+{% block extra_style %}
+<style>
+  .db-error-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 120px);
+    padding: 2rem;
+  }
+  .db-error-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    max-width: 480px;
+    width: 100%;
+    padding: 2.5rem 2.5rem 2rem;
+    text-align: center;
+  }
+  .db-error-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 1.25rem;
+    background: var(--bg-elevated);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .db-error-icon svg {
+    width: 26px;
+    height: 26px;
+    stroke: var(--accent);
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .db-error-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 0.6rem;
+  }
+  .db-error-body {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0 0 1.75rem;
+  }
+  .db-error-back {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .db-error-back:hover { background: var(--accent-hover); }
+  .db-error-status {
+    margin-top: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="db-error-wrap">
+  <div class="db-error-card">
+    <div class="db-error-icon">
+      <svg viewBox="0 0 24 24">
+        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+        <path d="M3 5v4c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/>
+        <path d="M3 9v4c0 1.657 4.03 3 9 3s9-1.343 9-3V9"/>
+        <line x1="3" y1="13" x2="3" y2="19"/>
+        <line x1="21" y1="13" x2="21" y2="19"/>
+        <line x1="12" y1="16" x2="12" y2="22"/>
+      </svg>
+    </div>
+    <p class="db-error-title">Browser temporarily unavailable</p>
+    <p class="db-error-body">
+      The Endoderm Perturb-Seq database could not be found.<br>
+      This is likely a temporary server-side issue. Please check back shortly.
+    </p>
+    <a class="db-error-back" href="{{ perturbseq_prefix }}">Return to browser home</a>
+    <p class="db-error-status">503 — Service Unavailable</p>
+  </div>
+</div>
+{% endblock %}

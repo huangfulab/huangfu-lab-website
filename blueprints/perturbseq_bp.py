@@ -323,11 +323,16 @@ def _load_perturbed_tfs() -> frozenset:
 
 def get_db():
     if "perturbseq_db" not in g:
+        if not Path(DB_PATH).exists():
+            abort(503)
         g.perturbseq_db = sqlite3.connect(DB_PATH)
         g.perturbseq_db.row_factory = sqlite3.Row
     return g.perturbseq_db
 
 
+@perturbseq_bp.errorhandler(503)
+def db_unavailable(e):
+    return render_template("perturbseq/db_error.html"), 503
 
 
 @perturbseq_bp.context_processor
