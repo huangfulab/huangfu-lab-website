@@ -15,7 +15,7 @@ PERTURBSEQ_PREFIX = '/endoderm-perturbseq'
 
 perturbseq_bp = Blueprint('perturbseq', __name__, url_prefix=PERTURBSEQ_PREFIX)
 
-DB_PATH      = str(Path(__file__).resolve().parent.parent / "data" / "db" / "tf-perturbseq-v5.db")
+DB_PATH      = str(Path(__file__).resolve().parent.parent / "data" / "db" / "tf-perturbseq-v6.db")
 
 def _last_commit_ts() -> int | None:
     try:

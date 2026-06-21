@@ -161,7 +161,7 @@ def robots_txt():
     return body, 200, {"Content-Type": "text/plain"}
 
 
-_SITEMAP_DB_PATH = Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v5.db"
+_SITEMAP_DB_PATH = Path(__file__).resolve().parent / "data" / "db" / "tf-perturbseq-v6.db"
 
 @app.route("/sitemap.xml")
 def sitemap_xml():
