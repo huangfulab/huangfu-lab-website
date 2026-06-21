@@ -29,6 +29,14 @@
     background: var(--accent); color: #fff; border-color: var(--accent);
   }
   #schema-bar button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .zoom-slider-wrap {
+    display: flex; align-items: center; gap: 6px;
+    padding-left: 6px; border-left: 1px solid var(--border);
+  }
+  #sl-scale {
+    width: 90px; accent-color: var(--accent); cursor: pointer;
+    height: 4px; vertical-align: middle;
+  }
   #zoom-badge {
     font-size: 11.5px; color: var(--text-muted); min-width: 40px;
     text-align: right; font-feature-settings: "tnum";
@@ -230,8 +238,11 @@
     <button id="btn-fit">Fit all</button>
     <button id="btn-tables">Tables ▾</button>
     <button id="btn-params">Params ▾</button>
+    <span class="zoom-slider-wrap">
+      <input type="range" id="sl-scale" min="15" max="300" step="1" value="100" title="Zoom">
+      <span id="zoom-badge">100%</span>
+    </span>
   </span>
-  <span id="zoom-badge">100%</span>
 </div>
 
 <div id="params-panel">
@@ -398,11 +409,24 @@
 
   // ── canvas transform ──────────────────────────────────────────
   let scale = 1, panX = 40, panY = 40;
+  const slScale = document.getElementById('sl-scale');
   function applyTransform() {
     canvas.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
-    document.getElementById('zoom-badge').textContent = Math.round(scale * 100) + '%';
+    const pct = Math.round(scale * 100);
+    document.getElementById('zoom-badge').textContent = pct + '%';
+    slScale.value = pct;
   }
   applyTransform();
+
+  slScale.addEventListener('input', () => {
+    const newScale = Math.max(0.15, Math.min(3, +slScale.value / 100));
+    const cx = wrap.offsetWidth  / 2;
+    const cy = wrap.offsetHeight / 2;
+    panX = cx - (cx - panX) * (newScale / scale);
+    panY = cy - (cy - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+  });
 
   // ── card state ────────────────────────────────────────────────
   const ALL_NAMES = Object.keys(SCHEMA);
@@ -700,7 +724,6 @@
     wrap.style.display                                       = isDiagram ? '' : 'none';
     document.getElementById('schema-legend').style.display  = isDiagram ? '' : 'none';
     document.getElementById('diagram-controls').style.display = isDiagram ? 'contents' : 'none';
-    document.getElementById('zoom-badge').style.display      = isDiagram ? '' : 'none';
     document.getElementById('text-view').classList.toggle('visible', !isDiagram);
     document.getElementById('btn-copy').classList.toggle('visible', !isDiagram);
     document.getElementById('btn-fit-float').classList.toggle('visible', isDiagram);
