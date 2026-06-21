@@ -44,6 +44,74 @@
     <script src="{{ url_for('static', filename='js/tf-network.js') }}"></script>
     {% block extra_head %}{% endblock %}
     {% block extra_style %}{% endblock %}
+    <style>
+      .error-page-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 120px);
+        padding: 2rem;
+      }
+      .error-page-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-lg);
+        max-width: 480px;
+        width: 100%;
+        padding: 2.5rem 2.5rem 2rem;
+        text-align: center;
+      }
+      .error-page-icon {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 1.25rem;
+        background: var(--bg-elevated);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .error-page-icon svg {
+        width: 26px;
+        height: 26px;
+        stroke: var(--accent);
+        fill: none;
+        stroke-width: 1.75;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .error-page-title {
+        font-size: 1.15rem;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0 0 0.6rem;
+      }
+      .error-page-body {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin: 0 0 1.75rem;
+      }
+      .error-page-back {
+        display: inline-block;
+        padding: 0.5rem 1.25rem;
+        background: var(--accent);
+        color: #fff;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+      .error-page-back:hover { background: var(--accent-hover); }
+      .error-page-status {
+        margin-top: 1.5rem;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        letter-spacing: 0.03em;
+      }
+    </style>
 </head>
 <body>
 <nav>

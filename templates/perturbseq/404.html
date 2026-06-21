@@ -1,7 +1,25 @@
 {% extends "perturbseq/base.html" %}
-{% block title %}Not Found{% endblock %}
+{% block title %}Page Not Found — Endoderm Perturb-Seq{% endblock %}
+{% block meta_description %}The requested page could not be found in the Endoderm Perturb-Seq browser.{% endblock %}
+
 {% block content %}
-<h1>404 – Not Found</h1>
-<p>{{ message or "The page you requested does not exist." }}</p>
-<a href="{{ perturbseq_prefix }}/">← Back to TF Network</a>
+<div class="error-page-wrap">
+  <div class="error-page-card">
+    <div class="error-page-icon">
+      <svg viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <line x1="11" y1="8" x2="11" y2="12"/>
+        <line x1="11" y1="16" x2="11.01" y2="16"/>
+      </svg>
+    </div>
+    <p class="error-page-title">Page not found</p>
+    <p class="error-page-body">
+      We couldn't find what you were looking for.<br>
+      The gene, TF, module, or GO term may not exist in this dataset.
+    </p>
+    <a class="error-page-back" href="{{ perturbseq_prefix }}">Return to browser home</a>
+    <p class="error-page-status">404 — Not Found</p>
+  </div>
+</div>
 {% endblock %}

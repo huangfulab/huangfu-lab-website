@@ -330,6 +330,14 @@ def get_db():
     return g.perturbseq_db
 
 
+@perturbseq_bp.errorhandler(404)
+def not_found(e):
+    return render_template("perturbseq/404.html"), 404
+
+@perturbseq_bp.errorhandler(500)
+def internal_error(e):
+    return render_template("perturbseq/500.html"), 500
+
 @perturbseq_bp.errorhandler(503)
 def db_unavailable(e):
     return render_template("perturbseq/db_error.html"), 503
