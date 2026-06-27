@@ -938,6 +938,15 @@ const cyInstances = {};
   cy.on('tap', 'node[type="module"]', evt => {
     window.location.href = '{{ perturbseq_prefix }}/module/' + encodeURIComponent(evt.target.id());
   });
+  cy.on('mouseover', 'node[type="module"]', evt => {
+    if (window._showModTipAt) {
+      const e = evt.originalEvent;
+      window._showModTipAt(evt.target.id(), evt.target.data('color'), e.clientX, e.clientY);
+    }
+  });
+  cy.on('mouseout', 'node[type="module"]', () => {
+    if (window._hideModTip) window._hideModTip();
+  });
 
   function applyCyFilter() {
     if (!regInst) return;
@@ -1032,6 +1041,15 @@ const cyInstances = {};
 
   cy.on('tap', 'node[type="cluster"]', evt => {
     window.location.href = urlMap[evt.target.id()] || '#';
+  });
+  cy.on('mouseover', 'node[type="cluster"]', evt => {
+    if (window._showModTipAt) {
+      const e = evt.originalEvent;
+      window._showModTipAt(evt.target.data('label'), evt.target.data('color'), e.clientX, e.clientY);
+    }
+  });
+  cy.on('mouseout', 'node[type="cluster"]', () => {
+    if (window._hideModTip) window._hideModTip();
   });
 
   function applyDevFilter() {
@@ -1193,6 +1211,15 @@ const cyInstances = {};
 
   cy.on('tap', 'node[type="submodule"]', evt => {
     window.location.href = '{{ perturbseq_prefix }}/module/' + encodeURIComponent(evt.target.id());
+  });
+  cy.on('mouseover', 'node[type="submodule"]', evt => {
+    if (window._showModTipAt) {
+      const e = evt.originalEvent;
+      window._showModTipAt(evt.target.id(), evt.target.data('color'), e.clientX, e.clientY);
+    }
+  });
+  cy.on('mouseout', 'node[type="submodule"]', () => {
+    if (window._hideModTip) window._hideModTip();
   });
 
   function applyCyFilter() {

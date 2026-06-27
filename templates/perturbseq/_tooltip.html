@@ -43,7 +43,17 @@
     tip.style.top  = Math.max(pad, y) + 'px';
   }
 
-  function render(gene, data, el) {
+  function positionAt(cx, cy) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const tw = tip.offsetWidth || 340, th = tip.offsetHeight || 120;
+    let x = cx + 14, y = cy - 10;
+    if (x + tw > W - pad) x = cx - tw - 14;
+    if (y + th > H - pad) y = H - pad - th;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function renderContent(gene, data) {
     tipN.textContent = gene;
     if (data.is_tf) {
       tipBa.textContent = 'TF';
@@ -75,6 +85,10 @@
     if (!html) html = '<span style="color:var(--text-muted,#aaa)">No additional info</span>';
     tipB.innerHTML = html;
     tip.style.display = 'block';
+  }
+
+  function render(gene, data, el) {
+    renderContent(gene, data);
     positionNear(el);
   }
 
@@ -113,6 +127,19 @@
       .then(data => { cache[gene] = data; cb(data); })
       .catch(() => { const empty = {full_name:null,summary:null,submodule:null,supermodule:null,is_tf:false}; cache[gene]=empty; cb(empty); });
   };
+  // Cytoscape integration — show gene tooltip at raw screen coordinates
+  window._showGeneTipAt = function(gene, cx, cy) {
+    clearTimeout(hideTimer);
+    currentEl = null;
+    function update(data) { renderContent(gene, data); positionAt(cx, cy); }
+    if (cache[gene] !== undefined) { update(cache[gene]); return; }
+    update({full_name:null, summary:null, submodule:null, supermodule:null, is_tf:false});
+    fetch(PERTURBSEQ_PREFIX + '/api/gene/' + encodeURIComponent(gene) + '/tooltip')
+      .then(r => r.json())
+      .then(data => { cache[gene] = data; update(data); })
+      .catch(() => { cache[gene] = {full_name:null,summary:null,submodule:null,supermodule:null,is_tf:false}; });
+  };
+  window._hideGeneTip = function() { clearTimeout(hideTimer); tip.style.display = 'none'; };
 })();
 </script>
 
@@ -138,9 +165,9 @@
   let hideTimer = null, currentEl = null;
 
   function getColor(el, mod) {
-    return el.dataset.modColor
+    return (el && el.dataset.modColor)
       || (window.MODULE_COLORS && window.MODULE_COLORS[mod])
-      || el.style.background
+      || (el && el.style.background)
       || '#4a56b0';
   }
 
@@ -195,8 +222,17 @@
     </svg>`;
   }
 
-  function render(mod, data, el) {
-    const c = getColor(el, mod);
+  function positionAt(cx, cy) {
+    const pad = 8, W = window.innerWidth, H = window.innerHeight;
+    const tw = tip.offsetWidth || 360, th = tip.offsetHeight || 120;
+    let x = cx + 14, y = cy - 10;
+    if (x + tw > W - pad) x = cx - tw - 14;
+    if (y + th > H - pad) y = H - pad - th;
+    tip.style.left = Math.max(pad, x) + 'px';
+    tip.style.top  = Math.max(pad, y) + 'px';
+  }
+
+  function renderContent(mod, data, c) {
     tipSw.style.background = c;
     tip.style.borderLeftColor = c;
     tipN.textContent = data.title ? mod + ' — ' + data.title : mod;
@@ -213,6 +249,10 @@
       tipB.innerHTML = data.desc ? '<div>' + data.desc + '</div>' : '';
     }
     tip.style.display = 'block';
+  }
+
+  function render(mod, data, el) {
+    renderContent(mod, data, getColor(el, mod));
     positionNear(el);
   }
 
@@ -242,6 +282,20 @@
     const r = resolveTarget(e.target);
     if (r) { currentEl = null; scheduleHide(); }
   });
+  // Cytoscape integration — show module tooltip at raw screen coordinates
+  window._showModTipAt = function(mod, color, cx, cy) {
+    clearTimeout(hideTimer);
+    currentEl = null;
+    const c = color || (window.MODULE_COLORS && window.MODULE_COLORS[mod]) || '#4a56b0';
+    function update(data) { renderContent(mod, data, c); positionAt(cx, cy); }
+    if (cache[mod] !== undefined) { update(cache[mod]); return; }
+    update({title: null, desc: null});
+    fetch(PERTURBSEQ_PREFIX + '/api/module/' + encodeURIComponent(mod) + '/tooltip')
+      .then(r => r.json())
+      .then(data => { cache[mod] = data; update(data); })
+      .catch(() => { cache[mod] = {title: null, desc: null}; });
+  };
+  window._hideModTip = function() { clearTimeout(hideTimer); tip.style.display = 'none'; };
 })();
 </script>
 

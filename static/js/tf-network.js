@@ -500,6 +500,15 @@ window.TFNetwork = (function () {
     cy.on('tap', 'node[type="tf"]', evt => {
       window.location.href = prefix + '/gene/' + encodeURIComponent(evt.target.id());
     });
+    cy.on('mouseover', 'node[type="tf"]', evt => {
+      if (window._showGeneTipAt) {
+        const e = evt.originalEvent;
+        window._showGeneTipAt(evt.target.id(), e.clientX, e.clientY);
+      }
+    });
+    cy.on('mouseout', 'node[type="tf"]', () => {
+      if (window._hideGeneTip) window._hideGeneTip();
+    });
 
     if (bindSlider) { bindSlider.max = orderedBindTFs.length; bindSlider.value = initVal; }
     if (bindRange)  { bindRange.max  = orderedBindTFs.length; bindRange.value  = initVal; }
