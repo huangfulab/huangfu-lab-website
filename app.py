@@ -89,6 +89,7 @@ def lab():
     return render_template("lab/index.html", citations=_LAST_AUTHOR_CITATIONS[:5], announcements=_load_announcements()[:5])
 
 
+
 @app.route("/research")
 def lab_research():
     return render_template("lab/research.html", current_page="research")
