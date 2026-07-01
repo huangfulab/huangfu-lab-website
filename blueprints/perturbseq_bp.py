@@ -719,7 +719,7 @@ def _build_gene_data_list(genes, pub_counts, lambert_tfs, perturbed_tfs, name_ke
 
 
 def _tf_dataset_ids(db, tf_gene_name: str) -> list:
-    """Return dataset_ids for a TF — used to filter tf_peaks and tf_gene_binding_scores."""
+    """Return dataset_ids for a TF — used to filter tf_peaks."""
     return [r[0] for r in db.execute(
         "SELECT dataset_id FROM tf_dataset_table WHERE tf_gene_name=?", (tf_gene_name,))]
 
@@ -1780,6 +1780,8 @@ def api_tf_linked_genes_all(tf_name):
     ds_ids = _tf_dataset_ids(db, tf_name)
     if not ds_ids:
         return jsonify({'data': []})
+    max_distance, link_types = _parse_link_filter()
+    filter_sql, filter_params = _apg_filter_sql(max_distance, link_types)
     ds_ph = ','.join('?' * len(ds_ids))
 
     rows = db.execute(f"""
@@ -1802,17 +1804,11 @@ def api_tf_linked_genes_all(tf_name):
             SELECT DISTINCT apg.gene_id, tp.dataset_id
             FROM tf_peaks tp
             JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
-            JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+            JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
                   UNION ALL
-                  SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+                  SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
               ON apg.atac_peak_id = ato.atac_peak_id
-            WHERE tp.dataset_id IN ({ds_ph})
-        ),
-        binding_scores AS (
-            SELECT gene_id, SUM(binding_score_A) AS peak_score
-            FROM tf_gene_binding_scores
-            WHERE dataset_id IN ({ds_ph})
-            GROUP BY gene_id
+            WHERE tp.dataset_id IN ({ds_ph}){filter_sql}
         ),
         peak_type_counts AS (
             SELECT apg.gene_id,
@@ -1829,7 +1825,7 @@ def api_tf_linked_genes_all(tf_name):
                   UNION ALL
                   SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
               ON apg.atac_peak_id = ato.atac_peak_id
-            WHERE tp.dataset_id IN ({ds_ph})
+            WHERE tp.dataset_id IN ({ds_ph}){filter_sql}
             GROUP BY apg.gene_id
         )
         SELECT gt.gene_name,
@@ -1838,7 +1834,6 @@ def api_tf_linked_genes_all(tf_name):
                COUNT(DISTINCT tgl.dataset_id) AS n_datasets,
                GROUP_CONCAT(DISTINCT td.source) AS sources_str,
                GROUP_CONCAT(td.dataset_id || '|||' || td.dataset || '|||' || td.cell_type || '|||' || td.source) AS datasets_str,
-               COALESCE(bs.peak_score,      0.0) AS peak_score,
                COALESCE(ptc.n_peaks,        0)   AS n_peaks,
                COALESCE(ptc.n_proximal,     0)   AS n_proximal,
                COALESCE(ptc.n_distal,       0)   AS n_distal,
@@ -1860,13 +1855,12 @@ def api_tf_linked_genes_all(tf_name):
             JOIN module_table mo ON gm.module_id = mo.module_id
             WHERE mo.source = 'hotspot_supermodule' AND mo.module_name != 'unassigned'
         ) sup ON tgl.gene_id = sup.gene_id
-        LEFT JOIN binding_scores bs   ON tgl.gene_id = bs.gene_id
         LEFT JOIN peak_type_counts ptc ON tgl.gene_id = ptc.gene_id
         JOIN gene_de_pct gdp ON tgl.gene_id = gdp.gene_id
         WHERE (gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05)
         GROUP BY tgl.gene_id, gt.gene_name
         ORDER BY gdp.signed_pct_rank ASC
-    """, [tf_name] + ds_ids + ds_ids + ds_ids).fetchall()
+    """, [tf_name] + ds_ids + filter_params + ds_ids + filter_params).fetchall()
 
     data = []
     for r in rows:
@@ -1876,7 +1870,6 @@ def api_tf_linked_genes_all(tf_name):
             'submodule':        r['submodule'],
             'supermodule':      r['supermodule'],
             'n_datasets':       r['n_datasets'],
-            'peak_score':       r['peak_score'],
             'n_peaks':          r['n_peaks'],
             'n_proximal':       r['n_proximal'],
             'n_distal':         r['n_distal'],
@@ -1889,61 +1882,6 @@ def api_tf_linked_genes_all(tf_name):
             'signed_pct_rank':  r['signed_pct_rank'],
         })
     return jsonify({'data': data})
-
-
-@perturbseq_bp.route("/api/tf/<tf_name>/coef-scatter-all")
-def api_tf_coef_scatter_all(tf_name):
-    """Lightweight endpoint for the all-genes scatter canvas.
-    Returns compact array-of-arrays [[mean_z_coef, peak_score, is_outlier, gene_name], ...].
-    Accepts ?score=A|B|C|D to select the binding_score column."""
-    db = get_db()
-    ds_ids = _tf_dataset_ids(db, tf_name)
-    if not ds_ids:
-        return jsonify({'d': []})
-    ds_ph = ','.join('?' * len(ds_ids))
-
-    score = request.args.get('score', 'A')
-    if score not in ('A', 'B', 'C', 'D'):
-        score = 'A'
-    score_col = f'binding_score_{score}'
-
-    rows = db.execute(f"""
-        WITH tf_grnas AS (
-            SELECT grna_id FROM grna_table WHERE gene_name = ?
-        ),
-        gene_de AS (
-            SELECT dr.gene_id,
-                   AVG(dr.z_coef) AS mean_z_coef,
-                   AVG(dr.coef)   AS mean_coef
-            FROM de_results dr
-            WHERE dr.grna_id IN (SELECT grna_id FROM tf_grnas)
-            GROUP BY dr.gene_id
-        ),
-        gene_de_pct AS (
-            SELECT gene_id, mean_z_coef,
-                   PERCENT_RANK() OVER (ORDER BY mean_z_coef) AS signed_pct_rank
-            FROM gene_de
-        ),
-        binding_scores AS (
-            SELECT gene_id, SUM({score_col}) AS peak_score
-            FROM tf_gene_binding_scores
-            WHERE dataset_id IN ({ds_ph})
-            GROUP BY gene_id
-        )
-        SELECT gdp.mean_z_coef,
-               COALESCE(bs.peak_score, 0.0) AS peak_score,
-               CASE WHEN gdp.signed_pct_rank >= 0.95 OR gdp.signed_pct_rank <= 0.05
-                    THEN 1 ELSE 0 END AS is_outlier,
-               gt.gene_name
-        FROM gene_de_pct gdp
-        JOIN gene_table gt ON gdp.gene_id = gt.gene_id
-        LEFT JOIN binding_scores bs ON gdp.gene_id = bs.gene_id
-        WHERE gdp.mean_z_coef IS NOT NULL
-    """, [tf_name] + ds_ids).fetchall()
-
-    data = [[round(r['mean_z_coef'], 3), round(r['peak_score'], 3), r['is_outlier'], r['gene_name']]
-            for r in rows]
-    return jsonify({'d': data})
 
 
 _gene_coef_cache: dict = {}   # tf_name → {gene_id: mean_coef}
@@ -2035,18 +1973,20 @@ def api_tf_coef_density(tf_name):
     if not ds_ids:
         return jsonify({'all_coefs': [], 'bound_coefs': []})
     gene_coef = _get_gene_coef(db, tf_name)
+    max_distance, link_types = _parse_link_filter()
+    filter_sql, filter_params = _apg_filter_sql(max_distance, link_types)
     ds_ph = ','.join('?' * len(ds_ids))
     bound_rows = db.execute(f"""
         SELECT DISTINCT apg.gene_id, gt.gene_name
         FROM tf_peaks tp
         JOIN atac_tf_overlaps ato ON ato.peak_id = tp.peak_id
-        JOIN (SELECT atac_peak_id, gene_id FROM atac_tss_links
+        JOIN (SELECT atac_peak_id, gene_id, distance_bp, NULL AS mao_lt FROM atac_tss_links
               UNION ALL
-              SELECT atac_peak_id, gene_id FROM multiome_atac_overlaps) apg
+              SELECT atac_peak_id, gene_id, distance_to_tss, link_type FROM multiome_atac_overlaps) apg
           ON apg.atac_peak_id = ato.atac_peak_id
         JOIN gene_table gt ON apg.gene_id = gt.gene_id
-        WHERE tp.dataset_id IN ({ds_ph})
-    """, ds_ids).fetchall()
+        WHERE tp.dataset_id IN ({ds_ph}){filter_sql}
+    """, ds_ids + filter_params).fetchall()
     bound_id_to_name = {r['gene_id']: r['gene_name'] for r in bound_rows}
     bound_genes = [{'gene_name': bound_id_to_name[gid], 'coef': coef}
                    for gid, coef in gene_coef.items()
@@ -2464,6 +2404,34 @@ def _classify_evidence_type(mao_link_type: str | None) -> str:
     if mao_link_type == 'TSS':
         return 'multiome'
     return 'proximity'
+
+
+_ALL_LINK_TYPES = {'proximity', 'multiome', 'multiome_hicar'}
+
+
+def _parse_link_filter():
+    """Read max_distance (int, bp) and link_types (set) from request.args.
+    No params present => no filtering (matches current behavior)."""
+    max_distance = request.args.get('max_distance', type=int)
+    raw = request.args.get('link_types', '')
+    link_types = set(raw.split(',')) & _ALL_LINK_TYPES if raw else set(_ALL_LINK_TYPES)
+    return max_distance, link_types
+
+
+def _apg_filter_sql(max_distance, link_types):
+    """SQL fragment (leading ' AND ...') + params list to filter an already-aliased
+    apg.distance_bp / apg.mao_lt pair. Call after building the apg join."""
+    conds, params = [], []
+    if max_distance is not None:
+        conds.append("apg.distance_bp <= ?")
+        params.append(max_distance)
+    if link_types != _ALL_LINK_TYPES:
+        type_conds = []
+        if 'proximity' in link_types:      type_conds.append("apg.mao_lt IS NULL")
+        if 'multiome' in link_types:       type_conds.append("apg.mao_lt = 'TSS'")
+        if 'multiome_hicar' in link_types: type_conds.append("apg.mao_lt IN ('HiCAR','HiCAR+TSS')")
+        conds.append("(" + " OR ".join(type_conds) + ")" if type_conds else "0")
+    return (" AND " + " AND ".join(conds)) if conds else "", params
 
 
 def _classify_distance_label(distance_bp: int | None) -> str:

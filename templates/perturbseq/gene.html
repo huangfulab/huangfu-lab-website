@@ -306,54 +306,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
   background: rgba(5,150,105,0.08);
 }
 
-.tf-target-chart-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 16px 10px;
-}
-.tf-target-chart-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
-}
-.tf-target-chart-kicker {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 0.5px;
-}
-.tf-target-chart-title {
-  font-size: 15px; font-weight: 700; color: var(--text); margin-top: 2px;
-}
-.tf-target-chart-subtitle {
-  font-size: 12px; color: var(--text-muted); margin-top: 2px; max-width: 760px;
-}
-.tf-target-legend {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  font-size: 11px; color: var(--text-muted); margin: 6px 0 10px;
-}
-.tf-target-legend-item {
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.tf-target-legend-swatch {
-  width: 10px; height: 10px; border-radius: 999px; display: inline-block;
-}
-.tf-target-chart-meta {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  font-size: 11px; color: var(--text-muted);
-}
-.tf-target-toolbar {
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-}
-.tf-target-toolbar-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 5px;
-  background: var(--bg-card); color: var(--text-muted); cursor: pointer;
-  padding: 0; transition: background 0.12s, color 0.12s; flex-shrink: 0;
-}
-.tf-target-toolbar-btn:hover {
-  background: var(--bg-elevated, rgba(100,116,139,0.14)); color: var(--text);
-}
-.tf-target-lollipop-svg { width: 100%; display: block; }
-.tf-target-empty {
-  font-size: 12px; color: var(--text-muted); font-style: italic; padding: 8px 0;
-}
 
 </style>
 {% endblock %}
@@ -608,6 +560,19 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 <hr class="section-divider">
 <h2 class="section-h2" id="sec-linked-genes">Genes regulated by {{ gene }} <span class="section-count" id="tf-lg-count"></span></h2>
 <p class="section-desc">Genes likely regulated by <strong>{{ gene }}</strong> through linked binding evidence in open chromatin. The chart ranks TF-linked genes by their mean Perturb-seq response to {{ gene }} knockdown, with negative coefficients indicating downregulation and positive coefficients indicating upregulation upon knockdown.</p>
+<div class="filter-bar" id="tf-lg-link-filter-bar" style="margin-bottom:10px;border-radius:var(--radius)">
+  <span class="filter-label">Link type:</span>
+  <button class="active" data-lt="proximity">Distance</button>
+  <button class="active" data-lt="multiome">Multiome</button>
+  <button class="active" data-lt="multiome_hicar">Multiome+HiCAR</button>
+  <span class="filter-sep"></span>
+  <span class="filter-label">Max distance:</span>
+  <span class="filter-count" id="tf-lg-dist-label" style="margin-left:0"></span>
+  <div class="bind-range-wrap">
+    <input type="range" id="tf-lg-dist-range" min="0" max="1000" value="1000" step="1">
+  </div>
+</div>
+<div id="tf-lg-density-updating" style="display:none;align-items:center;gap:6px;padding:0 2px 6px;font-size:11px;color:var(--text-muted)"><div class="dt-spinner" style="width:11px;height:11px;flex-shrink:0"></div>Updating…</div>
 <div id="tf-coef-density-wrap" style="margin-bottom:14px">
   <div id="tf-coef-density-loading" style="display:flex;align-items:center;gap:8px;padding:8px 4px;font-size:12px;color:var(--text-muted)"><div class="dt-spinner" style="width:14px;height:14px;flex-shrink:0"></div>Loading target-gene chart…</div>
 </div>
@@ -781,7 +746,6 @@ details[open] .go-summary::before { transform: rotate(90deg); }
 const GENE            = {{ gene | tojson }};
 const EXPR            = {{ expr | tojson }};
 const IS_TF              = {{ is_tf | tojson }};
-const TF_LINKED_GENE_CHART_VERSION = 'density';
 const TF_ELEMENT_COUNT   = {{ tf_element_count | tojson }};
 const CARD_COLOR         = {{ card_color | tojson }};
 const TF_REG_MODULES  = {{ tf_reg_modules | tojson }};
@@ -790,6 +754,25 @@ const TC_REG_CLUSTERS = {{ tc_reg_clusters | tojson }};
 
 // Cytoscape instances keyed by view name — avoids window namespace pollution
 const cyInstances = {};
+
+// ── "Genes regulated by TF" link filter (distance / link type) ──────────────
+// Shared by the density plot and the linked-genes table so both stay in sync.
+const TF_LG_FILTER = { maxDistance: null, linkTypes: new Set(['proximity', 'multiome', 'multiome_hicar']) };
+let tfLgReloadDensity = null, tfLgReloadTable = null;
+function tfLgFilterQuery() {
+  const params = new URLSearchParams();
+  if (TF_LG_FILTER.maxDistance != null) params.set('max_distance', TF_LG_FILTER.maxDistance);
+  if (TF_LG_FILTER.linkTypes.size < 3) params.set('link_types', [...TF_LG_FILTER.linkTypes].join(','));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+function tfLgReload() {
+  const updEl = document.getElementById('tf-lg-density-updating');
+  if (updEl) updEl.style.display = 'flex';
+  const densityDone = tfLgReloadDensity ? tfLgReloadDensity() : Promise.resolve();
+  if (tfLgReloadTable) tfLgReloadTable();
+  Promise.resolve(densityDone).finally(() => { if (updEl) updEl.style.display = 'none'; });
+}
 
 // ── Expression chart ──────────────────────────────────────────────────────────
 (function() {
@@ -1568,7 +1551,7 @@ requestAnimationFrame(() => {
 
 
 // ── Candidate Target Genes: coefficient charts ───────────────────────────────
-function initTfCoefDensityLegacy() {
+function initTfCoefDensity() {
   if (!IS_TF) return;
   const wrap = document.getElementById('tf-coef-density-wrap');
   const loadingEl = document.getElementById('tf-coef-density-loading');
@@ -1590,7 +1573,7 @@ function initTfCoefDensityLegacy() {
       xAxisGap:   6,
     });
     if (!plot) return;
-    const { g, clipG, x0, lo5, hi5, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate } = plot;
+    const { g, clipG, x0, lo5, hi5, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate, refresh } = plot;
 
     // Row 1: "All genes" — merged paths for performance, no per-element hover
     const vals    = allCoefs;
@@ -1667,198 +1650,30 @@ function initTfCoefDensityLegacy() {
       });
       registerUpdate(xsc => row2.update(xsc));
     }
+    refresh();
   }
 
-  fetch(`{{ perturbseq_prefix }}/api/tf/${encodeURIComponent(GENE)}/coef-density`)
-    .then(r => r.json())
-    .then(data => {
-      if (data && data.all_coefs && data.all_coefs.length >= 2) {
-        if (loadingEl) loadingEl.style.display = 'none';
-        const bound = data.bound_genes || [];
-        const lgCount = document.getElementById('tf-lg-count');
-        if (lgCount && bound.length > 0) lgCount.textContent = `${bound.length.toLocaleString()} genes`;
-        renderTfDensity(data.all_coefs, wrap, bound);
-      } else {
-        wrap.style.display = 'none';
-      }
-    })
-    .catch(() => { wrap.style.display = 'none'; });
-}
-
-function initTfCoefLollipop() {
-  if (!IS_TF) return;
-  const wrap = document.getElementById('tf-coef-density-wrap');
-  const loadingEl = document.getElementById('tf-coef-density-loading');
-  if (!wrap) return;
-
-  function buildTooltip() {
-    const tooltip = document.createElement('div');
-    tooltip.style.cssText = 'position:fixed;z-index:9999;display:none;padding:8px 10px;font-size:11.5px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.14);pointer-events:none;max-width:260px;line-height:1.45';
-    document.body.appendChild(tooltip);
-    return tooltip;
-  }
-
-  function placeTooltip(tooltip, event) {
-    const pad = 10;
-    const width = tooltip.offsetWidth || 180;
-    const height = tooltip.offsetHeight || 70;
-    let left = event.clientX + pad;
-    let top = event.clientY + pad;
-    if (left + width > window.innerWidth - 8) left = event.clientX - width - pad;
-    if (top + height > window.innerHeight - 8) top = event.clientY - height - pad;
-    tooltip.style.left = `${Math.max(8, left)}px`;
-    tooltip.style.top = `${Math.max(8, top)}px`;
-  }
-
-  function renderLollipopChart(rows, container) {
-    if (!rows || !rows.length) {
-      container.innerHTML = '<div class="tf-target-empty">No linked genes with perturbation coefficients were found for this TF.</div>';
-      return;
-    }
-
-    const ranked = [...rows].filter(r => r.mean_coef != null).sort((a, b) => a.mean_coef - b.mean_coef);
-    if (!ranked.length) {
-      container.innerHTML = '<div class="tf-target-empty">No linked genes with perturbation coefficients were found for this TF.</div>';
-      return;
-    }
-
-    const topDown = ranked.filter(r => r.mean_coef < 0).slice(0, 10);
-    const topUp = ranked.filter(r => r.mean_coef > 0).slice(-10);
-    const sorted = [...topDown, ...topUp].sort((a, b) => a.mean_coef - b.mean_coef);
-    if (!sorted.length) {
-      container.innerHTML = '<div class="tf-target-empty">No linked genes with non-zero perturbation coefficients were found for this TF.</div>';
-      return;
-    }
-
-    const card = document.createElement('div');
-    card.className = 'tf-target-chart-card';
-    card.innerHTML = `
-      <div class="tf-target-chart-head">
-        <div>
-          <div class="tf-target-chart-kicker">Linked Target Genes</div>
-          <div class="tf-target-chart-title">Top TF-linked responses to ${GENE} knockdown</div>
-          <div class="tf-target-chart-subtitle">Showing only the 10 most downregulated and 10 most upregulated TF-linked genes. Position encodes the mean perturbation coefficient; left is downregulated upon ${GENE} knockdown, right is upregulated.</div>
-        </div>
-        <div class="tf-target-toolbar" id="tf-target-toolbar"></div>
-      </div>
-      <div class="tf-target-legend">
-        <span class="tf-target-legend-item"><span class="tf-target-legend-swatch" style="background:#3b82f6"></span>Downregulated on KD</span>
-        <span class="tf-target-legend-item"><span class="tf-target-legend-swatch" style="background:#ec4899"></span>Upregulated on KD</span>
-        <span class="tf-target-legend-item"><span class="tf-target-legend-swatch" style="background:#64748b"></span>More binding support = larger marker</span>
-      </div>
-      <div class="tf-target-chart-meta" id="tf-target-chart-meta"></div>`;
-    container.appendChild(card);
-
-    const metaEl = card.querySelector('#tf-target-chart-meta');
-    const toolbar = card.querySelector('#tf-target-toolbar');
-    metaEl.innerHTML = [
-      `<span>showing <strong>${sorted.length}</strong> of ${ranked.length} linked genes</span>`,
-      `<span><strong>${topDown.length}</strong> strongest down on KD</span>`,
-      `<span><strong>${topUp.length}</strong> strongest up on KD</span>`
-    ].join('');
-
-    const margin = { top: 26, right: 28, bottom: 54, left: 28 };
-    const pageMain = document.querySelector('.page-main') || document.body;
-    const fullW = Math.max((pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 340);
-    const W = fullW - margin.left - margin.right;
-    const H = Math.max(220, Math.min(420, sorted.length * 5.5 + 90));
-    const fullH = H + margin.top + margin.bottom;
-
-    const svg = d3.create('svg').attr('class', 'tf-target-lollipop-svg').attr('width', fullW).attr('height', fullH).style('cursor', 'grab');
-    const clipId = `tf-target-lollipop-clip-${Date.now()}`;
-    svg.append('defs').append('clipPath').attr('id', clipId).append('rect').attr('width', W).attr('height', H + 2).attr('x', 0).attr('y', -1);
-    const root = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-    const plot = root.append('g').attr('clip-path', `url(#${clipId})`);
-    const axisG = root.append('g').attr('transform', `translate(0,${H})`);
-    const zeroLabel = root.append('text').attr('text-anchor', 'middle').attr('font-size', 10).attr('fill', 'var(--text-muted)').text('No average change');
-
-    const maxAbs = d3.max(sorted, d => Math.abs(d.mean_coef)) || 0.1;
-    const x0 = d3.scaleLinear().domain([-maxAbs * 1.08, maxAbs * 1.08]).nice().range([0, W]);
-    const y = d3.scalePoint().domain(sorted.map(d => d.gene_name)).range([H, 0]).padding(0.5);
-    const datasetExtent = d3.extent(sorted, d => d.n_datasets || 1);
-    const radius = d3.scaleSqrt().domain(datasetExtent[0] === datasetExtent[1] ? [datasetExtent[0], datasetExtent[0] + 1] : datasetExtent).range([4, 10]);
-
-    const baseline = plot.selectAll('line.tf-target-baseline').data(sorted).join('line')
-      .attr('stroke', 'rgba(100,116,139,0.16)').attr('stroke-width', 1).attr('x1', d => x0(0)).attr('y1', d => y(d.gene_name)).attr('y2', d => y(d.gene_name));
-    const stems = plot.selectAll('line.tf-target-stem').data(sorted).join('line')
-      .attr('stroke-width', 1.6).attr('stroke-linecap', 'round').attr('stroke', d => d.mean_coef >= 0 ? '#ec4899' : '#3b82f6').attr('y1', d => y(d.gene_name)).attr('y2', d => y(d.gene_name));
-    const points = plot.selectAll('circle.tf-target-point').data(sorted).join('circle')
-      .attr('stroke', '#fff').attr('stroke-width', 1.5).attr('fill', d => d.mean_coef >= 0 ? '#ec4899' : '#3b82f6').style('cursor', 'pointer');
-    const labels = plot.selectAll('text.tf-target-label').data(sorted.filter((d, i, arr) => arr.length <= 18 || i < 5 || i >= arr.length - 5 || Math.abs(d.mean_coef) >= maxAbs * 0.72)).join('text')
-      .attr('font-size', 10.5).attr('dominant-baseline', 'middle').attr('fill', 'var(--text)').style('pointer-events', 'none').text(d => d.gene_name);
-    root.append('line').attr('x1', x0.range()[0]).attr('x2', x0.range()[1]).attr('y1', H).attr('y2', H).attr('stroke', 'var(--border)').attr('stroke-width', 1);
-
-    const tooltip = buildTooltip();
-    function showTooltip(event, d) {
-      const color = d.mean_coef >= 0 ? '#ec4899' : '#3b82f6';
-      const moduleBits = [d.supermodule, d.submodule].filter(Boolean).join(' / ');
-      const sources = (d.sources || []).join(', ');
-      tooltip.innerHTML = [
-        `<div style="font-weight:700;color:${color}">${d.gene_name}</div>`,
-        `<div style="color:var(--text-muted)">coef ${d.mean_coef >= 0 ? '+' : ''}${d.mean_coef.toFixed(3)}</div>`,
-        moduleBits ? `<div style="color:var(--text-muted)">module ${moduleBits}</div>` : '',
-        `<div style="color:var(--text-muted)">${d.n_datasets || 0} binding source${(d.n_datasets || 0) === 1 ? '' : 's'}</div>`,
-        sources ? `<div style="color:var(--text-muted)">${sources}</div>` : ''
-      ].filter(Boolean).join('');
-      tooltip.style.display = 'block';
-      placeTooltip(tooltip, event);
-    }
-    points.on('mouseover', showTooltip).on('mousemove', event => placeTooltip(tooltip, event)).on('mouseout', () => { tooltip.style.display = 'none'; }).on('click', (_, d) => { window.location.href = `{{ perturbseq_prefix }}/gene/${encodeURIComponent(d.gene_name)}`; });
-
-    function mkBtn(title, html, fn) {
-      const btn = document.createElement('button');
-      btn.className = 'tf-target-toolbar-btn';
-      btn.type = 'button';
-      btn.title = title;
-      btn.innerHTML = html;
-      btn.addEventListener('click', fn);
-      return btn;
-    }
-    const iPlus  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/><line x1="6.5" y1="4.5" x2="6.5" y2="8.5"/></svg>`;
-    const iMinus = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/><line x1="4.5" y1="6.5" x2="8.5" y2="6.5"/></svg>`;
-    const iLeft  = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,3 4,8 10,13"/></svg>`;
-    const iRight = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,3 12,8 6,13"/></svg>`;
-    const iReset = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1-3"/><polyline points="1,2 3,5 6,3"/></svg>`;
-
-    function update(xScale) {
-      baseline.attr('x2', d => xScale(d.mean_coef));
-      stems.attr('x1', xScale(0)).attr('x2', d => xScale(d.mean_coef));
-      points.attr('cx', d => xScale(d.mean_coef)).attr('cy', d => y(d.gene_name)).attr('r', d => radius(d.n_datasets || 1));
-      labels.attr('x', d => xScale(d.mean_coef) + (d.mean_coef >= 0 ? 8 : -8)).attr('y', d => y(d.gene_name)).attr('text-anchor', d => d.mean_coef >= 0 ? 'start' : 'end');
-      axisG.call(d3.axisBottom(xScale).ticks(6).tickSize(4));
-      axisG.selectAll('text').attr('fill', 'var(--text-muted)').attr('font-size', 10);
-      axisG.selectAll('line,path').attr('stroke', 'var(--border)');
-      zeroLabel.attr('x', xScale(0)).attr('y', H + 34);
-    }
-
-    const svgSel = svg;
-    const zoom = d3.zoom().scaleExtent([1, 24]).extent([[0, 0], [W, H]])
-      .filter(event => event.type !== 'wheel')
-      .on('zoom', event => {
-        svg.style('cursor', event.sourceEvent?.type === 'mousemove' ? 'grabbing' : 'grab');
-        update(event.transform.rescaleX(x0));
+  function loadDensity() {
+    return fetch(`{{ perturbseq_prefix }}/api/tf/${encodeURIComponent(GENE)}/coef-density${tfLgFilterQuery()}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.all_coefs && data.all_coefs.length >= 2) {
+          if (loadingEl) loadingEl.style.display = 'none';
+          wrap.style.display = '';
+          wrap.innerHTML = '';
+          const bound = data.bound_genes || [];
+          const lgCount = document.getElementById('tf-lg-count');
+          if (lgCount && bound.length > 0) lgCount.textContent = `${bound.length.toLocaleString()} genes`;
+          renderTfDensity(data.all_coefs, wrap, bound);
+        } else {
+          wrap.style.display = 'none';
+        }
       })
-      .on('end', () => svg.style('cursor', 'grab'));
-    toolbar.append(
-      mkBtn('Zoom in', iPlus, () => zoom.scaleBy(svgSel, 1.4)),
-      mkBtn('Zoom out', iMinus, () => zoom.scaleBy(svgSel, 1 / 1.4)),
-      mkBtn('Pan left', iLeft, () => zoom.translateBy(svgSel, 70, 0)),
-      mkBtn('Pan right', iRight, () => zoom.translateBy(svgSel, -70, 0)),
-      mkBtn('Reset view', iReset, () => zoom.transform(svgSel, d3.zoomIdentity))
-    );
-    update(x0);
-    svg.call(zoom).on('dblclick.zoom', null);
-    card.appendChild(svg.node());
+      .catch(() => { wrap.style.display = 'none'; });
   }
 
-  fetch(`{{ perturbseq_prefix }}/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
-    .then(r => r.json())
-    .then(resp => {
-      if (loadingEl) loadingEl.style.display = 'none';
-      wrap.innerHTML = '';
-      renderLollipopChart(resp.data || [], wrap);
-    })
-    .catch(() => { wrap.style.display = 'none'; });
+  tfLgReloadDensity = loadDensity;
+  loadDensity();
 }
 
 // ── Shared KDE density-plot scaffold ─────────────────────────────────────────
@@ -1993,7 +1808,11 @@ function _buildKdePlot(vals, container, opts) {
   update(x0);
   svg.call(zoom).on('dblclick.zoom', null);
   card.appendChild(svg.node());
-  return { g, clipG, x0, y, lo5, hi5, density, W, H, uid, margin, svgSel, zoom, xAxisG, registerUpdate, rugY1, rugY2, RUG };
+  // Callers append rug ticks / register updates *after* this returns, so the
+  // update(x0) above ran before that content existed. refresh() lets callers
+  // re-trigger positioning once everything is registered.
+  function refresh() { update(d3.zoomTransform(svg.node()).rescaleX(x0)); }
+  return { g, clipG, x0, y, lo5, hi5, density, W, H, uid, margin, svgSel, zoom, xAxisG, registerUpdate, refresh, rugY1, rugY2, RUG };
 }
 
 // _addDensityRug — one rug strip: visible ticks (pointer-events:none) + 7px transparent hit targets.
@@ -2105,262 +1924,9 @@ function _makeLinkCard(attachTo) {
   return { el, caret, caretInner, show, hide };
 }
 
-function initTfCoefScatter() {
-  if (!IS_TF) return;
-  const wrap = document.getElementById('tf-coef-density-wrap');
-  const loadingEl = document.getElementById('tf-coef-density-loading');
-  if (!wrap) return;
-
-  let activeScore = 'A';
-
-  // ── Card skeleton (created once) ──
-  if (loadingEl) loadingEl.style.display = 'none';
-  wrap.innerHTML = '';
-  const card = document.createElement('div');
-  card.className = 'tf-target-chart-card';
-  card.innerHTML = `
-    <div class="tf-target-chart-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <div style="flex:1;min-width:0">
-        <div class="tf-target-chart-title">Knockdown response vs. binding support</div>
-        <div class="tf-target-chart-subtitle">Each dot is a measured gene. Blue = bottom 5%, pink = top 5% of KD response. Height reflects TF binding evidence in nearby open chromatin.</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;padding-top:2px">
-        <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;margin-right:2px">Binding score:</span>
-        ${['A','B','C','D'].map(s => `<button class="sc-score-tab mod-btn${s==='A'?' active':''}" data-score="${s}" style="padding:3px 10px;font-size:12px">${s}</button>`).join('')}
-      </div>
-    </div>`;
-  const chartArea = document.createElement('div');
-  card.appendChild(chartArea);
-  wrap.appendChild(card);
-
-  // ── Tooltip (created once, reused across score changes) ──
-  const { el: scatterTip, caret: scatterCaret, caretInner: scatterCaretInner,
-          show: _scatterShowCard, hide: _hideScatterTip } = _makeLinkCard(document.body);
-  let _scatterPtX = 0, _scatterPtY = 0;
-
-  function _positionScatterTip() {
-    const ptX = _scatterPtX, ptY = _scatterPtY;
-    const tipW = scatterTip.offsetWidth, tipH = scatterTip.offsetHeight;
-    const CARET_H = 7, GAP = 6;
-    let left = ptX - tipW / 2;
-    let top  = ptY - tipH - CARET_H - GAP;
-    if (left < 8) left = 8;
-    if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
-    if (top < 8) {
-      top = ptY + CARET_H + GAP;
-      scatterCaret.style.cssText = 'position:absolute;top:-7px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:7px solid var(--border)';
-      scatterCaretInner.style.cssText = 'position:absolute;top:1.5px;left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:6px solid var(--bg-card)';
-    } else {
-      scatterCaret.style.cssText = 'position:absolute;bottom:-7px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid var(--border)';
-      scatterCaretInner.style.cssText = 'position:absolute;bottom:1.5px;left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid var(--bg-card)';
-    }
-    scatterCaret.style.left = (ptX - left - 7) + 'px';
-    scatterTip.style.left = left + 'px';
-    scatterTip.style.top  = top  + 'px';
-  }
-
-  function _showScatterTip(d, ptX, ptY) {
-    _scatterPtX = ptX; _scatterPtY = ptY;
-    _scatterShowCard({
-      displayName: d.gene_name,
-      color: d.mean_z_coef >= 0 ? '#ec4899' : '#3b82f6',
-      tfName: GENE, targetGene: d.gene_name,
-      repositionFn: _positionScatterTip,
-      onHide: () => { window._tooltipLocked = false; }
-    });
-    window._tooltipLocked = true;
-    _positionScatterTip();
-  }
-
-  // ── Tab click handler ──
-  card.querySelectorAll('.sc-score-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (btn.dataset.score === activeScore) return;
-      card.querySelectorAll('.sc-score-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeScore = btn.dataset.score;
-      fetchAndDraw(activeScore);
-    });
-  });
-
-  function drawChart(data) {
-    chartArea.innerHTML = '';
-    _hideScatterTip();
-
-    if (!data.length) {
-      chartArea.innerHTML = '<div class="tf-target-empty">No linked genes with perturbation coefficients were found for this TF.</div>';
-      return;
-    }
-
-    // ── Dimensions ──
-    const margin = { top: 36, right: 16, bottom: 44, left: 52 };
-    const pageMain = document.querySelector('.page-main') || document.body;
-    const fullW = Math.max((pageMain.clientWidth || window.innerWidth - 288 || 800) - 32, 340);
-    const fullH = 340;
-    const W = fullW - margin.left - margin.right;
-    const H = fullH - margin.top - margin.bottom;
-
-    // ── Chart wrapper: SVG axes + canvas points ──
-    const chartWrap = document.createElement('div');
-    chartWrap.style.cssText = 'position:relative;line-height:0';
-    chartArea.appendChild(chartWrap);
-
-    const svgEl = d3.create('svg').attr('width', fullW).attr('height', fullH);
-    const g = svgEl.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-    chartWrap.appendChild(svgEl.node());
-
-    const dpr = window.devicePixelRatio || 1;
-    const canvas = document.createElement('canvas');
-    canvas.width  = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    canvas.style.cssText = `position:absolute;left:${margin.left}px;top:${margin.top}px;` +
-      `width:${W}px;height:${H}px;cursor:default`;
-    chartWrap.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    // ── SVG frame (axes, threshold lines, annotations) ──
-    const xAxis = g.append('g').attr('transform', `translate(0,${H})`);
-    const yAxis = g.append('g');
-    const zeroLine = g.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', 'var(--border)').attr('stroke-dasharray', '3,3');
-    const loThreshLine = g.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-    const hiThreshLine = g.append('line').attr('y1', 0).attr('y2', H)
-      .attr('stroke', '#ec4899').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
-
-    const _scUid = Math.random().toString(36).slice(2);
-    const defs = svgEl.append('defs');
-    defs.append('marker').attr('id', `sc-arr-blue-${_scUid}`)
-      .attr('viewBox', '0 0 8 8').attr('refX', 7).attr('refY', 4)
-      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
-      .append('path').attr('d', 'M0,0 L8,4 L0,8 z').attr('fill', '#3b82f6');
-    defs.append('marker').attr('id', `sc-arr-pink-${_scUid}`)
-      .attr('viewBox', '0 0 8 8').attr('refX', 7).attr('refY', 4)
-      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
-      .append('path').attr('d', 'M0,0 L8,4 L0,8 z').attr('fill', '#ec4899');
-
-    const loAnnotG = g.append('g');
-    const loAnnotArrow = loAnnotG.append('line').attr('stroke', '#3b82f6').attr('stroke-width', 1).attr('marker-end', `url(#sc-arr-blue-${_scUid})`);
-    const loAnnotT1    = loAnnotG.append('text').attr('fill', '#3b82f6').attr('font-size', 9.5).attr('font-weight', '600');
-    const loAnnotT2    = loAnnotG.append('text').attr('fill', '#3b82f6').attr('font-size', 8.5).attr('opacity', 0.8);
-    const hiAnnotG = g.append('g');
-    const hiAnnotArrow = hiAnnotG.append('line').attr('stroke', '#ec4899').attr('stroke-width', 1).attr('marker-end', `url(#sc-arr-pink-${_scUid})`);
-    const hiAnnotT1    = hiAnnotG.append('text').attr('fill', '#ec4899').attr('font-size', 9.5).attr('font-weight', '600');
-    const hiAnnotT2    = hiAnnotG.append('text').attr('fill', '#ec4899').attr('font-size', 8.5).attr('opacity', 0.8);
-
-    // ── Quadrant corner labels ──
-    const _loLbl = g.append('text')
-      .attr('x', 4).attr('y', 10)
-      .attr('text-anchor', 'start').attr('fill', '#3b82f6')
-      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7);
-    _loLbl.append('tspan').text('← Genes downregulated');
-    _loLbl.append('tspan').attr('x', 4).attr('dy', '1.3em').text(`by ${GENE} KD`);
-    const _hiLbl = g.append('text')
-      .attr('x', W - 4).attr('y', 10)
-      .attr('text-anchor', 'end').attr('fill', '#ec4899')
-      .attr('font-size', 10).attr('font-weight', '600').attr('opacity', 0.7);
-    _hiLbl.append('tspan').text('Genes upregulated →');
-    _hiLbl.append('tspan').attr('x', W - 4).attr('dy', '1.3em').text(`by ${GENE} KD`);
-
-    g.append('text').attr('x', W / 2).attr('y', H + 36)
-      .attr('text-anchor', 'middle').attr('fill', 'var(--text-muted)').attr('font-size', 11)
-      .text('Mean z-scored coefficient across TF KD datasets');
-    g.append('text').attr('transform', 'rotate(-90)').attr('x', -H / 2).attr('y', -38)
-      .attr('text-anchor', 'middle').attr('fill', 'var(--text-muted)').attr('font-size', 11)
-      .text('Weighted TF binding score');
-
-    // ── Scales ──
-    const xExtent = d3.extent(data, d => d[0]);
-    const xPad = Math.max(0.02, ((xExtent[1] ?? 0) - (xExtent[0] ?? 0)) * 0.08);
-    const x = d3.scaleLinear()
-      .domain([(xExtent[0] ?? -0.1) - xPad, (xExtent[1] ?? 0.1) + xPad]).nice()
-      .range([0, W]);
-    const y = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d[1]) || 1]).nice()
-      .range([H, 0]);
-
-    xAxis.call(d3.axisBottom(x).ticks(7));
-    yAxis.call(d3.axisLeft(y).ticks(7).tickFormat(d3.format('.2f')));
-    zeroLine.attr('x1', x(0)).attr('x2', x(0));
-
-    // ── Threshold annotations ──
-    const blueOut = data.filter(d => d[2] && d[0] < 0);
-    const pinkOut = data.filter(d => d[2] && d[0] >= 0);
-    const loVal = blueOut.length ? d3.max(blueOut, d => d[0]) : null;
-    const hiVal = pinkOut.length ? d3.min(pinkOut, d => d[0]) : null;
-    const fmt = d3.format('.2f'), TEXT_OFF = 12;
-    const lx = loVal != null ? x(loVal) : null;
-    const hx = hiVal != null ? x(hiVal) : null;
-    const tooClose = lx != null && hx != null && Math.abs(hx - lx) < 120;
-    const loY0 = 2, hiY0 = tooClose ? 18 : 2;
-    if (loVal != null) {
-      loThreshLine.attr('x1', lx).attr('x2', lx);
-      loAnnotArrow.attr('x1', lx - TEXT_OFF).attr('y1', loY0 + 13).attr('x2', lx - 2).attr('y2', loY0 + 24);
-      loAnnotT1.attr('x', lx - TEXT_OFF).attr('y', loY0 + 9).attr('text-anchor', 'end').text('Bottom 5%');
-      loAnnotT2.attr('x', lx - TEXT_OFF).attr('y', loY0 + 18).attr('text-anchor', 'end').text(`5th pct cutoff: ${fmt(loVal)}`);
-    }
-    if (hiVal != null) {
-      hiThreshLine.attr('x1', hx).attr('x2', hx);
-      hiAnnotArrow.attr('x1', hx + TEXT_OFF).attr('y1', hiY0 + 13).attr('x2', hx + 2).attr('y2', hiY0 + 24);
-      hiAnnotT1.attr('x', hx + TEXT_OFF).attr('y', hiY0 + 9).attr('text-anchor', 'start').text('Top 5%');
-      hiAnnotT2.attr('x', hx + TEXT_OFF).attr('y', hiY0 + 18).attr('text-anchor', 'start').text(`95th pct cutoff: ${fmt(hiVal)}`);
-    }
-
-    // ── Canvas rendering ──
-    const TAU = Math.PI * 2, R = 3;
-    ctx.clearRect(0, 0, W, H);
-    const grey = [], blue = [], pink = [];
-    for (const d of data) {
-      if (!d[2]) grey.push(d);
-      else if (d[0] < 0) blue.push(d);
-      else pink.push(d);
-    }
-    ctx.beginPath(); ctx.fillStyle = 'rgba(148,163,184,0.22)';
-    for (const d of grey) { const cx = x(d[0]), cy = y(d[1]); ctx.moveTo(cx + R, cy); ctx.arc(cx, cy, R, 0, TAU); }
-    ctx.fill();
-    ctx.beginPath(); ctx.fillStyle = 'rgba(59,130,246,0.72)';
-    for (const d of blue) { const cx = x(d[0]), cy = y(d[1]); ctx.moveTo(cx + R, cy); ctx.arc(cx, cy, R, 0, TAU); }
-    ctx.fill();
-    ctx.beginPath(); ctx.fillStyle = 'rgba(236,72,153,0.72)';
-    for (const d of pink) { const cx = x(d[0]), cy = y(d[1]); ctx.moveTo(cx + R, cy); ctx.arc(cx, cy, R, 0, TAU); }
-    ctx.fill();
-
-    // ── Quadtree for hover hit-testing ──
-    const qt = d3.quadtree().x(d => x(d[0])).y(d => y(d[1])).addAll(data);
-
-    let _canvasHit = null;
-    canvas.addEventListener('mousemove', event => {
-      const rect = canvas.getBoundingClientRect();
-      const hit = qt.find(event.clientX - rect.left, event.clientY - rect.top, 8);
-      if (hit === _canvasHit) return;
-      _canvasHit = hit;
-      if (hit) {
-        _showScatterTip({ gene_name: hit[3], mean_z_coef: hit[0] },
-          rect.left + x(hit[0]), rect.top + y(hit[1]));
-      } else {
-        _hideScatterTip();
-      }
-    });
-    canvas.addEventListener('mouseleave', () => { _canvasHit = null; _hideScatterTip(); });
-  }
-
-  function fetchAndDraw(score) {
-    chartArea.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--text-muted);font-size:13px">Loading…</div>';
-    fetch(`{{ perturbseq_prefix }}/api/tf/${encodeURIComponent(GENE)}/coef-scatter-all?score=${score}`)
-      .then(r => r.json())
-      .then(resp => { drawChart(resp.d || []); })
-      .catch(() => { wrap.style.display = 'none'; });
-  }
-
-  fetchAndDraw('A');
-}
-
 (function() {
   if (!IS_TF) return;
-  if (TF_LINKED_GENE_CHART_VERSION === 'density') initTfCoefDensityLegacy();
-  else if (TF_LINKED_GENE_CHART_VERSION === 'lollipop') initTfCoefLollipop();
-  else initTfCoefScatter();
+  initTfCoefDensity();
 })();
 
 // ── Linked genes (TF binding targets) ────────────────────────────────────────
@@ -2413,10 +1979,9 @@ function initTfCoefScatter() {
           <th class="sst-sortable" data-col="1">Module</th>
           <th class="sst-sortable sst-asc" data-col="4" title="How extreme this gene's response to TF knockdown is, within the top/bottom 5% of DE responders">KD Effect</th>
           <th class="sst-sortable" data-col="5" title="Mean Perturb-seq regression coefficient across all active gRNAs targeting this TF. Computed as the average per-gRNA log-fold-change effect on this gene's expression. Positive = upregulated upon knockdown; negative = downregulated.">Mean coef</th>
-          <th class="sst-sortable" data-col="6" title="Whether any TF binding evidence (ChIP-seq or motif footprint peaks) links this TF to the gene">Binding</th>
           <th>TF→Gene link</th>
         </tr></thead>
-        <tbody id="lg-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+        <tbody id="lg-tbody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
       </table>
     </div>
     <div class="sst-bar bottom">
@@ -2456,11 +2021,8 @@ function initTfCoefScatter() {
     const coefCell = coef == null
       ? `<td style="color:var(--text-muted);font-size:12px">—</td>`
       : `<td style="font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;color:${coefColor};font-weight:600">${coef > 0 ? '+' : ''}${coef.toFixed(3)}</td>`;
-    const scoreCell = r.peak_score > 0
-      ? `<td style="font-size:12px;font-weight:600;color:#7c3aed">Yes</td>`
-      : `<td style="color:var(--text-muted);font-size:12px">No</td>`;
     const linkPill = `<a href="{{ perturbseq_prefix }}/link/${encodeURIComponent(GENE)}/${encodeURIComponent(r.gene_name)}" style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.35);white-space:nowrap;text-decoration:none">${GENE} → ${r.gene_name}</a>`;
-    return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}${scoreCell}<td style="white-space:nowrap">${linkPill}</td></tr>`;
+    return `<tr><td>${gLink}</td><td>${modLink}</td>${deCell}${coefCell}<td style="white-space:nowrap">${linkPill}</td></tr>`;
   }
 
   function getFiltered() {
@@ -2485,7 +2047,6 @@ function initTfCoefScatter() {
       2: r => r.n_datasets    || 0,
       4: r => r.signed_pct_rank != null ? r.signed_pct_rank : 0.5,
       5: r => r.mean_coef       != null ? r.mean_coef       : 0,
-      6: r => r.peak_score       != null ? r.peak_score      : 0,
     })[orderCol] || (r => r.signed_pct_rank != null ? r.signed_pct_rank : 0.5);
     return [...rows].sort((a, b) => {
       const av = keyFn(a), bv = keyFn(b);
@@ -2504,7 +2065,7 @@ function initTfCoefScatter() {
     if (tbody) {
       tbody.innerHTML = pageRows.length
         ? pageRows.map(rowHtml).join('')
-        : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
+        : `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>`;
     }
 
     const topCount = document.getElementById('lg-top-count');
@@ -2560,18 +2121,23 @@ function initTfCoefScatter() {
     if (!th) return;
     const col = +th.dataset.col;
     if (col === orderCol) orderDir = orderDir === 'asc' ? 'desc' : 'asc';
-    else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4 || col === 5 || col === 6) ? 'desc' : 'asc'; }
+    else { orderCol = col; orderDir = (col === 2 || col === 3 || col === 4 || col === 5) ? 'desc' : 'asc'; }
     wrapEl.querySelectorAll('th[data-col]').forEach(h => h.className = 'sst-sortable' + (h === th ? ` sst-${orderDir}` : ''));
     page = 1; render();
   });
 
-  fetch(`{{ perturbseq_prefix }}/api/tf-linked-genes-all/${encodeURIComponent(GENE)}`)
-    .then(r => r.json())
-    .then(resp => { allData = resp.data || []; render(); })
-    .catch(() => {
-      const tbody = document.getElementById('lg-tbody');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
-    });
+  function loadTable() {
+    fetch(`{{ perturbseq_prefix }}/api/tf-linked-genes-all/${encodeURIComponent(GENE)}${tfLgFilterQuery()}`)
+      .then(r => r.json())
+      .then(resp => { allData = resp.data || []; page = 1; render(); })
+      .catch(() => {
+        const tbody = document.getElementById('lg-tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Failed to load.</td></tr>`;
+      });
+  }
+
+  tfLgReloadTable = loadTable;
+  loadTable();
 
   function dsLink(ds) {
     const name = ds.name, src = ds.source || '';
@@ -2698,6 +2264,51 @@ function initTfCoefScatter() {
   lgScoreTip.addEventListener('mouseleave', () => {
     lgScoreHideTimer = setTimeout(() => { lgScoreTip.style.display = 'none'; lgScoreTipAnchor = null; }, 120);
   });
+})();
+
+// ── "Genes regulated by TF" link filter bar (distance / link type) ─────────
+(function() {
+  if (!IS_TF) return;
+  const bar = document.getElementById('tf-lg-link-filter-bar');
+  if (!bar) return;
+  const distRange = document.getElementById('tf-lg-dist-range');
+  const distLabel = document.getElementById('tf-lg-dist-label');
+
+  const LOG_MIN = 1, LOG_MAX = Math.log10(3200000), POS_MAX = 1000;
+  function posToBp(pos) {
+    if (pos >= POS_MAX) return null;
+    return Math.round(Math.pow(10, LOG_MIN + (pos / POS_MAX) * (LOG_MAX - LOG_MIN)));
+  }
+  function fmtBp(bp) {
+    if (bp == null) return 'Unlimited';
+    if (bp >= 1e6) return `${(bp / 1e6).toFixed(2)} Mb`;
+    if (bp >= 1e3) return `${(bp / 1e3).toFixed(1)} kb`;
+    return `${bp} bp`;
+  }
+
+  let debounce;
+  if (distRange) distRange.addEventListener('input', () => {
+    const bp = posToBp(+distRange.value);
+    TF_LG_FILTER.maxDistance = bp;
+    if (distLabel) distLabel.textContent = fmtBp(bp);
+    clearTimeout(debounce);
+    debounce = setTimeout(tfLgReload, 280);
+  });
+
+  bar.querySelectorAll('button[data-lt]').forEach(btn => btn.addEventListener('click', () => {
+    const lt = btn.dataset.lt;
+    if (TF_LG_FILTER.linkTypes.has(lt)) {
+      if (TF_LG_FILTER.linkTypes.size === 1) return;
+      TF_LG_FILTER.linkTypes.delete(lt);
+      btn.classList.remove('active');
+    } else {
+      TF_LG_FILTER.linkTypes.add(lt);
+      btn.classList.add('active');
+    }
+    tfLgReload();
+  }));
+
+  if (distLabel) distLabel.textContent = fmtBp(null);
 })();
 
 // ── Regulatory elements bound by TF ─────────────────────────────────────────
@@ -3198,7 +2809,7 @@ function initTfCoefScatter() {
       extraButtons:  [sliderWrap],
     });
     if (!plot) return;
-    const { g, clipG, x0, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate } = plot;
+    const { g, clipG, x0, W, H, margin, svgSel, rugY1, rugY2, RUG, registerUpdate, refresh } = plot;
 
     // Shared rug tooltip using _makeLinkCard
     const { el: rugTip, caret: rugCaret, caretInner: rugCaretInner,
@@ -3337,6 +2948,7 @@ function initTfCoefScatter() {
       });
       registerUpdate(xsc => row2.update(xsc));
     }
+    refresh();
 
     slider.addEventListener('input', () => {
       labelCount = +slider.value;
