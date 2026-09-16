@@ -294,8 +294,7 @@ def _super_vs_sub(client):
     expect(sup["source"] == "hotspot_supermodule", f"DE-1 resolved to {sup['source']}")
     expect(sub["source"] == "hotspot_submodule", f"DE-1.2 resolved to {sub['source']}")
     expect(sub["parent_module"] == "DE-1", f"DE-1.2 parent was {sub['parent_module']!r}")
-    expect(any(c["module_name"] == "DE-1.2" for c in sup["child_submodules"]),
-           "DE-1 does not list DE-1.2 as a child")
+    expect("DE-1.2" in sup["child_submodules"], "DE-1 does not list DE-1.2 as a child")
 
 
 @case("mfuzz perturbation GSEA uses the right gene_set_collection", "aliasing")
@@ -305,7 +304,7 @@ def _mfuzz_collection(client):
     # mfuzz_k7 at all, yields a silently empty perturbation arm.
     # GC2 is used deliberately: cluster_1 genuinely has no perturbation rows,
     # so GC1 cannot distinguish "correct" from "broken".
-    d = get(client, f"{API_V1_PREFIX}/module/GC2").json["data"]
+    d = get(client, f"{API_V1_PREFIX}/module/GC2?include=tf_regulators").json["data"]
     expect(d["tf_regulators"], "GC2 returned no TF regulators at all")
     perturbed = {r["tf_gene_name"] for r in d["tf_regulators"]
                  if r["evidence"] in ("perturbation", "both")}
@@ -323,7 +322,7 @@ def _mfuzz_collection(client):
 def _mfuzz_binding(client):
     # tf_module_enrichment labels this collection 'mfuzz' while module_table
     # calls it 'mfuzz_k7'.
-    d = get(client, f"{API_V1_PREFIX}/module/GC1").json["data"]
+    d = get(client, f"{API_V1_PREFIX}/module/GC1?include=tf_regulators").json["data"]
     expect(any(r["evidence"] in ("binding", "both") for r in d["tf_regulators"]),
            "GC1 has no binding-supported regulators")
 
@@ -363,7 +362,7 @@ def _canonical(client):
 
 @case("infinite odds ratios are null with a companion flag", "contract")
 def _infinite_odds(client):
-    d = get(client, f"{API_V1_PREFIX}/tf/ARID1A").json["data"]
+    d = get(client, f"{API_V1_PREFIX}/tf/ARID1A?level=all").json["data"]
     flagged = [r for r in d["module_regulation"] if r["odds_ratio_infinite"]]
     expect(flagged, "no infinite odds ratios found — expected some in tf_module_enrichment")
     for r in flagged:
@@ -407,9 +406,10 @@ def _no_internal_names(client):
 def _truncation(client):
     # (path, {list field: its documented cap})
     checks = [
-        ("/gene/SOX17", {"go_terms": 500, "perturbation_effects": 500, "elements": 200}),
-        ("/tf/ARID1A", {"module_regulation": 500}),
-        ("/module/DE-1", {"enrichment": 200, "tf_regulators": 500}),
+        ("/gene/SOX17?include=go_terms,perturbation_effects,elements",
+         {"go_terms": 500, "perturbation_effects": 500, "elements": 200}),
+        ("/tf/ARID1A?level=all", {"module_regulation": 500}),
+        ("/module/DE-1?include=enrichment,tf_regulators", {"enrichment": 200, "tf_regulators": 500}),
     ]
     for path, caps in checks:
         d = get(client, API_V1_PREFIX + path).json["data"]
@@ -447,8 +447,10 @@ def _filter_required(client):
 def _tf_gene_binding(client):
     # This is the CROSS JOIN case: without it the planner probes
     # idx_tf_bs_gene_id and reads a 184M-row table instead of the PK.
-    d = get(client, f"{API_V1_PREFIX}/link/tf-gene/FOXA2/SOX17").json["data"]
+    d = get(client, f"{API_V1_PREFIX}/link/tf-gene/FOXA2/SOX17?include=datasets").json["data"]
     expect(d["binding_evidence"] is True, "FOXA2->SOX17 should have binding evidence")
+    expect(len(d["datasets"]) == d["n_datasets_with_binding"],
+           "n_datasets_with_binding disagrees with the dataset list")
     expect(d["n_datasets_with_binding"] > 0, "no binding datasets returned")
     expect(d["max_binding_score_A"] is not None, "no binding score returned")
     for ds in d["datasets"]:
@@ -644,19 +646,156 @@ def _index_completeness(client):
     expect(documented <= with_examples,
            f"endpoints listed without an example response: {sorted(documented - with_examples)}")
     for e in body["endpoints"]:
-        expect(e["path"].startswith(API_V1_PREFIX),
-               f"{e['id']}: path {e['path']!r} is not absolute within the API")
+        expect(e["url_template"].startswith(body["base_url"]),
+               f"{e['id']}: url_template {e['url_template']!r} is not under base_url")
+        expect(e["example_url"].startswith("http"),
+               f"{e['id']}: example_url {e['example_url']!r} is not absolute")
         expect(e["summary"], f"{e['id']}: no summary")
     compact = get(client, f"{API_V1_PREFIX}/?examples=false").json
     expect(all("example_response" not in e for e in compact["endpoints"]),
            "examples=false still returned example bodies")
 
 
+DEFAULT_BODY_BUDGET = 16 * 1024
+LINE_BUDGET = 5000
+
+
+@case("default responses stay small and line-broken", "contract")
+def _default_size(client):
+    """Guards the regression that made /gene and /tf responses 80-230 KB: bulk
+    lists shipped by default, serialised on a single line."""
+    problems = []
+    for ep in ENDPOINTS:
+        if ep["id"] == "index":
+            continue
+        r = get(client, ep["example_url"])
+        size = len(r.text.encode())
+        longest = max(len(line) for line in r.text.split("\n"))
+        if size > DEFAULT_BODY_BUDGET:
+            problems.append(f"{ep['example_url']} is {size / 1024:.1f} KiB "
+                            f"(budget {DEFAULT_BODY_BUDGET // 1024} KiB)")
+        if longest > LINE_BUDGET:
+            problems.append(f"{ep['example_url']} has a {longest}-character line")
+    expect(not problems, "oversized default responses:\n    " + "\n    ".join(problems))
+
+    # A table row is one line. Expanding every field onto its own line is what
+    # inflated opt-in bulk responses to thousands of lines.
+    r = get(client, f"{API_V1_PREFIX}/genes?per_page=50")
+    rows = len(r.json["data"])
+    lines = r.text.count("\n")
+    expect(lines <= rows + 40,
+           f"/genes?per_page=50 spans {lines} lines for {rows} rows — rows are being expanded")
+
+
+@case("opt-in lists are counted when omitted and match when included", "contract")
+def _counted_opt_ins(client):
+    checks = [
+        ("/gene/SOX17", "go_terms", "n_go_terms"),
+        ("/gene/SOX17", "perturbation_effects", "n_perturbation_effects"),
+        ("/gene/SOX17", "elements", "n_elements"),
+        ("/module/DE-1.1", "genes", "n_genes"),
+        ("/module/DE-1.1", "enrichment", "n_enrichment_terms"),
+        ("/go-term/GO:0030183", "genes", "n_genes"),
+    ]
+    for path, field, count in checks:
+        base = get(client, API_V1_PREFIX + path).json["data"]
+        expect(field not in base, f"{path}: {field} should be opt-in")
+        expect(isinstance(base.get(count), int), f"{path}: default response lacks {count}")
+        full = get(client, f"{API_V1_PREFIX}{path}?include={field}").json["data"]
+        expect(field in full, f"{path}?include={field} did not return {field}")
+        truncated = full.get(f"{field}_truncated")
+        limit = full.get(f"{field}_limit", full.get("genes_limit"))
+        if truncated or (limit and base[count] > limit):
+            expect(len(full[field]) <= base[count], f"{path}: {field} longer than {count}")
+        else:
+            expect(len(full[field]) == base[count],
+                   f"{path}: {count}={base[count]} but include={field} returned "
+                   f"{len(full[field])} rows")
+
+
+@case("tf module regulation defaults to one collection and counts the rest", "contract")
+def _regulation_levels(client):
+    default = get(client, f"{API_V1_PREFIX}/tf/ARID1A").json["data"]
+    expect(default["module_regulation_level"] == "hotspot_supermodule", "unexpected default level")
+    expect(all(r["module_collection"] == "hotspot_supermodule"
+               for r in default["module_regulation"]),
+           "default level returned rows from other collections")
+    counts = default["n_module_regulation"]
+    expect(len(default["module_regulation"]) == counts["hotspot_supermodule"],
+           "row count disagrees with n_module_regulation")
+    everything = get(client, f"{API_V1_PREFIX}/tf/ARID1A?level=all").json["data"]
+    expect(len(everything["module_regulation"]) == min(sum(counts.values()), 500),
+           f"level=all returned {len(everything['module_regulation'])}, counts sum to "
+           f"{sum(counts.values())}")
+
+
+def _collect_urls(value):
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k == "url_template":
+                continue  # a template, not a link — /search needs q= filled in
+            yield from _collect_urls(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _collect_urls(v)
+    elif isinstance(value, str) and "/endoderm-perturbseq" in value:
+        yield value
+
+
+@case("every URL in a response is absolute and resolves", "contract")
+def _absolute_links(client):
+    """Chat assistants only fetch URLs they have already seen verbatim, so a
+    relative or broken link is a dead end for them. Follow a sample to prove the
+    API is navigable from its own responses."""
+    from urllib.parse import urlsplit
+
+    sources = ["/", "/gene/SOX17", "/tf/ARID1A", "/module/DE-1", "/genes?per_page=3",
+               "/tfs?per_page=3", "/modules?per_page=3", "/search?q=SOX&limit=8",
+               "/search?q=endoderm&type=go_term&limit=3",
+               "/atac-peak/58938", "/atac-peak/58938/tfs?per_page=3", "/edges?per_page=3",
+               "/link/tf-gene/FOXA2/SOX17", "/link/gene-module?module=DE-1&per_page=3",
+               "/go-term/GO:0030183"]
+    seen = set()
+    for src in sources:
+        body = get(client, API_V1_PREFIX + src).json
+        for url in _collect_urls(body):
+            expect(url.startswith(("http://", "https://")),
+                   f"{src} contains a relative URL: {url!r}")
+            if "{" not in url:
+                seen.add(url)
+
+    broken = []
+    for url in sorted(seen):
+        parts = urlsplit(url)
+        path = parts.path + (f"?{parts.query}" if parts.query else "")
+        r = client.request(path)
+        if r.status != 200:
+            broken.append(f"{r.status} {url}")
+    expect(not broken, f"{len(broken)} of {len(seen)} links do not resolve:\n    "
+           + "\n    ".join(broken[:15]))
+
+
+@case("a forged Host header cannot redirect links elsewhere", "framework")
+def _host_header(client):
+    if not getattr(client, "app", None):
+        return
+    flask_client = client.app.test_client()
+    r = flask_client.get(f"{API_V1_PREFIX}/gene/SOX17", base_url="https://evil.example")
+    links = json.loads(r.get_data(as_text=True))["links"]
+    expect(all(v.startswith("https://www.huangfulab.com/") for v in links.values() if v),
+           f"forged Host leaked into links: {links}")
+    r = flask_client.get(f"{API_V1_PREFIX}/gene/SOX17", base_url="https://huangfulab.com")
+    links = json.loads(r.get_data(as_text=True))["links"]
+    expect(links["self"].startswith("https://huangfulab.com/"),
+           "a genuine host should be echoed so links match what the caller fetched")
+
+
 @case("the JSON index describes every documented endpoint", "contract")
 def _index(client):
     body = get(client, f"{API_V1_PREFIX}/").json
     expect(body["api_version"] == "v1", f"api_version was {body['api_version']!r}")
-    expect(body["base_url"] == API_V1_PREFIX, "base_url mismatch")
+    expect(body["base_url"].startswith("http") and body["base_url"].endswith(API_V1_PREFIX),
+           f"base_url should be an absolute URL, got {body['base_url']!r}")
     listed = {e["id"] for e in body["endpoints"]}
     expect(listed == {e["id"] for e in ENDPOINTS},
            f"index lists {listed}, catalog has {{e['id'] for e in ENDPOINTS}}")

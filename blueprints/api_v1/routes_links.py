@@ -23,6 +23,7 @@ from .core import (
     page_params,
     path_link,
     query,
+    query_one,
     reject_unknown_args,
     scalar,
 )
@@ -73,24 +74,21 @@ def link_tf_gene(tf, gene):
     gene_ref = resolve_gene(db, gene)
     tf_id, gene_id = tf_ref["gene_id"], gene_ref["gene_id"]
 
-    # Tier 1. The two CROSS JOINs force entry through the (dataset_id, gene_id)
+    # Tier 1. The CROSS JOIN forces entry through the (dataset_id, gene_id)
     # primary key of tf_gene_binding_scores. Left to itself the planner picks
     # idx_tf_bs_gene_id and reads ~6,600 rows of a 184M-row table: 4.95 s versus
     # 0.008 s. Driving from tf_dataset_gene_table also bounds the outer loop at
     # the TF's dataset count and resolves aliased TF labels for free.
-    datasets = query(
+    summary = query_one(
         db,
-        "SELECT td.dataset_id, td.dataset, td.tf_gene_name AS dataset_tf_label, "
-        "       td.cell_type, td.cell_type_group, td.source, tdg.match_type, "
-        "       bs.binding_score_A, bs.binding_score_B, bs.binding_score_C, bs.binding_score_D "
+        "SELECT COUNT(*) AS n_datasets, MAX(bs.binding_score_A) AS max_score_a "
         "FROM tf_dataset_gene_table tdg "
-        "CROSS JOIN tf_dataset_table td ON td.dataset_id = tdg.dataset_id "
         "CROSS JOIN tf_gene_binding_scores bs "
-        "        ON bs.dataset_id = td.dataset_id AND bs.gene_id = ? "
-        "WHERE tdg.gene_id = ? "
-        "ORDER BY bs.binding_score_A DESC LIMIT ?",
-        (gene_id, tf_id, BINDING_SCORE_LIMIT),
+        "        ON bs.dataset_id = tdg.dataset_id AND bs.gene_id = ? "
+        "WHERE tdg.gene_id = ?",
+        (gene_id, tf_id),
     )
+    n_datasets = summary["n_datasets"] or 0
 
     perturbation = query(
         db,
@@ -100,23 +98,40 @@ def link_tf_gene(tf, gene):
         (gene_id, tf_id),
     )
 
-    scores = [d["binding_score_A"] for d in datasets if d["binding_score_A"] is not None]
     data = {
         "id": f"{tf_ref['gene_name']}->{gene_ref['gene_name']}",
         "type": "tf_gene_link",
         "tf_gene_name": tf_ref["gene_name"], "tf_gene_id": tf_id,
         "gene_name": gene_ref["gene_name"], "gene_id": gene_id,
-        "binding_evidence": bool(datasets),
-        "n_datasets_with_binding": len(datasets),
-        "max_binding_score_A": max(scores) if scores else None,
-        "datasets": datasets,
-        "datasets_truncated": len(datasets) == BINDING_SCORE_LIMIT,
+        "binding_evidence": n_datasets > 0,
+        "n_datasets_with_binding": n_datasets,
+        "max_binding_score_A": summary["max_score_a"],
         "perturbation": perturbation,
         "perturbation_evidence": bool(perturbation),
     }
 
+    if "datasets" in include:
+        # Opt-in: a broadly profiled TF such as CTCF binds near a gene in 1,000+
+        # datasets, far too much for a default response.
+        datasets = query(
+            db,
+            "SELECT td.dataset_id, td.dataset, td.tf_gene_name AS dataset_tf_label, "
+            "       td.cell_type, td.cell_type_group, td.source, tdg.match_type, "
+            "       bs.binding_score_A, bs.binding_score_B, bs.binding_score_C, "
+            "       bs.binding_score_D "
+            "FROM tf_dataset_gene_table tdg "
+            "CROSS JOIN tf_dataset_table td ON td.dataset_id = tdg.dataset_id "
+            "CROSS JOIN tf_gene_binding_scores bs "
+            "        ON bs.dataset_id = td.dataset_id AND bs.gene_id = ? "
+            "WHERE tdg.gene_id = ? "
+            "ORDER BY bs.binding_score_A DESC LIMIT ?",
+            (gene_id, tf_id, BINDING_SCORE_LIMIT),
+        )
+        data["datasets"] = datasets
+        data["datasets_truncated"] = n_datasets > len(datasets)
+
     if "elements" in include:
-        if not datasets:
+        if not n_datasets:
             # The gate. Most of the 1,705 x 24,960 TF-gene space has no binding at
             # all, and the peak-level query costs ~0.7 s even when it will return
             # nothing. Skipping it here is what keeps this endpoint usable.

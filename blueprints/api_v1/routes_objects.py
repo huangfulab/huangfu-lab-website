@@ -184,58 +184,82 @@ def gene(gene):
     if data["submodule"] and not data["supermodule"] and "." in data["submodule"]:
         data["supermodule"] = data["submodule"].rsplit(".", 1)[0]
 
-    go_terms = query(
-        db,
-        "SELECT t.go_accession, t.go_name, t.namespace, gg.evidence, gg.qualifier "
-        "FROM go_gene_table gg JOIN go_term_table t ON t.go_id = gg.go_id "
-        "WHERE gg.gene_id = ? ORDER BY t.namespace, t.go_name LIMIT ?",
-        (gene_id, GO_LIMIT),
-    )
-    data["go_terms"] = go_terms
-    data["go_terms_truncated"] = len(go_terms) == GO_LIMIT
-
     data["grnas"] = query(
         db,
         "SELECT grna_id, grna_name, active FROM grna_table WHERE gene_id = ? ORDER BY grna_name",
         (gene_id,),
     )
 
-    effects = query(
-        db,
-        "SELECT gr.gene_name AS perturbed_gene, gr.grna_id, gr.grna_name, gr.active, "
-        "       d.coef, d.z_coef, d.padj "
-        "FROM de_results d JOIN grna_table gr ON gr.grna_id = d.grna_id "
-        "WHERE d.gene_id = ? ORDER BY d.coef LIMIT ?",
-        (gene_id, PERTURBATION_LIMIT),
+    # The default body stays small: bulk lists are opt-in and represented here
+    # by their counts. A gene's per-gRNA perturbation effects alone run to ~400
+    # rows, which made this response too large for agent fetch tools to read.
+    data["n_go_terms"] = scalar(
+        db, "SELECT COUNT(*) FROM go_gene_table WHERE gene_id = ?", (gene_id,), default=0
     )
-    data["perturbation_effects"] = effects
-    data["perturbation_effects_truncated"] = len(effects) == PERTURBATION_LIMIT
+    data["n_perturbation_effects"] = scalar(
+        db, "SELECT COUNT(*) FROM de_results WHERE gene_id = ?", (gene_id,), default=0
+    )
+    data["n_elements"] = scalar(
+        db,
+        "SELECT COUNT(*) FROM ( "
+        "    SELECT atac_peak_id FROM atac_tss_links WHERE gene_id = ? "
+        "    UNION "
+        "    SELECT atac_peak_id FROM multiome_atac_overlaps WHERE gene_id = ? "
+        ")",
+        (gene_id, gene_id),
+        default=0,
+    )
 
-    elements = query(
-        db,
-        "SELECT ap.atac_peak_id, ap.atac_peak_name, ap.chr, ap.chrom_start, ap.chrom_end, "
-        "       MIN(l.distance_bp) AS min_distance_bp, "
-        "       MAX(l.link_type)   AS link_type, "
-        "       MAX(l.cell_type)   AS multiome_cell_type, "
-        "       MIN(l.padj)        AS multiome_padj, "
-        "       pgc.correlation    AS peak_gene_correlation "
-        "FROM ( "
-        "    SELECT atac_peak_id, distance_bp, NULL AS link_type, NULL AS cell_type, NULL AS padj "
-        "      FROM atac_tss_links WHERE gene_id = ? "
-        "    UNION ALL "
-        "    SELECT atac_peak_id, distance_to_tss, link_type, cell_type, padj "
-        "      FROM multiome_atac_overlaps WHERE gene_id = ? "
-        ") l "
-        "JOIN atac_peak_table ap ON ap.atac_peak_id = l.atac_peak_id "
-        "LEFT JOIN peak_gene_correlation pgc "
-        "       ON pgc.atac_peak_id = l.atac_peak_id AND pgc.gene_id = ? "
-        "GROUP BY ap.atac_peak_id "
-        "ORDER BY ABS(COALESCE(MIN(l.distance_bp), 1000000000)) "
-        "LIMIT ?",
-        (gene_id, gene_id, gene_id, ELEMENT_LIMIT),
-    )
-    data["elements"] = elements
-    data["elements_truncated"] = len(elements) == ELEMENT_LIMIT
+    if "go_terms" in include:
+        go_terms = query(
+            db,
+            "SELECT t.go_accession, t.go_name, t.namespace, gg.evidence, gg.qualifier "
+            "FROM go_gene_table gg JOIN go_term_table t ON t.go_id = gg.go_id "
+            "WHERE gg.gene_id = ? ORDER BY t.namespace, t.go_name LIMIT ?",
+            (gene_id, GO_LIMIT),
+        )
+        data["go_terms"] = go_terms
+        data["go_terms_truncated"] = len(go_terms) == GO_LIMIT
+
+    if "perturbation_effects" in include:
+        effects = query(
+            db,
+            "SELECT gr.gene_name AS perturbed_gene, gr.grna_id, gr.grna_name, gr.active, "
+            "       d.coef, d.z_coef, d.padj "
+            "FROM de_results d JOIN grna_table gr ON gr.grna_id = d.grna_id "
+            "WHERE d.gene_id = ? ORDER BY d.coef LIMIT ?",
+            (gene_id, PERTURBATION_LIMIT),
+        )
+        data["perturbation_effects"] = effects
+        data["perturbation_effects_truncated"] = len(effects) == PERTURBATION_LIMIT
+
+    if "elements" in include:
+        elements = query(
+            db,
+            "SELECT ap.atac_peak_id, ap.atac_peak_name, ap.chr, ap.chrom_start, ap.chrom_end, "
+            "       MIN(l.distance_bp) AS min_distance_bp, "
+            "       MAX(l.link_type)   AS link_type, "
+            "       MAX(l.cell_type)   AS multiome_cell_type, "
+            "       MIN(l.padj)        AS multiome_padj, "
+            "       pgc.correlation    AS peak_gene_correlation "
+            "FROM ( "
+            "    SELECT atac_peak_id, distance_bp, NULL AS link_type, NULL AS cell_type, "
+            "           NULL AS padj "
+            "      FROM atac_tss_links WHERE gene_id = ? "
+            "    UNION ALL "
+            "    SELECT atac_peak_id, distance_to_tss, link_type, cell_type, padj "
+            "      FROM multiome_atac_overlaps WHERE gene_id = ? "
+            ") l "
+            "JOIN atac_peak_table ap ON ap.atac_peak_id = l.atac_peak_id "
+            "LEFT JOIN peak_gene_correlation pgc "
+            "       ON pgc.atac_peak_id = l.atac_peak_id AND pgc.gene_id = ? "
+            "GROUP BY ap.atac_peak_id "
+            "ORDER BY ABS(COALESCE(MIN(l.distance_bp), 1000000000)) "
+            "LIMIT ?",
+            (gene_id, gene_id, gene_id, ELEMENT_LIMIT),
+        )
+        data["elements"] = elements
+        data["elements_truncated"] = len(elements) == ELEMENT_LIMIT
 
     if "coexpression" in include:
         # The table is asymmetric, so both directions are needed. ORDER BY and
@@ -267,8 +291,9 @@ def gene(gene):
 
 @api_v1_bp.route("/tf/<tf>")
 def tf(tf):
-    reject_unknown_args("include")
+    reject_unknown_args("include", "level")
     include = arg_enum_list("include", ENUMS["tf_include"])
+    level = arg_enum("level", ENUMS["regulation_level"], default="hotspot_supermodule")
 
     db = api_db(QUERY_DEADLINE_OBJECT)
     ref = resolve_gene(db, tf)
@@ -322,13 +347,20 @@ def tf(tf):
             (*labels, REGULATOR_LIMIT),
         )
 
+    # Both arms are grouped per module, so neither can exceed the 313 modules in
+    # the database and the counts below are exact. The full list across every
+    # collection runs to ~300 rows, so only one collection is returned by default;
+    # the per-collection counts keep the others discoverable.
     merged = _merge_module_evidence(perturbation, binding)
-    data["module_regulation"] = merged[:REGULATOR_LIMIT]
-    data["module_regulation_truncated"] = (
-        len(merged) > REGULATOR_LIMIT
-        or len(perturbation) == REGULATOR_LIMIT
-        or len(binding) == REGULATOR_LIMIT
-    )
+    counts = {source: 0 for source in ENUMS["module_source"]}
+    for r in merged:
+        counts[r["module_collection"]] = counts.get(r["module_collection"], 0) + 1
+    data["n_module_regulation"] = counts
+
+    selected = merged if level == "all" else [r for r in merged if r["module_collection"] == level]
+    data["module_regulation_level"] = level
+    data["module_regulation"] = selected[:REGULATOR_LIMIT]
+    data["module_regulation_truncated"] = len(selected) > REGULATOR_LIMIT
 
     data["grnas"] = query(
         db,
@@ -393,7 +425,7 @@ def _module_payload(module, forced_source=None, known_args=(), self_route="modul
     reject_unknown_args(*known_args)
     source = forced_source or arg_enum("source", ENUMS["module_source"])
     genes_offset = arg_int("genes_offset", 0, minimum=0)
-    genes_limit = arg_int("genes_limit", MODULE_GENE_LIMIT, minimum=1, maximum=MODULE_GENE_LIMIT)
+    genes_limit = arg_int("genes_limit", 100, minimum=1, maximum=MODULE_GENE_LIMIT)
     include = arg_enum_list("include", ENUMS["module_include"])
 
     db = api_db(QUERY_DEADLINE_OBJECT)
@@ -420,71 +452,100 @@ def _module_payload(module, forced_source=None, known_args=(), self_route="modul
         "description_extended": description.get("extended"),
     }
 
+    # Every list below can run to hundreds or thousands of rows (DE-1 has 2,012
+    # genes and ~1,900 binding-enriched TFs), so each is opt-in and the default
+    # body carries only its count.
     data["n_genes"] = scalar(
         db, "SELECT COUNT(*) FROM gene_module_table WHERE module_id = ?", (module_id,), default=0
     )
-    data["genes"] = query(
-        db,
-        "SELECT g.gene_id, g.gene_name, g.gene_biotype, g.in_perturbation_library, "
-        "       pc.publication_count "
-        "FROM gene_module_table gm "
-        "JOIN gene_table g ON g.gene_id = gm.gene_id "
-        "LEFT JOIN gene_publication_count pc ON pc.gene_id = g.gene_id "
-        "WHERE gm.module_id = ? ORDER BY g.gene_name, g.gene_id LIMIT ? OFFSET ?",
-        (module_id, genes_limit, genes_offset),
+    data["n_enrichment_terms"] = scalar(
+        db, "SELECT COUNT(*) FROM go_module_enrichment WHERE module_id = ?", (module_id,),
+        default=0,
     )
-    data["genes_offset"] = genes_offset
-    data["genes_limit"] = genes_limit
+    data["n_tf_regulators"] = {
+        "perturbation": scalar(
+            db,
+            "SELECT COUNT(*) FROM gsea_tf_table "
+            "WHERE gene_set_collection = ? AND module_collection = ? AND module = ?",
+            (GSEA_COLLECTION[module_source], module_source, module_name),
+            default=0,
+        ),
+        "binding": scalar(
+            db,
+            "SELECT COUNT(DISTINCT tf_gene_name) FROM tf_module_enrichment WHERE module_id = ?",
+            (module_id,),
+            default=0,
+        ),
+    }
 
-    enrichment = query(
-        db,
-        "SELECT term_id, source, go_id, term_name, p_value, term_size, query_size, "
-        "       intersection_size, term_precision, recall "
-        "FROM go_module_enrichment WHERE module_id = ? ORDER BY p_value LIMIT ?",
-        (module_id, ENRICHMENT_LIMIT),
-    )
-    data["enrichment"] = enrichment
-    data["enrichment_truncated"] = len(enrichment) == ENRICHMENT_LIMIT
+    if "genes" in include:
+        data["genes"] = query(
+            db,
+            "SELECT g.gene_id, g.gene_name, g.gene_biotype, g.in_perturbation_library, "
+            "       pc.publication_count "
+            "FROM gene_module_table gm "
+            "JOIN gene_table g ON g.gene_id = gm.gene_id "
+            "LEFT JOIN gene_publication_count pc ON pc.gene_id = g.gene_id "
+            "WHERE gm.module_id = ? ORDER BY g.gene_name, g.gene_id LIMIT ? OFFSET ?",
+            (module_id, genes_limit, genes_offset),
+        )
+        data["genes_offset"] = genes_offset
+        data["genes_limit"] = genes_limit
 
-    perturbation = query(
-        db,
-        "SELECT gene_name AS tf_gene_name, gene_id, direction, n_grnas, mean_NES, min_padj "
-        "FROM gsea_tf_table "
-        "WHERE gene_set_collection = ? AND module_collection = ? AND module = ? "
-        "ORDER BY ABS(mean_NES) DESC LIMIT ?",
-        (GSEA_COLLECTION[module_source], module_source, module_name, REGULATOR_LIMIT),
-    )
-    # Driven off module_id deliberately: adding a gene_set_collection predicate
-    # flips the plan to a full scan of this 521K-row table.
-    binding = query(
-        db,
-        "SELECT tf_gene_name, "
-        f"       MAX({_ODDS.format(c='tf_module_enrichment')})     AS odds_ratio, "
-        f"       MAX({_ODDS_INF.format(c='tf_module_enrichment')}) AS odds_ratio_infinite, "
-        "       MIN(padj_fisher)    AS padj_fisher, "
-        "       MAX(n_overlap)      AS n_overlap, "
-        "       MAX(n_tf_targets)   AS n_tf_targets, "
-        "       MAX(n_module_genes) AS n_module_genes, "
-        "       MAX(n_total)        AS n_total "
-        "FROM tf_module_enrichment WHERE module_id = ? "
-        "GROUP BY tf_gene_name ORDER BY odds_ratio DESC LIMIT ?",
-        (module_id, REGULATOR_LIMIT),
-    )
-    merged = _merge_tf_regulators(perturbation, binding)
-    data["tf_regulators"] = merged[:REGULATOR_LIMIT]
-    data["tf_regulators_truncated"] = (
-        len(merged) > REGULATOR_LIMIT
-        or len(perturbation) == REGULATOR_LIMIT
-        or len(binding) == REGULATOR_LIMIT
-    )
+    if "enrichment" in include:
+        enrichment = query(
+            db,
+            "SELECT term_id, source, go_id, term_name, p_value, term_size, query_size, "
+            "       intersection_size, term_precision, recall "
+            "FROM go_module_enrichment WHERE module_id = ? ORDER BY p_value LIMIT ?",
+            (module_id, ENRICHMENT_LIMIT),
+        )
+        data["enrichment"] = enrichment
+        data["enrichment_truncated"] = len(enrichment) == ENRICHMENT_LIMIT
+
+    if "tf_regulators" in include:
+        perturbation = query(
+            db,
+            "SELECT gene_name AS tf_gene_name, gene_id, direction, n_grnas, mean_NES, min_padj "
+            "FROM gsea_tf_table "
+            "WHERE gene_set_collection = ? AND module_collection = ? AND module = ? "
+            "ORDER BY ABS(mean_NES) DESC LIMIT ?",
+            (GSEA_COLLECTION[module_source], module_source, module_name, REGULATOR_LIMIT),
+        )
+        # Driven off module_id deliberately: adding a gene_set_collection predicate
+        # flips the plan to a full scan of this 521K-row table.
+        binding = query(
+            db,
+            "SELECT tf_gene_name, "
+            f"       MAX({_ODDS.format(c='tf_module_enrichment')})     AS odds_ratio, "
+            f"       MAX({_ODDS_INF.format(c='tf_module_enrichment')}) AS odds_ratio_infinite, "
+            "       MIN(padj_fisher)    AS padj_fisher, "
+            "       MAX(n_overlap)      AS n_overlap, "
+            "       MAX(n_tf_targets)   AS n_tf_targets, "
+            "       MAX(n_module_genes) AS n_module_genes, "
+            "       MAX(n_total)        AS n_total "
+            "FROM tf_module_enrichment WHERE module_id = ? "
+            "GROUP BY tf_gene_name ORDER BY odds_ratio DESC LIMIT ?",
+            (module_id, REGULATOR_LIMIT),
+        )
+        merged = _merge_tf_regulators(perturbation, binding)
+        data["tf_regulators"] = merged[:REGULATOR_LIMIT]
+        data["tf_regulators_truncated"] = (
+            len(merged) > REGULATOR_LIMIT
+            or len(perturbation) == REGULATOR_LIMIT
+            or len(binding) == REGULATOR_LIMIT
+        )
 
     if module_source == "hotspot_supermodule":
-        data["child_submodules"] = query(
-            db,
-            "SELECT module_id, module_name, size FROM module_table "
-            "WHERE source = 'hotspot_submodule' AND module_name GLOB ? ORDER BY module_name",
-            (f"{module_name}.*",),
-        )
+        # Names only: /submodule/{name} has the detail, and DE-1 alone has 57.
+        data["child_submodules"] = [
+            r["module_name"] for r in query(
+                db,
+                "SELECT module_name FROM module_table "
+                "WHERE source = 'hotspot_submodule' AND module_name GLOB ? ORDER BY module_name",
+                (f"{module_name}.*",),
+            )
+        ]
         data["parent_module"] = None
     elif module_source == "hotspot_submodule" and "." in module_name:
         data["child_submodules"] = []
@@ -537,7 +598,7 @@ def submodule(submodule):
 def go_term(go_term):
     reject_unknown_args("genes_offset", "genes_limit", "include")
     genes_offset = arg_int("genes_offset", 0, minimum=0)
-    genes_limit = arg_int("genes_limit", 200, minimum=1, maximum=GO_GENE_LIMIT)
+    genes_limit = arg_int("genes_limit", 100, minimum=1, maximum=GO_GENE_LIMIT)
     include = arg_enum_list("include", ENUMS["go_include"])
 
     db = api_db(QUERY_DEADLINE_OBJECT)
@@ -559,15 +620,16 @@ def go_term(go_term):
     data["n_genes"] = scalar(
         db, "SELECT COUNT(*) FROM go_gene_table WHERE go_id = ?", (go_id,), default=0
     )
-    data["genes"] = query(
-        db,
-        "SELECT g.gene_id, g.gene_name, g.gene_biotype, gg.evidence, gg.qualifier "
-        "FROM go_gene_table gg JOIN gene_table g ON g.gene_id = gg.gene_id "
-        "WHERE gg.go_id = ? ORDER BY g.gene_name, g.gene_id LIMIT ? OFFSET ?",
-        (go_id, genes_limit, genes_offset),
-    )
-    data["genes_offset"] = genes_offset
-    data["genes_limit"] = genes_limit
+    if "genes" in include:
+        data["genes"] = query(
+            db,
+            "SELECT g.gene_id, g.gene_name, g.gene_biotype, gg.evidence, gg.qualifier "
+            "FROM go_gene_table gg JOIN gene_table g ON g.gene_id = gg.gene_id "
+            "WHERE gg.go_id = ? ORDER BY g.gene_name, g.gene_id LIMIT ? OFFSET ?",
+            (go_id, genes_limit, genes_offset),
+        )
+        data["genes_offset"] = genes_offset
+        data["genes_limit"] = genes_limit
 
     if "module_enrichment" in include:
         data["module_enrichment"] = query(
@@ -590,7 +652,9 @@ def go_term(go_term):
 
     links = {
         "self": path_link("go-term", row["go_accession"]),
-        "html": html_link("go", row["go_accession"]),
+        # The site's canonical GO page is "<name> (<accession>)"; the accession
+        # alone answers with a 301.
+        "html": html_link("go", f"{row['go_name']} ({row['go_accession']})"),
     }
     return entity(data, links)
 

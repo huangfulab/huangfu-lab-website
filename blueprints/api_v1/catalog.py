@@ -10,14 +10,15 @@ Pure data. No imports, no Flask, no DB.
 
 ENUMS = {
     "module_source": ("hotspot_supermodule", "hotspot_submodule", "mfuzz_k7"),
-    "gene_include": ("coexpression",),
+    "regulation_level": ("hotspot_supermodule", "hotspot_submodule", "mfuzz_k7", "all"),
+    "gene_include": ("go_terms", "perturbation_effects", "elements", "coexpression"),
     "tf_include": ("binding_datasets", "pathway_enrichment"),
-    "module_include": ("grna_gsea", "expression"),
+    "module_include": ("genes", "enrichment", "tf_regulators", "grna_gsea", "expression"),
     "tf_set": ("perturbed", "binding", "all"),
     "dataset_namespace": ("tf", "ptm"),
     "edge_evidence": ("any", "perturbation", "binding", "both"),
-    "go_include": ("module_enrichment", "tf_enrichment"),
-    "tf_gene_include": ("elements",),
+    "go_include": ("genes", "module_enrichment", "tf_enrichment"),
+    "tf_gene_include": ("datasets", "elements"),
     "search_type": ("gene", "tf", "module", "submodule", "gene_cluster", "go_term", "synonym"),
 }
 
@@ -28,7 +29,7 @@ P_PAGE = {
     "description": "1-based page number.",
 }
 P_PER_PAGE = {
-    "name": "per_page", "type": "integer", "default": 100, "min": 1, "max": 500,
+    "name": "per_page", "type": "integer", "default": 25, "min": 1, "max": 500,
     "description": "Rows per page. Values above 500 are rejected, not clamped.",
 }
 P_MODULE_SOURCE = {
@@ -66,7 +67,9 @@ ENDPOINTS = [
         "endpoint": "perturbseq_api_v1.gene",
         "path": "/gene/{gene}",
         "summary": "One gene: identifiers, coordinates, expression over the differentiation "
-                   "time course, module membership, GO annotations, gRNAs and linked ATAC peaks.",
+                   "time course, module membership and gRNAs, plus counts of its GO "
+                   "annotations, perturbation effects and linked ATAC peaks. The lists "
+                   "themselves are opt-in via include=.",
         "path_params": [
             {"name": "gene", "type": "string", "required": True, "example": "SOX17",
              "description": "HGNC symbol, Ensembl gene ID, or a synonym. Symbols with duplicate "
@@ -74,8 +77,10 @@ ENDPOINTS = [
         ],
         "query_params": [
             {"name": "include", "type": "enum_list", "enum": "gene_include", "default": "",
-             "description": "Comma-separated optional blocks. 'coexpression' is expensive "
-                            "(~2 s cold) and is therefore opt-in."},
+             "description": "Comma-separated optional lists, each counted in the default "
+                            "response as n_<name>. perturbation_effects is the effect of every "
+                            "gRNA in the screen on this gene (~400 rows); coexpression is the "
+                            "slowest (~2 s cold)."},
             {"name": "coexpression_limit", "type": "integer", "default": 100, "min": 1, "max": 500,
              "description": "Top co-expressed partners by |z|. Only used with include=coexpression."},
         ],
@@ -106,6 +111,11 @@ ENDPOINTS = [
                             "that is either perturbed in the screen or has binding datasets."},
         ],
         "query_params": [
+            {"name": "level", "type": "enum", "enum": "regulation_level",
+             "default": "hotspot_supermodule",
+             "description": "Which module collection module_regulation covers. The default "
+                            "(13 supermodules) keeps the response small; n_module_regulation "
+                            "gives the row count for every collection. 'all' returns ~300 rows."},
             {"name": "include", "type": "enum_list", "enum": "tf_include", "default": "",
              "description": "Comma-separated optional blocks. 'binding_datasets' can be large "
                             "(up to ~1,073 datasets for CTCF); 'pathway_enrichment' adds GO/KEGG GSEA."},
@@ -134,8 +144,9 @@ ENDPOINTS = [
         "rule": "/module/<module>",
         "endpoint": "perturbseq_api_v1.module",
         "path": "/module/{module}",
-        "summary": "One co-expression module: member genes, functional enrichment, and the TFs "
-                   "that regulate it by perturbation and by binding.",
+        "summary": "One co-expression module: title, description, size and hierarchy, plus "
+                   "counts of its member genes, enrichment terms and TF regulators. The lists "
+                   "themselves are opt-in via include=.",
         "path_params": [
             {"name": "module", "type": "string", "required": True, "example": "DE-1",
              "description": "Supermodule (DE-1), submodule (DE-1.2), or gene cluster (GC1). "
@@ -143,13 +154,15 @@ ENDPOINTS = [
         ],
         "query_params": [
             P_MODULE_SOURCE,
-            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
-             "description": "Offset into the member-gene list."},
-            {"name": "genes_limit", "type": "integer", "default": 500, "min": 1, "max": 500,
-             "description": "Member genes per response. The largest module has 4,691."},
             {"name": "include", "type": "enum_list", "enum": "module_include", "default": "",
-             "description": "Comma-separated optional blocks. 'expression' is skipped for modules "
-                            "larger than 2,500 genes."},
+             "description": "Comma-separated optional lists. 'genes' is paged by genes_offset and "
+                            "genes_limit; 'tf_regulators' merges perturbation and binding evidence "
+                            "(up to 500 rows); 'expression' is skipped above 2,500 genes."},
+            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
+             "description": "Offset into the member-gene list. Used with include=genes."},
+            {"name": "genes_limit", "type": "integer", "default": 100, "min": 1, "max": 500,
+             "description": "Member genes per response. Used with include=genes. The largest "
+                            "module has 4,691; /link/gene-module pages through membership too."},
         ],
         "returns": "entity",
         "links": ["self", "html", "parent", "genes"],
@@ -179,12 +192,12 @@ ENDPOINTS = [
              "description": "Submodule name, e.g. DE-1.1."},
         ],
         "query_params": [
-            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
-             "description": "Offset into the member-gene list."},
-            {"name": "genes_limit", "type": "integer", "default": 500, "min": 1, "max": 500,
-             "description": "Member genes per response."},
             {"name": "include", "type": "enum_list", "enum": "module_include", "default": "",
-             "description": "Comma-separated optional blocks."},
+             "description": "Comma-separated optional lists, as for /module."},
+            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
+             "description": "Offset into the member-gene list. Used with include=genes."},
+            {"name": "genes_limit", "type": "integer", "default": 100, "min": 1, "max": 500,
+             "description": "Member genes per response. Used with include=genes."},
         ],
         "returns": "entity",
         "links": ["self", "html", "parent"],
@@ -200,18 +213,21 @@ ENDPOINTS = [
         "rule": "/go-term/<go_term>",
         "endpoint": "perturbseq_api_v1.go_term",
         "path": "/go-term/{go_term}",
-        "summary": "One Gene Ontology term: its definition and the genes annotated to it.",
+        "summary": "One Gene Ontology term: its definition and the number of genes annotated "
+                   "to it. The gene list and enrichment results are opt-in via include=.",
         "path_params": [
             {"name": "go_term", "type": "string", "required": True, "example": "GO:0030183",
              "description": "GO accession. 'GO:0030183', 'GO_0030183' and '0030183' are all accepted."},
         ],
         "query_params": [
-            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
-             "description": "Offset into the annotated-gene list."},
-            {"name": "genes_limit", "type": "integer", "default": 200, "min": 1, "max": 500,
-             "description": "Annotated genes per response. The largest terms have ~12,800."},
             {"name": "include", "type": "enum_list", "enum": "go_include", "default": "",
-             "description": "Optional blocks: module_enrichment, tf_enrichment."},
+             "description": "Optional lists: genes (paged by genes_offset/genes_limit), "
+                            "module_enrichment, tf_enrichment."},
+            {"name": "genes_offset", "type": "integer", "default": 0, "min": 0,
+             "description": "Offset into the annotated-gene list. Used with include=genes."},
+            {"name": "genes_limit", "type": "integer", "default": 100, "min": 1, "max": 500,
+             "description": "Annotated genes per response. Used with include=genes. The largest "
+                            "terms have ~12,800."},
         ],
         "returns": "entity",
         "links": ["self", "html"],
@@ -221,7 +237,7 @@ ENDPOINTS = [
              "when": "No such GO accession. An unparseable accession is treated as missing, "
                      "not as a client error."},
         ],
-        "notes": ["n_genes is the exact annotation count; the genes array is paged separately."],
+        "notes": ["n_genes is the exact annotation count, whether or not include=genes is set."],
     },
     {
         "id": "dataset",
@@ -302,8 +318,9 @@ ENDPOINTS = [
         "rule": "/link/tf-gene/<tf>/<gene>",
         "endpoint": "perturbseq_api_v1.link_tf_gene",
         "path": "/link/tf-gene/{tf}/{gene}",
-        "summary": "Evidence that a TF regulates a gene: per-dataset binding scores plus the "
-                   "perturbation effect of knocking the TF out.",
+        "summary": "Evidence that a TF regulates a gene: how many datasets place the TF at the "
+                   "gene and the strongest binding score, plus the perturbation effect of "
+                   "knocking the TF out. Per-dataset and per-peak detail are opt-in.",
         "path_params": [
             {"name": "tf", "type": "string", "required": True, "example": "FOXA2",
              "description": "TF gene symbol."},
@@ -312,9 +329,10 @@ ENDPOINTS = [
         ],
         "query_params": [
             {"name": "include", "type": "enum_list", "enum": "tf_gene_include", "default": "",
-             "description": "'elements' adds the peak-level evidence. It is opt-in because it is "
-                            "the most expensive query in the API, and it is skipped entirely when "
-                            "there is no dataset-level binding to explain."},
+             "description": "'datasets' lists each binding dataset with its scores (up to 500; "
+                            "CTCF has 1,000+). 'elements' adds peak-level evidence — the most "
+                            "expensive query in the API, skipped entirely when there is no "
+                            "dataset-level binding to explain."},
         ],
         "returns": "entity",
         "links": ["self", "tf", "gene", "html"],
@@ -468,7 +486,8 @@ ENDPOINTS = [
         "rule": "/modules",
         "endpoint": "perturbseq_api_v1.modules",
         "path": "/modules",
-        "summary": "All modules across the three collections, with sizes and descriptions.",
+        "summary": "All modules across the three collections, with sizes and titles. Full "
+                   "descriptions are on /module/{module}.",
         "path_params": [],
         "query_params": [
             P_MODULE_SOURCE,

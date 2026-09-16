@@ -127,7 +127,7 @@ table.api-params .ptype { color: var(--text-muted); white-space: nowrap; font-si
     <div class="api-code-label">Python</div>
     <pre class="api-code">import requests
 
-BASE = "https://www.huangfulab.com{{ base }}"
+BASE = "{{ base }}"
 
 gene = requests.get(f"{BASE}/gene/SOX17").json()["data"]
 print(gene["supermodule"], len(gene["elements"]), "linked peaks")
@@ -148,7 +148,7 @@ def fetch_all(path, **params):
     <pre class="api-code">library(httr2)
 library(jsonlite)
 
-base &lt;- "https://www.huangfulab.com{{ base }}"
+base &lt;- "{{ base }}"
 
 gene &lt;- request(paste0(base, "/gene/SOX17")) |&gt;
   req_perform() |&gt;
@@ -192,6 +192,20 @@ as.data.frame(gene$data$elements)</pre>
         is reported as <code>null</code> with <code>odds_ratio_infinite: true</code> beside it —
         bare <code>Infinity</code> is not valid JSON and a sentinel number would be mistaken for a
         measurement.
+      </dd>
+
+      <dt>Optional lists</dt>
+      <dd>
+        Single-object responses stay small. Long lists — a gene's GO terms and perturbation
+        effects, a module's genes and regulators — are opt-in with <code>include=</code>, and the
+        default response carries their size as <code>n_&lt;field&gt;</code>.
+      </dd>
+
+      <dt>Links</dt>
+      <dd>
+        Every URL in a response is absolute and can be fetched as-is, so an assistant that only
+        fetches URLs it has already seen can still follow <code>links</code>, row <code>url</code>
+        fields and pagination.
       </dd>
 
       <dt>Truncation</dt>
@@ -271,7 +285,7 @@ as.data.frame(gene$data$elements)</pre>
     </div>
     {% endif %}
 
-    <a class="api-try" href="{{ ep.example_url }}">{{ ep.example_url }}</a>
+    <a class="api-try" href="{{ origin }}{{ ep.example_url }}">{{ origin }}{{ ep.example_url }}</a>
   </div>
   {% endfor %}
 </div>

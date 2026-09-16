@@ -32,14 +32,18 @@ from .catalog import ENUMS, P_PER_PAGE
 API_V1_PREFIX = PERTURBSEQ_PREFIX + "/api/v1"
 API_DOCS_PATH = PERTURBSEQ_PREFIX + "/api"
 
-PER_PAGE_DEFAULT = 100
 PER_PAGE_MAX = 500
+# Deliberately small: agent fetch tools refuse or truncate large bodies, and a
+# default page is what an unfamiliar caller sees first. Scripts that want bulk
+# data raise per_page themselves.
+PER_PAGE_DEFAULT = 25
 PAGE_MAX = 100_000
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 QUERY_DEADLINE_OBJECT = 5.0
 QUERY_DEADLINE_COLLECTION = 2.0
 
 assert P_PER_PAGE["max"] == PER_PAGE_MAX, "catalog and core disagree on the page-size cap"
+assert P_PER_PAGE["default"] == PER_PAGE_DEFAULT, "catalog and core disagree on the page size"
 
 # api_v1_bp carries the JSON contract: CORS, JSON errors, the read-only guard.
 # api_docs_bp serves one HTML page and deliberately shares none of that.
@@ -86,9 +90,43 @@ def scrub(value):
     return value
 
 
+_LINE_WIDTH = 100
+_FLAT_LIST_WIDTH = 400
+
+
+def _format(value, level):
+    """Pretty JSON that keeps records on one line.
+
+    Plain indent=2 inflates payloads by ~50% (every scalar in every row gets its
+    own line), which pushed responses past what agent fetch tools will read.
+    Fully minified output has the opposite problem: a whole response on a single
+    80,000-character line. Here an object of scalars is a record and always
+    renders as one line — a table row per line — and anything else expands only
+    when it does not fit within _LINE_WIDTH.
+    """
+    flat = json.dumps(value, ensure_ascii=False, separators=(", ", ": "))
+    pad = "  " * level
+    if not isinstance(value, (dict, list)) or not value or len(pad) + len(flat) <= _LINE_WIDTH:
+        return flat
+    children = value.values() if isinstance(value, dict) else value
+    if not any(isinstance(c, (dict, list)) and c for c in children):
+        if isinstance(value, dict) or len(flat) <= _FLAT_LIST_WIDTH:
+            return flat
+    inner = "  " * (level + 1)
+    if isinstance(value, dict):
+        items = [f"{inner}{json.dumps(k, ensure_ascii=False)}: {_format(v, level + 1)}"
+                 for k, v in value.items()]
+        return "{\n" + ",\n".join(items) + "\n" + pad + "}"
+    items = [inner + _format(v, level + 1) for v in value]
+    return "[\n" + ",\n".join(items) + "\n" + pad + "]"
+
+
 def json_response(payload, status=200):
-    body = json.dumps(payload, allow_nan=False, default=_json_default,
-                      separators=(",", ":")).encode()
+    # Round-trip first: this applies _json_default and allow_nan=False once, so a
+    # NaN or Infinity that escaped rows_to_dicts raises here rather than being
+    # written into the formatted body.
+    plain = json.loads(json.dumps(payload, allow_nan=False, default=_json_default))
+    body = (_format(plain, 0) + "\n").encode()
     if status == 200 and len(body) > MAX_RESPONSE_BYTES:
         return error_response(
             413,
@@ -123,7 +161,15 @@ def entity(data, links=None, meta=None):
     return json_response(payload)
 
 
-def collection(rows, *, page, per_page, total, total_is_exact=True, meta=None):
+def collection(rows, *, page, per_page, total, total_is_exact=True, meta=None, paginated=True):
+    if paginated:
+        links = _page_links(page, per_page, payload_total=total, n_rows=len(rows))
+    else:
+        # An endpoint that does not accept page/per_page must not advertise
+        # links carrying them: following one would return a 400.
+        query_string = request.query_string.decode()
+        self_url = absolute(request.path + (f"?{query_string}" if query_string else ""))
+        links = {"self": self_url, "first": None, "prev": None, "next": None, "last": None}
     payload = {
         "data": rows,
         "page": page,
@@ -131,7 +177,7 @@ def collection(rows, *, page, per_page, total, total_is_exact=True, meta=None):
         "total": total,
         "total_is_exact": total_is_exact,
         "pages": (math.ceil(total / per_page) if total else 0) if total is not None else None,
-        "links": _page_links(page, per_page, payload_total=total, n_rows=len(rows)),
+        "links": links,
     }
     meta = _base_meta(meta)
     if total is not None and not total_is_exact:
@@ -145,7 +191,7 @@ def _page_url(page, per_page):
     args = {k: v for k, v in request.args.items() if k not in ("page", "per_page")}
     args["page"] = page
     args["per_page"] = per_page
-    return f"{request.path}?{urlencode(sorted(args.items()))}"
+    return f"{public_origin()}{request.path}?{urlencode(sorted(args.items()))}"
 
 
 def _page_links(page, per_page, *, payload_total, n_rows):
@@ -160,14 +206,43 @@ def _page_links(page, per_page, *, payload_total, n_rows):
     }
 
 
+CANONICAL_ORIGIN = "https://www.huangfulab.com"
+_PUBLIC_HOSTS = frozenset({"huangfulab.com", "www.huangfulab.com"})
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
+def public_origin():
+    """Scheme and host for the absolute URLs in every response.
+
+    URLs are absolute because chat assistants such as claude.ai will only fetch a
+    URL that has already appeared verbatim in the conversation or an earlier
+    result. A relative path never qualifies, so an agent that has read one
+    response could not follow any of its links.
+
+    The request's own host is echoed only when it is one of ours, so a link keeps
+    the exact form (with or without www) that the caller fetched. Any other Host
+    header falls back to the canonical origin: echoing it would let a forged
+    header plant links to another site in a publicly cacheable response.
+    """
+    host = (request.host or "").lower()
+    name = host.split(":", 1)[0]
+    if name in _PUBLIC_HOSTS:
+        return f"https://{name}"
+    if name in _LOCAL_HOSTS:
+        return f"{request.scheme}://{host}"
+    return CANONICAL_ORIGIN
+
+
+def absolute(path):
+    return public_origin() + path
+
+
 def path_link(*segments):
-    """Root-relative link. Absolute URLs would need request.host_url, which is
-    not trustworthy here — the app runs behind a proxy with no ProxyFix."""
-    return API_V1_PREFIX + "".join("/" + quote(str(s), safe="") for s in segments)
+    return absolute(API_V1_PREFIX + "".join("/" + quote(str(s), safe="") for s in segments))
 
 
 def html_link(*segments):
-    return PERTURBSEQ_PREFIX + "".join("/" + quote(str(s), safe="") for s in segments)
+    return absolute(PERTURBSEQ_PREFIX + "".join("/" + quote(str(s), safe="") for s in segments))
 
 
 # ── parameter validation ─────────────────────────────────────────────────────

@@ -19,10 +19,12 @@ from .core import (
     QUERY_DEADLINE_OBJECT,
     _LAST_COMMIT_TS,
     _fmt_time_ago,
+    absolute,
     api_docs_bp,
     api_v1_bp,
     arg_bool,
     json_response,
+    public_origin,
     reject_unknown_args,
 )
 
@@ -63,9 +65,17 @@ _CONVENTIONS = {
         "Genes accept a symbol, an Ensembl gene ID or a synonym; when the input was not the "
         "canonical symbol, meta.resolved_from and meta.match_type say what matched. Gene "
         "clusters accept GC1, TC-1, gene_cluster_1 or cluster_1 and always answer with GC1.",
+    "urls":
+        "Every URL in a response is absolute and can be fetched as-is. Chat assistants "
+        "that only fetch URLs already seen in the conversation can therefore follow links, "
+        "row 'url' fields and pagination from any response they have read.",
+    "optional_blocks":
+        "Entity responses are kept small. Long lists are opt-in via include= and are "
+        "represented in the default response by a count named n_<field>.",
     "example_responses":
         "Captured from the live API and trimmed: arrays are cut to a single element and "
-        "long strings to ~140 characters. Field names and types are verbatim.",
+        "long strings to ~140 characters. Field names and types are verbatim. Examples "
+        "are captured with every include= block enabled, so they show the fullest shape.",
 }
 
 _GROUP_ORDER = ("objects", "links", "collections", "meta")
@@ -78,17 +88,17 @@ _GROUP_TITLES = {
 
 
 def _index_entry(endpoint, examples):
+    path = API_V1_PREFIX + (endpoint["path"] if endpoint["path"] != "/" else "/")
     entry = {
         "id": endpoint["id"],
         "group": endpoint["group"],
         "method": endpoint["method"],
-        "path": API_V1_PREFIX + endpoint["path"].rstrip("/") if endpoint["path"] != "/"
-        else API_V1_PREFIX + "/",
+        "url_template": absolute(path),
         "summary": endpoint["summary"],
         "path_params": endpoint["path_params"],
         "query_params": endpoint["query_params"],
         "returns": endpoint["returns"],
-        "example_url": endpoint["example_url"],
+        "example_url": absolute(endpoint["example_url"]),
         "errors": endpoint["errors"],
         "notes": endpoint["notes"],
     }
@@ -110,8 +120,8 @@ def api_index():
     examples = arg_bool("examples", True)
     return json_response({
         "api_version": "v1",
-        "base_url": API_V1_PREFIX,
-        "docs": API_DOCS_PATH,
+        "base_url": absolute(API_V1_PREFIX),
+        "docs": absolute(API_DOCS_PATH),
         "data_updated": _fmt_time_ago(_LAST_COMMIT_TS),
         "description":
             "Read-only JSON API for the Endoderm Perturb-Seq Browser, a CRISPR "
@@ -135,7 +145,7 @@ def unknown_endpoint(unknown):
         return redirect(f"{API_V1_PREFIX}/{unknown.rstrip('/')}", code=308)
     raise ApiError(
         404,
-        f"Unknown endpoint '/{unknown}'. See {API_V1_PREFIX}/ for the endpoint index.",
+        f"Unknown endpoint '/{unknown}'. See {absolute(API_V1_PREFIX)}/ for the endpoint index.",
         "unknown_endpoint",
     )
 
@@ -147,10 +157,13 @@ def api_docs():
         (g, _GROUP_TITLES[g], [e for e in ENDPOINTS if e["group"] == g])
         for g in _GROUP_ORDER
     ]
+    # Absolute for the same reason as the JSON: an assistant reading this page
+    # can only follow links that appear on it verbatim.
     return render_template(
         "perturbseq/api.html",
         groups=[grp for grp in groups if grp[2]],
         enums=ENUMS,
-        base=API_V1_PREFIX,
+        origin=public_origin(),
+        base=absolute(API_V1_PREFIX),
         limits=_LIMITS,
     )

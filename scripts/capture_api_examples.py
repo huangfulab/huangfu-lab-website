@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from blueprints.api_v1.catalog import ENDPOINTS, ENUMS  # noqa: E402
+from blueprints.api_v1.core import CANONICAL_ORIGIN  # noqa: E402
 from blueprints.perturbseq_bp import DB_PATH  # noqa: E402
 
 OUT = ROOT / "blueprints" / "api_v1" / "examples.py"
@@ -76,7 +77,9 @@ def main():
         if ep["id"] == "index":
             continue  # self-referential; the index need not example itself
         url = capture_url(ep)
-        r = client.get(url)
+        # Responses carry absolute URLs built from the request host, so capture
+        # against the public origin or every documented link reads 'localhost'.
+        r = client.get(url, base_url=CANONICAL_ORIGIN)
         if r.status_code != 200:
             failed.append(f"{ep['id']}: HTTP {r.status_code} for {url}")
             continue

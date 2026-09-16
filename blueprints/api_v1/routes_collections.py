@@ -152,7 +152,9 @@ def modules():
     db = api_db(QUERY_DEADLINE_COLLECTION)
     rows = query(
         db,
-        "SELECT m.module_id, m.module_name, m.source, m.size, d.title, d.standard, "
+        # Title only: the paragraph-length descriptions are served by /module/{name}
+        # and would triple the size of every listing page.
+        "SELECT m.module_id, m.module_name, m.source, m.size, d.title, "
         "       (SELECT COUNT(*) FROM gene_module_table gm WHERE gm.module_id = m.module_id) "
         "         AS n_genes "
         "FROM module_table m "
@@ -168,7 +170,6 @@ def modules():
         r["aliases"] = module_aliases(r["module_name"], r["source"])
         r["id"] = r["display_name"]
         r["type"] = "module"
-        r["description"] = r.pop("standard", None)
         r["url"] = path_link("module", r["display_name"])
     return collection(
         visible[offset:offset + per_page], page=page, per_page=per_page, total=len(visible)
@@ -321,10 +322,12 @@ def search():
                 "display_name": f"{r['go_name']} ({r['go_accession']})",
                 "namespace": r["namespace"], "matched_on": matched,
                 "url": path_link("go-term", r["go_accession"]),
-                "html_url": html_link("go", r["go_accession"]),
+                # The site's canonical GO page is "<name> (<accession>)"; the
+                # accession alone answers with a 301.
+                "html_url": html_link("go", f"{r['go_name']} ({r['go_accession']})"),
             })
 
     exact = q.upper()
     results.sort(key=lambda r: (r["name"].upper() != exact, len(r["name"]), r["name"]))
     trimmed = results[:limit]
-    return collection(trimmed, page=1, per_page=limit, total=len(trimmed))
+    return collection(trimmed, page=1, per_page=limit, total=len(trimmed), paginated=False)
