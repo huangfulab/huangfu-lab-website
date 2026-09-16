@@ -8,9 +8,26 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from blueprints.perturbseq_bp import perturbseq_bp, PERTURBSEQ_PREFIX
+from blueprints.api_v1 import (
+    api_v1_bp, api_docs_bp, is_api_v1_path, routing_error_response,
+)
 
 app = Flask(__name__)
 app.register_blueprint(perturbseq_bp)
+app.register_blueprint(api_v1_bp)
+app.register_blueprint(api_docs_bp)
+
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    # Werkzeug raises this during routing, before any blueprint is resolved, so
+    # a blueprint-scoped handler never sees it. Every other path is unchanged.
+    if is_api_v1_path():
+        return routing_error_response(
+            405, "Method not allowed. All API endpoints are GET.", "method_not_allowed"
+        )
+    return e
+
 
 @app.context_processor
 def inject_globals():
@@ -169,7 +186,8 @@ def sitemap_xml():
     urls = [
         "/", "/research", "/publications", "/announcements",
         "/team", "/resources", "/contact",
-        PERTURBSEQ_PREFIX, f"{PERTURBSEQ_PREFIX}/all-modules", "/modules", "/network",
+        PERTURBSEQ_PREFIX, f"{PERTURBSEQ_PREFIX}/all-modules", f"{PERTURBSEQ_PREFIX}/api",
+        "/modules", "/network",
     ]
     try:
         conn = sqlite3.connect(str(_SITEMAP_DB_PATH))

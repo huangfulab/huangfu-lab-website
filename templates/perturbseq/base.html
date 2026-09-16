@@ -125,6 +125,7 @@
         <div class="nav-ac" id="nav-ac"></div>
         {% block search_hints %}{% endblock %}
     </span>
+    <a href="{{ url_for('perturbseq_api_docs.api_docs') }}">API</a>
     {% if last_updated %}<span class="nav-updated">Updated {{ last_updated }}</span>{% endif %}
 </nav>
 <div class="container">

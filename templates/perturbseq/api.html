@@ -1,0 +1,291 @@
+{% extends "perturbseq/base.html" %}
+{% block title %}API · Endoderm Perturb-Seq Browser{% endblock %}
+
+{% block extra_head %}
+<link rel="alternate" type="application/json" href="{{ base }}/"
+      title="Endoderm Perturb-Seq API — machine-readable specification">
+{% endblock %}
+
+{% block extra_style %}
+<style>
+.api-header { margin-bottom: 6px; }
+.api-header h1 { margin: 0 0 6px; }
+.api-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; }
+.api-base {
+  font-family: monospace; font-size: 13px; color: var(--accent);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 10px;
+  display: inline-block; margin-bottom: 24px;
+}
+
+.api-machine {
+  border: 1px solid #a5b0e8; background: rgba(74,86,176,0.06);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 24px;
+  font-size: 13px; line-height: 1.6;
+}
+.api-machine strong { color: var(--accent); }
+.api-machine code {
+  font-family: monospace; font-size: 12.5px;
+  background: var(--bg-card); border-radius: 3px; padding: 1px 5px;
+}
+
+.api-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden; margin-bottom: 20px;
+}
+.api-panel-header {
+  padding: 11px 16px 9px; border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+}
+.api-panel-body { padding: 16px; }
+.api-panel-body > p:first-child { margin-top: 0; }
+.api-panel-body > p:last-child  { margin-bottom: 0; }
+
+pre.api-code {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; margin: 0 0 14px;
+  overflow-x: auto; font-size: 12px; line-height: 1.55;
+}
+pre.api-code:last-child { margin-bottom: 0; }
+.api-code-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px;
+}
+
+.api-conventions { font-size: 13.5px; line-height: 1.65; }
+.api-conventions dt { font-weight: 700; margin-top: 12px; }
+.api-conventions dt:first-child { margin-top: 0; }
+.api-conventions dd { margin: 2px 0 0; color: var(--text-muted); }
+.api-conventions code, .api-inline-code {
+  font-family: monospace; font-size: 12.5px;
+  background: var(--bg-elevated); border-radius: 3px; padding: 1px 5px;
+}
+
+.api-endpoint { border-bottom: 1px solid var(--border); padding: 16px; }
+.api-endpoint:last-child { border-bottom: none; }
+.api-ep-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.api-method {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em;
+  color: var(--green); border: 1.5px solid #6ee7b7; background: rgba(16,185,129,0.07);
+  border-radius: 20px; padding: 2px 9px;
+}
+.api-ep-path {
+  font-family: monospace; font-size: 14px; font-weight: 600; color: var(--accent);
+  word-break: break-all;
+}
+.api-ep-summary { font-size: 13.5px; color: var(--text); margin: 8px 0 0; line-height: 1.6; }
+.api-ep-note {
+  font-size: 12.5px; color: var(--text-muted); margin: 6px 0 0;
+  padding-left: 12px; border-left: 2px solid var(--border); line-height: 1.55;
+}
+
+table.api-params { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 12px; }
+table.api-params th {
+  text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+}
+table.api-params td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.api-params tr:last-child td { border-bottom: none; }
+table.api-params .pname { font-family: monospace; font-weight: 600; white-space: nowrap; }
+table.api-params .ptype { color: var(--text-muted); white-space: nowrap; font-size: 12px; }
+.api-required { color: var(--pink); font-weight: 700; font-size: 11px; }
+
+.api-try {
+  display: inline-block; margin-top: 12px; font-family: monospace; font-size: 12px;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 5px 10px; background: var(--bg-elevated);
+}
+.api-try:hover { border-color: var(--accent); }
+.api-errors { margin-top: 10px; font-size: 12.5px; color: var(--text-muted); }
+.api-errors span.st { font-family: monospace; font-weight: 700; color: var(--text); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="api-header">
+  <h1>API</h1>
+  <div class="api-sub">
+    Read-only JSON access to the Endoderm Perturb-Seq dataset. No authentication, no rate limit.
+  </div>
+</div>
+<div class="api-base">{{ base }}</div>
+
+<div class="api-machine">
+  <strong>Using this from a script or an AI agent?</strong>
+  Point it at <a href="{{ base }}/"><code>{{ base }}/</code></a> — a single JSON document
+  describing every endpoint, parameter, enum value, error code and example response.
+  Nothing on this page is missing from it.
+</div>
+
+<div class="api-panel">
+  <div class="api-panel-header">Quickstart</div>
+  <div class="api-panel-body">
+    <div class="api-code-label">Python</div>
+    <pre class="api-code">import requests
+
+BASE = "https://www.huangfulab.com{{ base }}"
+
+gene = requests.get(f"{BASE}/gene/SOX17").json()["data"]
+print(gene["supermodule"], len(gene["elements"]), "linked peaks")
+
+# Paginated endpoints expose links.next; follow it until it is null.
+def fetch_all(path, **params):
+    rows, page = [], 1
+    while True:
+        r = requests.get(f"{BASE}{path}", params={**params, "page": page, "per_page": {{ limits.max_per_page }}})
+        r.raise_for_status()
+        body = r.json()
+        rows += body["data"]
+        if not body["links"]["next"]:
+            return rows
+        page += 1</pre>
+
+    <div class="api-code-label">R</div>
+    <pre class="api-code">library(httr2)
+library(jsonlite)
+
+base &lt;- "https://www.huangfulab.com{{ base }}"
+
+gene &lt;- request(paste0(base, "/gene/SOX17")) |&gt;
+  req_perform() |&gt;
+  resp_body_json(simplifyVector = TRUE)
+
+gene$data$supermodule
+as.data.frame(gene$data$elements)</pre>
+  </div>
+</div>
+
+<div class="api-panel">
+  <div class="api-panel-header">Conventions</div>
+  <div class="api-panel-body">
+    <dl class="api-conventions">
+      <dt>Response shape</dt>
+      <dd>
+        Single objects return <code>{"data": {...}, "links": {...}}</code>. Collections return
+        <code>{"data": [...], "page", "per_page", "total", "pages", "links"}</code>.
+        <code>links</code> sits beside <code>data</code>, never inside it, so
+        <code>data</code> flattens cleanly into a data frame.
+      </dd>
+
+      <dt>Errors</dt>
+      <dd>
+        Always JSON: <code>{"error": "...", "status": 404, "code": "gene_not_found", "path": "..."}</code>.
+        The <code>code</code> is stable and safe to branch on; the <code>error</code> text is for humans
+        and may be reworded.
+      </dd>
+
+      <dt>Pagination</dt>
+      <dd>
+        1-based <code>page</code> with <code>per_page</code> (default {{ limits.default_per_page }},
+        maximum {{ limits.max_per_page }}). A <code>per_page</code> above the maximum is rejected rather
+        than silently reduced, so a short response always means you reached the end.
+        Follow <code>links.next</code> until it is <code>null</code>.
+      </dd>
+
+      <dt>Missing and infinite values</dt>
+      <dd>
+        Absent measurements are <code>null</code>. Where a Fisher test separated perfectly, the odds ratio
+        is reported as <code>null</code> with <code>odds_ratio_infinite: true</code> beside it —
+        bare <code>Infinity</code> is not valid JSON and a sentinel number would be mistaken for a
+        measurement.
+      </dd>
+
+      <dt>Truncation</dt>
+      <dd>
+        Bounded lists carry a companion <code>*_truncated</code> flag, so a capped list is always
+        distinguishable from a genuinely short one.
+      </dd>
+
+      <dt>Names</dt>
+      <dd>
+        Genes accept a symbol, an Ensembl gene ID, or a synonym; when the input was not the canonical
+        symbol, <code>meta.resolved_from</code> and <code>meta.match_type</code> say what matched.
+        Gene clusters accept <code>GC1</code>, <code>TC-1</code>, <code>gene_cluster_1</code> or
+        <code>cluster_1</code> and always answer with the public <code>GC1</code> form.
+      </dd>
+
+      <dt>Limits</dt>
+      <dd>
+        Responses are capped at {{ (limits.max_response_bytes / 1024 / 1024) | round | int }} MiB and
+        queries at {{ limits.query_timeout_seconds.objects_and_links | int }} s
+        ({{ limits.query_timeout_seconds.collections_and_search | int }} s for collections and search).
+        Exceeding either returns a JSON error, not a truncated body.
+      </dd>
+
+      <dt>CORS</dt>
+      <dd>Open to all origins on <code>{{ base }}</code>, so browser-side tools can call it directly.</dd>
+    </dl>
+  </div>
+</div>
+
+{% for group_id, group_title, endpoints in groups %}
+<div class="api-panel">
+  <div class="api-panel-header">{{ group_title }}</div>
+  {% for ep in endpoints %}
+  <div class="api-endpoint">
+    <div class="api-ep-head">
+      <span class="api-method">{{ ep.method }}</span>
+      <span class="api-ep-path">{{ base }}{{ ep.path if ep.path != '/' else '/' }}</span>
+    </div>
+    <p class="api-ep-summary">{{ ep.summary }}</p>
+
+    {% if ep.path_params or ep.query_params %}
+    <table class="api-params">
+      <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+      {% for p in ep.path_params %}
+      <tr>
+        <td class="pname">{{ p.name }} <span class="api-required">required</span></td>
+        <td class="ptype">{{ p.type }}</td>
+        <td>{{ p.description }}{% if p.example %} Example: <span class="api-inline-code">{{ p.example }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% for p in ep.query_params %}
+      <tr>
+        <td class="pname">{{ p.name }}</td>
+        <td class="ptype">
+          {{ p.type }}{% if p.default not in (None, '') %} · default {{ p.default }}{% endif %}
+          {%- if p.max %} · max {{ p.max }}{% endif %}
+        </td>
+        <td>
+          {{ p.description }}
+          {%- if p.enum %} One of: <span class="api-inline-code">{{ enums[p.enum] | join(', ') }}</span>.{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% for note in ep.notes %}
+    <p class="api-ep-note">{{ note }}</p>
+    {% endfor %}
+
+    {% if ep.errors %}
+    <div class="api-errors">
+      {% for err in ep.errors %}
+      <div><span class="st">{{ err.status }} {{ err.code }}</span> — {{ err.when }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <a class="api-try" href="{{ ep.example_url }}">{{ ep.example_url }}</a>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="api-panel">
+  <div class="api-panel-header">More</div>
+  <div class="api-panel-body api-conventions">
+    <p style="margin:0">
+      <a href="{{ base }}/">{{ base }}/</a> returns this endpoint list as JSON, including every enum value
+      and limit, so a script can discover the API without scraping this page.
+      For column-level detail on the underlying tables, see the
+      <a href="{{ url_for('perturbseq.db_schema') }}">database schema</a>.
+    </p>
+  </div>
+</div>
+{% endblock %}
